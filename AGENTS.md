@@ -95,9 +95,15 @@ Projekt-Memory under `~/.claude/projects/-Users-Shared-code-llm-benchmark-harnes
 (index: `MEMORY.md`). Session-Handoff under `.remember/` (gitignored). Vault cockpit:
 `10_Pallas/25_Coding/llm-benchmark-harness/` (status/tasks/decisions).
 
+## Hosting
+
+- **`origin`** = Codeberg (primär): <https://codeberg.org/jkaindl/llm-benchmark-harness>
+- **`github`** = GitHub (Mirror): <https://github.com/johannes-kaindl/llm-benchmark-harness>
+- Codeberg→GitHub **Push-Mirror** ist aktiv (`sync_on_commit`): ein Push auf `origin` spiegelt
+  automatisch nach GitHub. Direkt auf `github` zu pushen ist daher i. d. R. unnötig.
+- Auth: Codeberg-Token `~/.codeberg-token`, GitHub-Token `~/.github-token` (HTTPS, nicht in `.git/config`).
+
 ## Abweichungen von der Leitkonvention
 
-- **CORE-GIT-01 / CORE-META-10** — Codeberg/GitHub remotes noch nicht angelegt (frisches Repo;
-  Remote + Description/Topics folgen beim ersten Push). Auto-detect der Engine bezieht `:1234/:8080/:8000`.
 - **CORE-META-03/04** — Hero-Bild + volle Diátaxis-Doku noch nicht erstellt (Reife: Alpha;
   `docs/reference/` + `docs/explanation/` als Start vorhanden).
