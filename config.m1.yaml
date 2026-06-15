@@ -1,0 +1,23 @@
+# M1 (16 GB) → LM Studio. Chat-Latenz + Speicherdruck unter Kontextlast.
+endpoint:
+  base_url: "http://localhost:1234/v1"
+  api_key: "not-needed"
+
+machine: "M1-16GB"
+runs_per_cell: 8
+seed: 42
+temperature: 0.0
+context_buckets: [4096, 16384, 32768]
+scenarios: [bodydouble, compose, rag_synth, longctx_stress]
+
+models:
+  - { id: "qwen3-8b", quant: "Q5_K_M", max_tokens_default: 400 }
+
+server_process_match: "LM Studio"
+output_dir: "./runs"
+power_check: true
+
+embed:
+  model: "text-embedding-bge-m3"
+  num_chunks: 200
+  chunk_tokens: 512

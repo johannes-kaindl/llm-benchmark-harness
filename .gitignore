@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+# Hinweis: uv.lock WIRD committet (PROF-PY-01) — nicht ignorieren.
+
+# Agent-/Session-State (CORE-AGENT-03/05)
+.claude/
+.remember/
+
+# Benchmark-Outputs (Roh-Läufe; report.md wird per Hand ins Vault gepastet)
+runs/
+
+# macOS
+.DS_Store

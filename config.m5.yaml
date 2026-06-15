@@ -1,0 +1,28 @@
+# M5 → mlx_lm.server (:8080) bzw. mlx-openai-server (:8000). Inkl. VLM-Pfad.
+endpoint:
+  base_url: "http://localhost:8080/v1"
+  api_key: "not-needed"
+
+machine: "M5-32GB"
+runs_per_cell: 8
+seed: 42
+temperature: 0.0
+context_buckets: [4096, 16384, 32768]
+scenarios: [bodydouble, compose, rag_synth, longctx_stress, vlm]
+
+models:
+  - { id: "qwen3.6-35b-a3b-4bit", quant: "4bit", max_tokens_default: 400 }
+
+# mlx_lm.server läuft als Python-Prozess — Match gegen die cmdline.
+server_process_match: "mlx_lm.server"
+output_dir: "./runs"
+power_check: true
+
+# VLM: 1 Bild (Screenshot/PDF-Seite) wird base64-kodiert ins content-Array gehängt.
+vlm:
+  image_path: "prompts/vlm_sample.png"
+
+embed:
+  model: "bge-m3"
+  num_chunks: 200
+  chunk_tokens: 512

@@ -1,0 +1,38 @@
+# ramcheck — Beispiel-Config. Kopieren nach config.m1.yaml / config.m5.yaml und anpassen.
+# Designregel: Engine-agnostisch. Nur diese Datei tauschen, nie Code anfassen.
+
+endpoint:
+  base_url: "http://localhost:1234/v1"   # M1 → LM Studio. M5 → :8080 (mlx_lm.server) / :8000 (mlx-openai-server)
+  api_key: "not-needed"                  # lokaler Server, kein echter Key
+
+machine: "M1-16GB"                        # freier Bezeichner; landet im Report-Header
+
+runs_per_cell: 8                          # N pro Zelle (≥8 → ≥7 gewertet, 1 Warmup verworfen)
+seed: 42
+temperature: 0.0
+
+context_buckets: [4096, 16384, 32768]    # Ziel-Token (Ist wird gegen usage.prompt_tokens berichtet)
+scenarios: [bodydouble, compose, rag_synth, longctx_stress]
+
+models:
+  - { id: "qwen3-8b", quant: "Q5_K_M", max_tokens_default: 400 }
+
+# Optionale Per-Szenario-Overrides für max_tokens (Default kommt aus den eingebauten Szenario-Profilen).
+# max_tokens:
+#   bodydouble: 150
+#   compose: 400
+#   rag_synth: 300
+#   longctx_stress: 128
+
+# Server-Prozess für Peak-RSS-Messung (Substring-Match gegen den Prozessnamen/cmdline).
+# Leer lassen → Server-RSS wird übersprungen, System-Memory weiter erfasst.
+server_process_match: "LM Studio"
+
+output_dir: "./runs"
+power_check: true                         # pmset (Power-Source) + powermetrics (Throttle, braucht sudo)
+
+# Embedding-Durchsatz (Sub-Command `ramcheck embed`)
+embed:
+  model: "text-embedding-bge-m3"
+  num_chunks: 200
+  chunk_tokens: 512

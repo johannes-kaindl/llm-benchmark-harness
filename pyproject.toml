@@ -1,0 +1,94 @@
+[project]
+name = "llm-ramcheck"
+version = "0.1.0"
+description = "Thin benchmark harness for local LLM endpoints: correlates TTFT/prefill/decode latency with macOS memory pressure and thermal throttling."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-or-later" }
+authors = [
+    { name = "Johannes Kaindl", email = "code.jkaindl@mailbox.org" },
+]
+keywords = ["llm", "benchmark", "mlx", "lm-studio", "apple-silicon", "ttft", "memory-pressure"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+
+dependencies = [
+    "openai>=1.40",
+    "pydantic>=2.7",
+    "pyyaml>=6.0.3",
+    "psutil>=5.9",
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+# Exact per-model tokenizer for context padding. Without it, padding falls back
+# to a heuristic and is corrected against `usage.prompt_tokens` after the fact.
+tokenizer = [
+    "transformers>=4.44",
+]
+
+[project.scripts]
+ramcheck = "ramcheck.cli:app"
+
+[project.urls]
+Homepage = "https://codeberg.org/jkaindl/llm-benchmark-harness"
+Repository = "https://codeberg.org/jkaindl/llm-benchmark-harness"
+Issues = "https://codeberg.org/jkaindl/llm-benchmark-harness/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ramcheck"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "needs_endpoint: requires a live OpenAI-compatible endpoint",
+    "needs_macos: requires macOS host tools (powermetrics/pmset/memory_pressure)",
+]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # Typer's idiomatic pattern uses typer.Argument()/Option() in defaults
+    "RUF001", # Ambiguous unicode (×, „ ") — deliberate typography in German report output
+    "RUF002", # Unicode in docstrings — fine in German prose
+    "RUF003", # Unicode in inline comments — fine in German prose
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B017"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+
+# Third-party modules without bundled type stubs in this dev env.
+[[tool.mypy.overrides]]
+module = ["yaml", "psutil", "transformers", "transformers.*"]
+ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+    "ruff>=0.15",
+    "mypy>=1.10",
+    "types-PyYAML>=6.0",
+    "types-psutil>=5.9",
+]
