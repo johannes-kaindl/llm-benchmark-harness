@@ -30,3 +30,10 @@ dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/) (Tags **
   markiert (fängt auch zu viele throttled/Akku-Ausschlüsse ab); CLI warnt bei `runs_per_cell < 8`.
 - `context_buckets` wird validiert (nicht leer, alle Werte positiv).
 - pre-commit-mypy-Hook auf `ramcheck/` korrigiert (zeigte auf nicht-existentes `src/`); stale pytest-`--ignore` entfernt.
+
+### Aus dem ersten Real-Lauf (M5, mlx_lm.server, Qwen3.6-35B-A3B-4bit)
+- **Peak-RAM-Spalte** führt jetzt das Spitzen-**System-Memory** (engine-agnostisch, maßgeblich für
+  OOM/Druck); Server-PID-RSS nur als Hinweis in Klammern — psutils RSS unterzählt auf Apple Silicon
+  die mmap'ten Modellgewichte (im Lauf ~0,2 GB statt ~18 GB). longctx_stress-Sweep zeigt damit den
+  Druck-Übergang `normal → warn` bei 32K-Kontext.
+- `prompts/vlm_sample.png` durch eine text-tragende „Dokumentseite" (DE) ersetzt (statt 64×64-Platzhalter).

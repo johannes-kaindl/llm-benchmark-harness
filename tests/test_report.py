@@ -47,6 +47,20 @@ def test_aggregate_excludes_warmup_throttled_battery_cold():
     assert abs(cell.ttft_p50 - 0.40) < 1e-9
 
 
+def test_peak_ram_uses_system_memory_with_rss_hint():
+    # System memory is the headline; server RSS shown as a parenthetical hint.
+    records = [
+        _rec(sys_used_mb=20480.0, peak_rss_mb=300.0),
+        _rec(sys_used_mb=21504.0, peak_rss_mb=320.0),
+    ]
+    cells = report.aggregate_cells(records)
+    assert cells[0].peak_sys_used_mb == 21504.0  # peak of the two
+    assert cells[0].peak_rss_mb == 320.0
+    md = report.render_report_md(records, date_str="2026-06-15")
+    assert "21.0 GB sys" in md
+    assert "RSS 0.3 GB" in md
+
+
 def test_low_n_cell_flagged_and_marked():
     # Only 3 valid runs → below the MIN_VALID_RUNS floor of 7.
     records = [_rec(ttft_s=0.3), _rec(ttft_s=0.4), _rec(ttft_s=0.5)]

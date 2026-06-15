@@ -80,8 +80,12 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   them into the report header.
 - **`usage` may be missing** even with `stream_options.include_usage`. The runner then
   falls back to a heuristic completion-token count; prefer servers that emit usage.
-- **VLM image is a placeholder.** `prompts/vlm_sample.png` is a tiny generated image —
-  replace it with a real screenshot/PDF page before trusting `vlm` numbers.
+- **VLM needs a vision model.** `prompts/vlm_sample.png` is a text-bearing document page
+  (swap in your own for representative load), but the `vlm` scenario only works against a
+  **vision-capable** model on the endpoint — a text-only model rejects the image content.
+- **Peak-RAM = system memory, not RSS.** On Apple Silicon mlx mmaps the weights into unified
+  memory, so the server-PID RSS undercounts the model (~0.2 GB vs ~18 GB). The report leads with
+  peak *system* memory + `memory_pressure`; RSS is only a parenthetical hint.
 - **Cold-start** is the very first request of a whole run (flagged `is_cold_start`), reported
   on its own line, never in the aggregates.
 

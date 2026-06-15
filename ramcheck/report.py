@@ -37,7 +37,8 @@ class CellAggregate:
     ttft_p95: float
     decode_median: float
     prefill_median: float
-    peak_rss_mb: float | None
+    peak_sys_used_mb: float | None  # peak SYSTEM memory used — the engine-agnostic RAM truth
+    peak_rss_mb: float | None  # server-PID RSS (undercounts mmap'd weights on Apple Silicon)
     mem_pressure_max: str
     swap_delta_mb: float
     cv_pct: float
@@ -132,6 +133,7 @@ def aggregate_cells(records: list[RunRecord]) -> list[CellAggregate]:
         non_warmup = [r for r in group if not r.warmup and r.ok]
         ttfts = [r.ttft_s for r in valid]
         peak_rss = [r.peak_rss_mb for r in valid if r.peak_rss_mb is not None]
+        peak_sys = [r.sys_used_mb for r in valid if r.sys_used_mb is not None]
         cells.append(
             CellAggregate(
                 machine=key[0],
@@ -146,6 +148,7 @@ def aggregate_cells(records: list[RunRecord]) -> list[CellAggregate]:
                 ttft_p95=stats.percentile(ttfts, 95),
                 decode_median=stats.median([r.decode_tps for r in valid]),
                 prefill_median=stats.median([r.prefill_tps for r in valid]),
+                peak_sys_used_mb=max(peak_sys) if peak_sys else None,
                 peak_rss_mb=max(peak_rss) if peak_rss else None,
                 mem_pressure_max=pressure_max(
                     [r.mem_pressure_max for r in valid if r.mem_pressure_max]
@@ -175,7 +178,7 @@ def _fnum(x: float, digits: int = 2) -> str:
     return f"{x:.{digits}f}"
 
 
-def _rss(x: float | None) -> str:
+def _gb(x: float | None) -> str:
     if x is None:
         return "—"
     return f"{x / 1024:.1f} GB"
@@ -230,8 +233,11 @@ def render_report_md(
     lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for c in cells:
         ttft = f"{_fnum(c.ttft_p50)} / {_fnum(c.ttft_p95)}"
+        # System memory is the RAM truth (engine-agnostic); server RSS is a hint that
+        # undercounts mmap'd weights on Apple Silicon, so it's shown in parentheses.
         ram = (
-            f"{_rss(c.peak_rss_mb)} / {c.mem_pressure_max or '—'} / {_fnum(c.swap_delta_mb, 0)} MB"
+            f"{_gb(c.peak_sys_used_mb)} sys (RSS {_gb(c.peak_rss_mb)}) / "
+            f"{c.mem_pressure_max or '—'} / {_fnum(c.swap_delta_mb, 0)} MB"
         )
         excl_parts = []
         if c.n_excluded_throttled:
@@ -255,7 +261,10 @@ def render_report_md(
     lines.append(
         "> _`Qual.` und `Flow` bleiben zur manuellen Bewertung leer. "
         "`Konsist.` = CV% der TTFT (Stdev/Mittel). Kontext „ist“ = Median der echten "
-        "`prompt_tokens` aus `usage`. Aggregate schließen Warmup-, Cold-, throttled- und "
+        "`prompt_tokens` aus `usage`. **Peak-RAM** = Spitzen-System-Memory (engine-agnostisches "
+        "RAM-Signal, maßgeblich für OOM/Druck); `RSS` = Server-PID-RSS, das auf Apple Silicon "
+        "die mmap'ten Modellgewichte unterzählt — daher nur als Hinweis in Klammern. "
+        "Aggregate schließen Warmup-, Cold-, throttled- und "
         f"Akku-Läufe aus (roh in `raw.csv` erhalten). ⚠️ n=<k> markiert Zellen mit weniger "
         f"als {MIN_VALID_RUNS} gewerteten Läufen — die Zahlen sind dort unterbesetzt._"
     )
