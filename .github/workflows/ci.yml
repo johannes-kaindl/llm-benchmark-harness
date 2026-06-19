@@ -1,0 +1,26 @@
+# GitHub Actions CI (läuft auf dem GitHub-Mirror — keine Freischaltung nötig).
+# Spiegelt die .woodpecker.yml: dieselben Qualitäts-Gates bei jedem Push/PR.
+# uv installiert Python 3.12 selbst (managed), `--frozen` nutzt das committete uv.lock.
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint-type-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Sync deps
+        run: uv sync --frozen
+      - name: Ruff (lint)
+        run: uv run ruff check .
+      - name: Ruff (format)
+        run: uv run ruff format --check .
+      - name: Mypy (strict)
+        run: uv run mypy ramcheck/
+      - name: Pytest
+        run: uv run pytest -q
