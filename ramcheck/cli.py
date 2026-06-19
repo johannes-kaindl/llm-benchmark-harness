@@ -8,6 +8,8 @@ ramcheck report --runs ./runs              # report.md (re)generieren
 
 from __future__ import annotations
 
+import csv
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -15,9 +17,13 @@ import typer
 from rich.console import Console
 
 from ramcheck import hostinfo, report
+from ramcheck import scorecard as scorecard_mod
 from ramcheck.client import OpenAIStreamClient
 from ramcheck.config import Config, load_config
 from ramcheck.embed import render_embed_md, run_embed
+from ramcheck.judge import OpenAIJudgeBackend, judge_bundle, load_judge_config
+from ramcheck.pack import load_pack
+from ramcheck.qualrun import load_responses_jsonl, run_eval
 from ramcheck.report import load_raw_csv
 from ramcheck.runner import resolve_engine, run_benchmark
 
@@ -120,6 +126,93 @@ def report_cmd(
     console.print(
         f"[green]✓[/] {len(records)} Zeilen aus {len(raw_files)} raw.csv → [bold]{out_path}[/]"
     )
+
+
+def _write_bundle_manifest(
+    run_dir: Path, pack_path: Path, cfg: Config, host: dict[str, str]
+) -> None:
+    from ramcheck.pack import load_pack as _lp
+
+    pk = _lp(pack_path)
+    manifest = {
+        "pack_id": pk.id,
+        "pack_version": pk.version,
+        "pack_path": str(Path(pack_path).resolve()),
+        "machine": cfg.machine,
+        "models": [{"id": m.id, "quant": m.quant} for m in cfg.models],
+        "variants": [v.id for v in pk.prompt_variants],
+        "host": host,
+        "sampling": {"temperature": pk.sampling.temperature, "seed": pk.sampling.seed},
+        "date": _today(),
+    }
+    (run_dir / "bundle.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+@app.command(name="eval")
+def eval_cmd(
+    pack: Path = typer.Option(..., "--pack", exists=True, help="use-case pack YAML"),
+    config: Path = typer.Option(..., "--config", "-c", exists=True, help="endpoint/models YAML"),
+    out: Path | None = typer.Option(None, "--out", help="override output_dir"),
+) -> None:
+    """Run a use-case pack through the models: capture answers + perf, write the bundle."""
+    cfg = load_config(config)
+    pk = load_pack(pack)
+    base_out = out or cfg.output_path()
+    run_dir = base_out / f"{_timestamp()}_eval_{pk.id}"
+    console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
+
+    client = _make_client(cfg)
+    responses = run_eval(cfg, pk, client, run_dir=run_dir)
+    host = hostinfo.summary()
+    _write_bundle_manifest(run_dir, pack, cfg, host)
+
+    md = scorecard_mod.render_scorecard_md(pk, responses, [], [], host=host, date_str=_today())
+    (run_dir / "scorecard.md").write_text(md, encoding="utf-8")
+    errors = sum(1 for r in responses if not r.ok)
+    console.print(
+        f"[green]✓[/] {len(responses)} Antworten ({errors} Fehler) · "
+        f"[bold]{run_dir / 'scorecard.md'}[/] (Tech-Specs gefüllt, Qualität offen) · "
+        f"bewerten: [cyan]ramcheck judge --bundle {run_dir} --judge-config judge.yaml[/]"
+    )
+
+
+@app.command()
+def judge(
+    bundle: Path = typer.Option(..., "--bundle", exists=True, help="an eval bundle dir"),
+    judge_config: Path | None = typer.Option(
+        None, "--judge-config", help="judge endpoint YAML (omit → leave unscored)"
+    ),
+) -> None:
+    """Score an eval bundle with an LLM judge and fill the scorecard."""
+    manifest = json.loads((bundle / "bundle.json").read_text(encoding="utf-8"))
+    pk = load_pack(manifest["pack_path"])
+    responses = load_responses_jsonl(bundle / "responses.jsonl")
+    host = manifest.get("host") or hostinfo.summary()
+
+    if judge_config is None:
+        console.print("[yellow]Kein --judge-config angegeben — Scorecard bleibt unbewertet.[/]")
+        raise typer.Exit(code=1)
+
+    jc = load_judge_config(judge_config)
+    backend = OpenAIJudgeBackend(jc.endpoint.base_url, jc.endpoint.api_key, jc.model, jc.temperature)
+    console.print(f"[bold]ramcheck judge[/] [{pk.id}] · judge: {jc.model}")
+    verdicts, reports = judge_bundle(backend, responses, pk)
+
+    md = scorecard_mod.render_scorecard_md(pk, responses, verdicts, reports, host=host, date_str=_today())
+    (bundle / "scorecard.md").write_text(md, encoding="utf-8")
+    with (bundle / "judgements.jsonl").open("w", encoding="utf-8") as fh:
+        for v in verdicts:
+            fh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
+    rows = scorecard_mod.scores_csv_rows(pk, responses, verdicts, reports, host=host)
+    if rows:
+        with (bundle / "scores.csv").open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+    scored = sum(1 for v in verdicts if not v.unscored)
+    console.print(f"[green]✓[/] {scored}/{len(verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -35,8 +35,24 @@ merge.py    latency log × resource log, joined by [t_start,t_end] window per ru
 stats.py    P50/P95 · median · CV%   (pure, no numpy)
 report.py   raw.csv (every request) + report.md (SSOT columns, aggregates exclude noise)
 embed.py    embedding throughput sub-run
-cli.py      typer app: run · embed · report
+cli.py      typer app: run · embed · report · eval · judge
+
+# qualitative use-case evaluation (the second half — answer quality, not speed):
+pack.py     a use-case "pack" (YAML) → validated Pack: prompts + green/red flags +
+            weighted dimensions + K.-o. rule + system-prompt variants. Data, not code.
+results.py  eval data contract: EvalResponse (one answer + perf) · Verdict · ModelReport
+qualrun.py  deterministic run: matrix (model × variant × prompt × repeat) → bundle
+            (responses.jsonl + perf.csv), reusing stream_once + sampler + merge
+judge.py    pluggable LLM-as-judge (JudgeBackend protocol): per-answer score vs. flags
+            + holistic weighted master scorecard + safety K.-o.
+scorecard.py weighting/K.-o./category math (pure) + renders scorecard.md + scores.csv
 ```
+
+The qualitative half is **two decoupled phases**: `eval` (deterministic, on the
+machine under test — fills tech-specs, leaves quality blank) and `judge` (optional,
+non-deterministic — fills quality from the captured answers). A use-case is a **pack**
+(`packs/*.yaml`); a new use case is a new YAML, no code. `packs/ndassist.yaml` is the
+first one (Neurodivergenz-Assistent, 24 prompts).
 
 - `models.RAW_CSV_COLUMNS` is the **single source of truth** for the CSV schema and is
   asserted against `RunRecord` at import — change one, change both.
@@ -54,6 +70,9 @@ uv run ramcheck run    --config config.m1.yaml # M1 → LM Studio
 uv run ramcheck run    --config config.m5.yaml # M5 → mlx_lm.server / mlx-openai-server
 uv run ramcheck embed  --config config.m5.yaml # embedding throughput
 uv run ramcheck report --runs ./runs           # (re)generate report.md from raw.csv
+
+uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml  # qualitative run → bundle (tech-specs auto)
+uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml  # LLM-as-judge → filled scorecard
 
 uv run pytest -q                               # tests (no server/sudo needed)
 uv run ruff check . && uv run ruff format .    # lint + format

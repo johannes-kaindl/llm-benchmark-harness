@@ -1,0 +1,16 @@
+# Judge-Endpoint für `ramcheck judge`. Pluggable: lokal (offline, kostenlos) oder
+# Cloud (beste Score-Qualität). Kopiere nach judge.yaml und passe an.
+#
+# Lokaler Judge (LM Studio, offline) — ein möglichst starkes lokales Modell:
+endpoint:
+  base_url: "http://localhost:1234/v1"
+  api_key: "not-needed"
+model: "qwen/qwen3.6-35b-a3b"
+temperature: 0.0
+
+# Cloud-Judge (beste Qualität) — z. B. ein OpenAI-kompatibler Anbieter:
+# endpoint:
+#   base_url: "https://api.example.com/v1"
+#   api_key: "${JUDGE_API_KEY}"   # echten Key in judge.yaml, NICHT committen
+# model: "<starkes-judge-modell>"
+# temperature: 0.0

@@ -20,3 +20,6 @@ runs/
 
 # macOS
 .DS_Store
+
+# Judge-Endpoint mit evtl. echten Keys (nur judge.example.yaml committen)
+judge.yaml

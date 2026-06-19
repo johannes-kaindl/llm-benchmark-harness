@@ -69,7 +69,10 @@ def test_run_benchmark_full_pipeline(tmp_path):
     assert len(reloaded) == 7
 
 
-def test_run_benchmark_aggregates_exclude_warmup_and_cold(tmp_path):
+def test_run_benchmark_aggregates_exclude_warmup_and_cold(tmp_path, monkeypatch):
+    # Make the test hermetic w.r.t. the host's power state: on battery the runner
+    # would flag every run and aggregate_cells would exclude them (n_valid → 0).
+    monkeypatch.setattr("ramcheck.sampler.read_power_source", lambda: "ac")
     cfg = _cfg(tmp_path)
     records = run_benchmark(cfg, FakeClient(), run_dir=tmp_path / "run2", sampler=NoopSampler())
     cells = report.aggregate_cells(records)
