@@ -10,6 +10,7 @@ prose/fences and clamp scores rather than trusting clean output.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
@@ -18,6 +19,13 @@ from pydantic import BaseModel
 
 from ramcheck.pack import Pack, PackPrompt
 from ramcheck.results import EvalResponse, ModelReport, Verdict
+
+VerdictKey = tuple[str, str, str, int]  # (model, variant, prompt_id, repeat)
+
+
+def _verdict_key(v: Verdict) -> VerdictKey:
+    return (v.model, v.variant, v.prompt_id, v.repeat)
+
 
 EMPTY_CONTENT_RATIONALE = (
     "Leere Modell-Ausgabe (content leer — z. B. Reasoning-Modell, dessen Tokens ins "
@@ -184,15 +192,27 @@ def score_response(
 
 
 def judge_responses(
-    backend: JudgeBackend, responses: list[EvalResponse], pack: Pack
+    backend: JudgeBackend,
+    responses: list[EvalResponse],
+    pack: Pack,
+    *,
+    skip_keys: frozenset[VerdictKey] | set[VerdictKey] = frozenset(),
+    on_verdict: Callable[[Verdict], None] | None = None,
 ) -> list[Verdict]:
+    """Score each response. ``skip_keys`` (already-judged cells) are skipped; each
+    fresh verdict is passed to ``on_verdict`` (e.g. to append it to disk for resume)."""
     index = {p.id: p for _, p in pack.all_prompts()}
     verdicts: list[Verdict] = []
     for resp in responses:
+        if (resp.model, resp.variant, resp.prompt_id, resp.repeat) in skip_keys:
+            continue
         prompt = index.get(resp.prompt_id)
         if prompt is None:
             continue
-        verdicts.append(score_response(backend, resp, prompt, pack))
+        verdict = score_response(backend, resp, prompt, pack)
+        if on_verdict is not None:
+            on_verdict(verdict)
+        verdicts.append(verdict)
     return verdicts
 
 
@@ -205,10 +225,21 @@ def score_dimensions(
 
 
 def judge_bundle(
-    backend: JudgeBackend, responses: list[EvalResponse], pack: Pack
+    backend: JudgeBackend,
+    responses: list[EvalResponse],
+    pack: Pack,
+    *,
+    prior_verdicts: list[Verdict] | None = None,
+    on_verdict: Callable[[Verdict], None] | None = None,
 ) -> tuple[list[Verdict], list[ModelReport]]:
-    """Full judging pass: per-response verdicts + per-(model,variant) master reports."""
-    verdicts = judge_responses(backend, responses, pack)
+    """Full judging pass: per-response verdicts + per-(model,variant) master reports.
+
+    ``prior_verdicts`` (from an interrupted run's judgements.jsonl) are kept and their
+    cells skipped — only the rest are freshly judged (and streamed to ``on_verdict``)."""
+    prior = list(prior_verdicts or [])
+    skip = {_verdict_key(v) for v in prior}
+    fresh = judge_responses(backend, responses, pack, skip_keys=skip, on_verdict=on_verdict)
+    verdicts = prior + fresh
     groups: list[tuple[str, str]] = []
     for r in responses:
         if (r.model, r.variant) not in groups:
@@ -224,6 +255,23 @@ def judge_bundle(
         for model, variant in groups
     ]
     return verdicts, reports
+
+
+def load_judgements_jsonl(path: str | Path) -> list[Verdict]:
+    """Read judgements.jsonl back into Verdicts, tolerant of a half-written final line."""
+    out: list[Verdict] = []
+    p = Path(path)
+    if not p.exists():
+        return out
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(Verdict(**json.loads(line)))
+        except Exception:
+            continue
+    return out
 
 
 # --- real backend + config ---------------------------------------------------

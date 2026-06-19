@@ -70,11 +70,18 @@ def aggregate_window(samples: list[ResourceSample]) -> ResourceAggregate:
     )
 
 
+def resources_for_window(
+    samples: list[ResourceSample], t_start: float, t_end: float, tol: float = DEFAULT_TOLERANCE_S
+) -> ResourceAggregate:
+    """Roll up the samples inside [t_start, t_end] (with slack). Public so the eval
+    runner can fill an EvalResponse's resources without building a throwaway RunRecord."""
+    return aggregate_window(_window_samples(samples, t_start, t_end, tol))
+
+
 def merge_run(
     record: RunRecord, samples: list[ResourceSample], tol: float = DEFAULT_TOLERANCE_S
 ) -> RunRecord:
-    window = _window_samples(samples, record.t_start, record.t_end, tol)
-    agg = aggregate_window(window)
+    agg = resources_for_window(samples, record.t_start, record.t_end, tol)
     record.peak_rss_mb = agg.peak_rss_mb
     record.sys_used_mb = agg.sys_used_mb
     record.swap_delta_mb = agg.swap_delta_mb

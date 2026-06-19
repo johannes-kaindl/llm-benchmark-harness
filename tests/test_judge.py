@@ -1,4 +1,5 @@
 from ramcheck.judge import (
+    judge_bundle,
     judge_responses,
     parse_dimension_scores,
     parse_verdict,
@@ -158,3 +159,44 @@ def test_score_dimensions_parses_master_report():
     report = score_dimensions(backend, pack, model="m", variant="none", verdicts=[])
     assert report.dim_scores == {"Q1": 4, "Q6": 3}
     assert report.model == "m"
+
+
+def test_judge_responses_skips_skip_keys_and_calls_on_verdict():
+    pack = _pack()
+    backend = FakeBackend('{"score": 3, "red_flag": false, "rationale": "ok"}')
+    responses = [_resp("A1", "A"), _resp("E1", "E")]
+    recorded = []
+    skip = {("m", "none", "A1", 0)}  # A1 already judged in a prior (interrupted) run
+    verdicts = judge_responses(backend, responses, pack, skip_keys=skip, on_verdict=recorded.append)
+    assert [v.prompt_id for v in verdicts] == ["E1"]  # A1 skipped
+    assert len(recorded) == 1  # on_verdict fired for the freshly judged one
+
+
+def test_judge_bundle_resume_merges_prior_and_judges_only_new():
+    from ramcheck.results import Verdict
+
+    pack = _pack()
+    backend = FakeBackend('{"score": 3, "red_flag": false, "rationale": "ok"}')
+    responses = [_resp("A1", "A"), _resp("E1", "E")]
+    prior = [Verdict("m", "none", "A1", 0, "A", 4, False, "prior")]
+    recorded = []
+    verdicts, reports = judge_bundle(
+        backend, responses, pack, prior_verdicts=prior, on_verdict=recorded.append
+    )
+    assert {v.prompt_id for v in verdicts} == {"A1", "E1"}  # prior + new
+    assert len(recorded) == 1  # only E1 newly judged
+    assert reports  # master reports still computed
+
+
+def test_load_judgements_jsonl_tolerates_bad_last_line(tmp_path):
+    import json
+
+    from ramcheck.judge import load_judgements_jsonl
+    from ramcheck.results import Verdict
+
+    p = tmp_path / "judgements.jsonl"
+    v = Verdict("m", "none", "A1", 0, "A", 4, False, "ok")
+    p.write_text(json.dumps(v.as_dict()) + "\n" + '{"bad": ', encoding="utf-8")
+    out = load_judgements_jsonl(p)
+    assert len(out) == 1
+    assert out[0].prompt_id == "A1"

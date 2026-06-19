@@ -52,7 +52,10 @@ The qualitative half is **two decoupled phases**: `eval` (deterministic, on the
 machine under test — fills tech-specs, leaves quality blank) and `judge` (optional,
 non-deterministic — fills quality from the captured answers). A use-case is a **pack**
 (`packs/*.yaml`); a new use case is a new YAML, no code. `packs/ndassist.yaml` is the
-first one (Neurodivergenz-Assistent, 24 prompts).
+first one (Neurodivergenz-Assistent, 24 prompts). Both phases are **incremental +
+resumable**: answers/verdicts are appended as they finish, so an interrupted run is
+continued with `eval --resume <bundle>` (or just re-running `judge`) — done cells are
+skipped, a half-written final line is tolerated.
 
 - `models.RAW_CSV_COLUMNS` is the **single source of truth** for the CSV schema and is
   asserted against `RunRecord` at import — change one, change both.
@@ -72,7 +75,8 @@ uv run ramcheck embed  --config config.m5.yaml # embedding throughput
 uv run ramcheck report --runs ./runs           # (re)generate report.md from raw.csv
 
 uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml  # qualitative run → bundle (tech-specs auto)
-uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml  # LLM-as-judge → filled scorecard
+uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml --resume runs/<ts>_eval_ndassist  # nach Abbruch weiter
+uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml  # LLM-as-judge → filled scorecard (resumebar)
 
 uv run pytest -q                               # tests (no server/sudo needed)
 uv run ruff check . && uv run ruff format .    # lint + format

@@ -21,10 +21,16 @@ from ramcheck import scorecard as scorecard_mod
 from ramcheck.client import OpenAIStreamClient
 from ramcheck.config import Config, load_config
 from ramcheck.embed import render_embed_md, run_embed
-from ramcheck.judge import OpenAIJudgeBackend, judge_bundle, load_judge_config
+from ramcheck.judge import (
+    OpenAIJudgeBackend,
+    judge_bundle,
+    load_judge_config,
+    load_judgements_jsonl,
+)
 from ramcheck.pack import load_pack
 from ramcheck.qualrun import load_responses_jsonl, run_eval
 from ramcheck.report import load_raw_csv
+from ramcheck.results import Verdict
 from ramcheck.runner import resolve_engine, run_benchmark
 
 app = typer.Typer(add_completion=False, help="Thin local-LLM benchmark harness.")
@@ -155,16 +161,23 @@ def eval_cmd(
     pack: Path = typer.Option(..., "--pack", exists=True, help="use-case pack YAML"),
     config: Path = typer.Option(..., "--config", "-c", exists=True, help="endpoint/models YAML"),
     out: Path | None = typer.Option(None, "--out", help="override output_dir"),
+    resume: Path | None = typer.Option(
+        None, "--resume", exists=True, help="continue an existing bundle dir (skip done cells)"
+    ),
 ) -> None:
     """Run a use-case pack through the models: capture answers + perf, write the bundle."""
     cfg = load_config(config)
     pk = load_pack(pack)
-    base_out = out or cfg.output_path()
-    run_dir = base_out / f"{_timestamp()}_eval_{pk.id}"
-    console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
+    if resume is not None:
+        run_dir = resume
+        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/] [dim](resume)[/]")
+    else:
+        base_out = out or cfg.output_path()
+        run_dir = base_out / f"{_timestamp()}_eval_{pk.id}"
+        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
 
     client = _make_client(cfg)
-    responses = run_eval(cfg, pk, client, run_dir=run_dir)
+    responses = run_eval(cfg, pk, client, run_dir=run_dir, resume=resume is not None)
     host = hostinfo.summary()
     _write_bundle_manifest(run_dir, pack, cfg, host)
 
@@ -199,16 +212,29 @@ def judge(
     backend = OpenAIJudgeBackend(
         jc.endpoint.base_url, jc.endpoint.api_key, jc.model, jc.temperature
     )
+    prior = load_judgements_jsonl(bundle / "judgements.jsonl")
+    if prior:
+        console.print(f"[dim]resume: {len(prior)} bereits bewertet — überspringe sie.[/]")
     console.print(f"[bold]ramcheck judge[/] [{pk.id}] · judge: {jc.model}")
-    verdicts, reports = judge_bundle(backend, responses, pk)
+
+    jpath = bundle / "judgements.jsonl"
+    with jpath.open("a", encoding="utf-8") as jh:
+
+        def _append(v: Verdict) -> None:  # persist each verdict immediately (resumable)
+            jh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
+            jh.flush()
+
+        verdicts, reports = judge_bundle(
+            backend, responses, pk, prior_verdicts=prior, on_verdict=_append
+        )
+    with jpath.open("w", encoding="utf-8") as jh:  # clean rewrite: prior + new, deduped
+        for v in verdicts:
+            jh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
 
     md = scorecard_mod.render_scorecard_md(
         pk, responses, verdicts, reports, host=host, date_str=_today()
     )
     (bundle / "scorecard.md").write_text(md, encoding="utf-8")
-    with (bundle / "judgements.jsonl").open("w", encoding="utf-8") as fh:
-        for v in verdicts:
-            fh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
     rows = scorecard_mod.scores_csv_rows(pk, responses, verdicts, reports, host=host)
     if rows:
         with (bundle / "scores.csv").open("w", encoding="utf-8", newline="") as fh:
