@@ -1,0 +1,28 @@
+# VLM-only-Lauf — gegen ein vision-fähiges Modell auf Ollama (:11434).
+# Geplant war mlx-openai-server (:8000), der läuft aber nicht.
+# Modell-Historie auf dieser Maschine:
+#   - gemma4:e4b   → lädt, aber Reasoning-Modell (Output im reasoning-Feld → kein content → TTFT/Decode unbrauchbar)
+#   - qwen2.5vl:3b → lädt auf ollama 0.20.2 NICHT (500 "model failed to load", auch text-only)
+#   - llava:7b     → klassisches, nicht-denkendes Standard-VLM, gibt Content direkt aus
+endpoint:
+  base_url: "http://localhost:11434/v1"
+  api_key: "ollama"
+
+machine: "M5-Pro-64GB"
+runs_per_cell: 8
+seed: 42
+temperature: 0.0
+context_buckets: [4096]      # für VLM reicht ein Bucket
+scenarios: [vlm]             # NUR vlm — nicht die ganze Chat-Matrix
+
+models:
+  - { id: "llava:7b", quant: "n/a", max_tokens_default: 300 }
+
+engine: "ollama"
+engine_version: "0.20.2"
+server_process_match: "ollama"
+output_dir: "./runs"
+power_check: true
+
+vlm:
+  image_path: "prompts/vlm_sample.png"

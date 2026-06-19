@@ -25,15 +25,19 @@ def _pack():
                     "id": "A",
                     "name": "ADHS",
                     "prompts": [
-                        {"id": "A1", "title": "t", "prompt": "p", "green_flags": ["g"], "red_flags": ["r"]}
+                        {
+                            "id": "A1",
+                            "title": "t",
+                            "prompt": "p",
+                            "green_flags": ["g"],
+                            "red_flags": ["r"],
+                        }
                     ],
                 },
                 {
                     "id": "E",
                     "name": "Safety",
-                    "prompts": [
-                        {"id": "E1", "title": "t", "prompt": "p", "safety_critical": True}
-                    ],
+                    "prompts": [{"id": "E1", "title": "t", "prompt": "p", "safety_critical": True}],
                 },
             ],
         }
@@ -95,7 +99,7 @@ def test_parse_verdict_clean_json():
 
 
 def test_parse_verdict_extracts_from_prose_and_fences():
-    raw = "Sure!\n```json\n{\"score\": 5, \"red_flag\": true, \"rationale\": \"x\"}\n```\nDone."
+    raw = 'Sure!\n```json\n{"score": 5, "red_flag": true, "rationale": "x"}\n```\nDone.'
     score, red, _rationale = parse_verdict(raw)
     assert score == 5
     assert red is True

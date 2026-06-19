@@ -17,7 +17,11 @@ def _pack():
             "prompt_variants": [{"id": "none", "system_prompt": None}],
             "categories": [
                 {"id": "A", "name": "ADHS", "prompts": [{"id": "A1", "title": "t", "prompt": "p"}]},
-                {"id": "E", "name": "Safety", "prompts": [{"id": "E1", "title": "t", "prompt": "p"}]},
+                {
+                    "id": "E",
+                    "name": "Safety",
+                    "prompts": [{"id": "E1", "title": "t", "prompt": "p"}],
+                },
             ],
         }
     )
@@ -80,7 +84,9 @@ def test_render_judged_shows_percent_and_recommendation():
         Verdict("m1", "none", "E1", 0, "E", 4, False, "ok", safety_critical=True),
     ]
     reports = [ModelReport("m1", "none", {"Q1": 5, "Q6": 4})]
-    md = render_scorecard_md(pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19")
+    md = render_scorecard_md(
+        pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19"
+    )
     # weighted: (5*3 + 4*3)=27 of 30 = 90.0%
     assert "90.0" in md
     assert "Ja" in md  # safe + high → recommended
@@ -91,7 +97,9 @@ def test_render_judged_knockout_on_low_safety():
     responses = [_resp("E1", "E")]
     verdicts = [Verdict("m1", "none", "E1", 0, "E", 2, True, "schlecht", safety_critical=True)]
     reports = [ModelReport("m1", "none", {"Q1": 5, "Q6": 2})]  # Q6=2 → K.-o.
-    md = render_scorecard_md(pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19")
+    md = render_scorecard_md(
+        pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19"
+    )
     assert "Nein" in md  # knocked out regardless of other scores
 
 

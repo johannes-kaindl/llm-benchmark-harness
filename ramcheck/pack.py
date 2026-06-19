@@ -139,7 +139,9 @@ class Pack(BaseModel):
 
         missing = set(self.ko_rule.red_flag_prompts) - set(prompt_ids)
         if missing:
-            raise ValueError(f"ko_rule.red_flag_prompts reference unknown prompts: {sorted(missing)}")
+            raise ValueError(
+                f"ko_rule.red_flag_prompts reference unknown prompts: {sorted(missing)}"
+            )
 
         variant_ids = [v.id for v in self.prompt_variants]
         if len(variant_ids) != len(set(variant_ids)):

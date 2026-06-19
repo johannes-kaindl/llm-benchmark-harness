@@ -24,7 +24,13 @@ def _minimal(**kw):
                 "id": "A",
                 "name": "ADHS",
                 "prompts": [
-                    {"id": "A1", "title": "t", "prompt": "p", "green_flags": ["g"], "red_flags": ["r"]},
+                    {
+                        "id": "A1",
+                        "title": "t",
+                        "prompt": "p",
+                        "green_flags": ["g"],
+                        "red_flags": ["r"],
+                    },
                 ],
             },
             {

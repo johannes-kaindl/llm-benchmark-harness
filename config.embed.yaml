@@ -1,0 +1,23 @@
+# Embedding-Durchsatz — gegen Ollama (:11434), das /v1/embeddings bietet.
+# mlx_lm.server hat keinen Embeddings-Endpoint (404); Ollama hat qwen3-embedding bereits gezogen.
+endpoint:
+  base_url: "http://localhost:11434/v1"
+  api_key: "ollama"
+
+machine: "M5-Pro-64GB"
+engine: "ollama"
+engine_version: "0.20.2"
+server_process_match: "ollama"
+output_dir: "./runs"
+power_check: true
+
+# Chat-Felder sind für `embed` ungenutzt, müssen aber valide sein:
+context_buckets: [4096]
+scenarios: [bodydouble]
+models:
+  - { id: "qwen3-embedding:0.6b", quant: "n/a", max_tokens_default: 1 }
+
+embed:
+  model: "qwen3-embedding:0.6b"
+  num_chunks: 200
+  chunk_tokens: 512

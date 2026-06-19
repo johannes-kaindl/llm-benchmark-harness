@@ -1,0 +1,14 @@
+# Woodpecker CI (Codeberg CI). Läuft die Qualitäts-Gates bei jedem Push/PR.
+# Rein deterministisch: kein Server, kein sudo, kein GPU — die Tests sind
+# dependency-injected und laufen auf Linux durch (powermetrics/pmset degradieren
+# off-mac zu "unknown"). Aktivieren: Repo in Codebergs CI-Einstellungen einschalten.
+steps:
+  - name: lint-type-test
+    image: python:3.12-slim
+    commands:
+      - pip install --no-cache-dir uv
+      - uv sync --frozen
+      - uv run ruff check .
+      - uv run ruff format --check .
+      - uv run mypy ramcheck/
+      - uv run pytest -q

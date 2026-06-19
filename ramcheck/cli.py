@@ -196,11 +196,15 @@ def judge(
         raise typer.Exit(code=1)
 
     jc = load_judge_config(judge_config)
-    backend = OpenAIJudgeBackend(jc.endpoint.base_url, jc.endpoint.api_key, jc.model, jc.temperature)
+    backend = OpenAIJudgeBackend(
+        jc.endpoint.base_url, jc.endpoint.api_key, jc.model, jc.temperature
+    )
     console.print(f"[bold]ramcheck judge[/] [{pk.id}] · judge: {jc.model}")
     verdicts, reports = judge_bundle(backend, responses, pk)
 
-    md = scorecard_mod.render_scorecard_md(pk, responses, verdicts, reports, host=host, date_str=_today())
+    md = scorecard_mod.render_scorecard_md(
+        pk, responses, verdicts, reports, host=host, date_str=_today()
+    )
     (bundle / "scorecard.md").write_text(md, encoding="utf-8")
     with (bundle / "judgements.jsonl").open("w", encoding="utf-8") as fh:
         for v in verdicts:
@@ -212,7 +216,9 @@ def judge(
             writer.writeheader()
             writer.writerows(rows)
     scored = sum(1 for v in verdicts if not v.unscored)
-    console.print(f"[green]✓[/] {scored}/{len(verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]")
+    console.print(
+        f"[green]✓[/] {scored}/{len(verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

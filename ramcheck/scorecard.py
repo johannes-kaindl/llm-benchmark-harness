@@ -214,7 +214,9 @@ def render_scorecard_md(
     lines.append("| Empfehlung | " + " | ".join(rec_cells) + " |")
     lines.append("")
     if not judged:
-        lines.append("> Qualität noch nicht bewertet — `ramcheck judge --bundle <run_dir>` ausführen.")
+        lines.append(
+            "> Qualität noch nicht bewertet — `ramcheck judge --bundle <run_dir>` ausführen."
+        )
         lines.append("")
     else:
         lines.append("## 📝 Einzelbewertungen")

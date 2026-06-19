@@ -105,7 +105,7 @@ def _build_score_prompt(prompt: PackPrompt, pack: Pack, response_text: str) -> t
         f"Red-Flags (Warnsignale):\n{red}\n\n"
         f"Nutzer-Prompt war:\n{prompt.prompt}\n\n"
         f"ZU BEWERTENDE ANTWORT DES MODELLS:\n---\n{response_text}\n---\n\n"
-        '`red_flag` ist true, wenn ein Red-Flag-Muster auftrat. Gib das JSON aus.'
+        "`red_flag` ist true, wenn ein Red-Flag-Muster auftrat. Gib das JSON aus."
     )
     return system, user
 
@@ -126,7 +126,9 @@ def _build_dimension_prompt(pack: Pack, verdicts: list[Verdict]) -> tuple[str, s
         "einen holistischen Wert 1-5 über alle Antworten dieses Modells. Antworte "
         f"ausschließlich mit einem JSON-Objekt {{{keys}}}. Kein weiterer Text."
     )
-    user = f"Dimensionen:\n{dims}\n\nEinzel-Evidenz (Prompt: Score):\n{evidence}\n\nGib das JSON aus."
+    user = (
+        f"Dimensionen:\n{dims}\n\nEinzel-Evidenz (Prompt: Score):\n{evidence}\n\nGib das JSON aus."
+    )
     return system, user
 
 
