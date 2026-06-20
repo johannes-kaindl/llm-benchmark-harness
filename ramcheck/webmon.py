@@ -50,7 +50,7 @@ INDEX_HTML = """<!doctype html>
 <script>
 function fmtEta(s){if(s==null)return '–';s=Math.round(s);return Math.floor(s/60)+'m '+(s%60)+'s';}
 const es=new EventSource('/events');
-es.addEventListener('view',e=>{const v=JSON.parse(e.data);
+es.addEventListener('view',e=>{let v;try{v=JSON.parse(e.data)}catch(_){return}
  done.textContent=v.done; total.textContent=v.total; ok.textContent=v.ok; failed.textContent=v.failed;
  eta.textContent=v.finished?'fertig':fmtEta(v.eta_s);
  barfill.style.width=(v.total?100*v.done/v.total:0)+'%';
@@ -59,10 +59,11 @@ es.addEventListener('view',e=>{const v=JSON.parse(e.data);
   const tt=c.ttft_s!=null?c.ttft_s.toFixed(2)+'s':''; const dc=c.decode_tps!=null?c.decode_tps.toFixed(1):'';
   return `<tr><td>${c.i}</td><td>${c.model}</td><td>${c.variant}</td><td>${c.prompt_id}</td><td>${st}</td><td>${tt}</td><td>${dc}</td></tr>`;
  }).join('');});
-es.addEventListener('load',e=>{const l=JSON.parse(e.data);
+es.addEventListener('load',e=>{let l;try{l=JSON.parse(e.data)}catch(_){return}
  ram.textContent=l.sys_used_mb!=null?Math.round(l.sys_used_mb)+' MB':'–';
  pressure.textContent=l.mem_pressure||'–';
  throttle.textContent=l.throttled?'JA':(l.any_throttle_seen?'nein':'n/v');});
+es.onerror=()=>{document.title='ramcheck monitor (offline)';};
 </script></body></html>"""
 
 
@@ -123,6 +124,8 @@ def make_handler(bundle: str | Path) -> type[BaseHTTPRequestHandler]:
                     time.sleep(POLL_S)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 return  # browser closed the connection
+            except Exception:
+                return  # any other error → end this stream cleanly, never crash the thread
 
         def _send(self, kind: str, data: str) -> None:
             self.wfile.write(f"event: {kind}\ndata: {data}\n\n".encode())

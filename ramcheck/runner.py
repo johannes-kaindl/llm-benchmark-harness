@@ -12,6 +12,7 @@ this module only times requests and records the wall-clock window for merge.py.
 from __future__ import annotations
 
 import math
+import select
 import subprocess
 import sys
 import threading
@@ -345,9 +346,19 @@ class _WebMonitorProcess:
             self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         except Exception:
             return None
-        if self._proc.stdout is None:
+        stdout = self._proc.stdout
+        if stdout is None:
             return None
-        line = self._proc.stdout.readline().decode("utf-8").strip()
+        try:
+            # Bounded wait: if the child never reports a port (hung/crashed), don't block
+            # the whole eval. Close the read end after — the child only prints once.
+            ready, _, _ = select.select([stdout], [], [], 10.0)
+            if not ready:
+                self._proc.kill()
+                return None
+            line = stdout.readline().decode("utf-8").strip()
+        finally:
+            stdout.close()
         try:
             return int(line)
         except ValueError:

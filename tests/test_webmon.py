@@ -92,6 +92,7 @@ def test_webmonitor_process_spawns_and_serves(tmp_path):
     port = mon.start()
     try:
         assert isinstance(port, int) and port > 0
+        assert mon._proc is not None and mon._proc.stdout.closed  # read end closed after port
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
         c.request("GET", "/")
         assert c.getresponse().status == 200

@@ -211,12 +211,14 @@ def _eval_event_writers(
         )
 
     def run_done(responses: list[EvalResponse]) -> None:
-        _w(
-            events_mod.run_done_event(
-                time.time(), len(responses), sum(1 for r in responses if r.ok)
+        try:
+            _w(
+                events_mod.run_done_event(
+                    time.time(), len(responses), sum(1 for r in responses if r.ok)
+                )
             )
-        )
-        fh.close()
+        finally:
+            fh.close()  # close even if the final write fails (e.g. disk full)
 
     return on_run_start, on_cell_start, on_cell_done, run_done
 
