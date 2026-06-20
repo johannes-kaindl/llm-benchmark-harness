@@ -37,7 +37,7 @@ merge.py    latency log × resource log, joined by [t_start,t_end] window per ru
 stats.py    P50/P95 · median · CV%   (pure, no numpy)
 report.py   raw.csv (every request) + report.md (SSOT columns, aggregates exclude noise)
 embed.py    embedding throughput sub-run
-cli.py      typer app: run · embed · report · eval [--web] · judge
+cli.py      typer app: run · embed · report · aggregate · eval [--web] · judge
 
 # qualitative use-case evaluation (the second half — answer quality, not speed):
 pack.py     a use-case "pack" (YAML) → validated Pack: prompts + green/red flags +
@@ -48,6 +48,7 @@ qualrun.py  deterministic run: matrix (model × variant × prompt × repeat) →
 judge.py    pluggable LLM-as-judge (JudgeBackend protocol): per-answer score vs. flags
             + holistic weighted master scorecard + safety K.-o.
 scorecard.py weighting/K.-o./category math (pure) + renders scorecard.md + scores.csv
+aggregate.py cross-run/machine: many scores.csv → one Hardware×Quality table (md + scores_all.csv)
 
 # live monitoring (Ink. 3 — opt-in `eval --web`, a separate viewing process):
 webmon.py   separate live-monitor process (stdlib http.server + SSE): tails events.jsonl

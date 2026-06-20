@@ -20,6 +20,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+from ramcheck import aggregate as aggregate_mod
 from ramcheck import events as events_mod
 from ramcheck import hostinfo, report
 from ramcheck import scorecard as scorecard_mod
@@ -136,6 +137,30 @@ def report_cmd(
     out_path.write_text(md, encoding="utf-8")
     console.print(
         f"[green]✓[/] {len(records)} Zeilen aus {len(raw_files)} raw.csv → [bold]{out_path}[/]"
+    )
+
+
+@app.command(name="aggregate")
+def aggregate_cmd(
+    runs: Path = typer.Option(
+        ..., "--runs", exists=True, help="runs dir (recursively collects scores.csv)"
+    ),
+    out: Path | None = typer.Option(None, "--out", help="output dir (default: --runs dir)"),
+) -> None:
+    """Aggregate scores.csv across runs/machines → one Hardware×Quality table (md + csv)."""
+    rows = aggregate_mod.load_all_scores(runs)
+    if not rows:
+        console.print(f"[red]Keine scores.csv unter {runs} — erst `ramcheck judge` ausführen.[/]")
+        raise typer.Exit(code=1)
+    agg = aggregate_mod.aggregate(rows)
+    out_dir = out or runs
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md_path = out_dir / "aggregate.md"
+    csv_path = out_dir / "scores_all.csv"
+    md_path.write_text(aggregate_mod.render_aggregate_md(agg, date_str=_today()), encoding="utf-8")
+    aggregate_mod.write_scores_all_csv(rows, csv_path)
+    console.print(
+        f"[green]✓[/] {len(rows)} Zeilen → {len(agg)} Gruppen → [bold]{md_path}[/] + {csv_path}"
     )
 
 
