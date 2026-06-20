@@ -612,6 +612,9 @@ def judge(
     web: bool = typer.Option(False, "--web", help="live browser monitor for this judging run"),
     port: int = typer.Option(0, "--port", help="monitor port (0 = auto)"),
     no_open: bool = typer.Option(False, "--no-open", help="don't auto-open the browser"),
+    emit_events: bool = typer.Option(
+        False, "--emit-events", help="write judge_events.jsonl without spawning the monitor (GUI)"
+    ),
 ) -> None:
     """Score an eval bundle with an LLM judge and fill the scorecard."""
     manifest = json.loads((bundle / "bundle.json").read_text(encoding="utf-8"))
@@ -633,7 +636,8 @@ def judge(
     console.print(f"[bold]ramcheck judge[/] [{pk.id}] · judge: {jc.model}")
 
     jpath = bundle / "judgements.jsonl"
-    if not web:
+    emit = web or emit_events
+    if not emit:
         verdicts, reports = _judge_and_persist(backend, responses, pk, prior, jpath)
         _render_judge_scorecard(bundle, pk, responses, verdicts, reports, host)
         scored = sum(1 for v in verdicts if not v.unscored)
@@ -642,29 +646,32 @@ def judge(
         )
         return
 
-    with _live_monitor(bundle, port, no_open, events_name="judge_events.jsonl", view="judge") as (
-        monitor,
-        url,
-    ):
+    monitor_cm = (
+        _live_monitor(bundle, port, no_open, events_name="judge_events.jsonl", view="judge")
+        if web
+        else contextlib.nullcontext((None, None))
+    )
+    with monitor_cm as (monitor, url):
         on_judge_start, on_verdict, write_masters, judge_done = _judge_event_writers(
             bundle / "judge_events.jsonl"
         )
-        web_verdicts: list[Verdict] = []
-        web_reports: list[ModelReport] = []
+        emit_verdicts: list[Verdict] = []
+        emit_reports: list[ModelReport] = []
         try:
             on_judge_start(len(responses), prior)
-            web_verdicts, web_reports = _judge_and_persist(
+            emit_verdicts, emit_reports = _judge_and_persist(
                 backend, responses, pk, prior, jpath, on_verdict=on_verdict
             )
-            write_masters(_master_rows(pk, responses, web_verdicts, web_reports))
+            write_masters(_master_rows(pk, responses, emit_verdicts, emit_reports))
         finally:
-            judge_done(len(web_verdicts), sum(1 for v in web_verdicts if not v.unscored))
-        _render_judge_scorecard(bundle, pk, responses, web_verdicts, web_reports, host)
-        scored = sum(1 for v in web_verdicts if not v.unscored)
+            judge_done(len(emit_verdicts), sum(1 for v in emit_verdicts if not v.unscored))
+        _render_judge_scorecard(bundle, pk, responses, emit_verdicts, emit_reports, host)
+        scored = sum(1 for v in emit_verdicts if not v.unscored)
         console.print(
-            f"[green]✓[/] {scored}/{len(web_verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
+            f"[green]✓[/] {scored}/{len(emit_verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
         )
-        _hold_monitor(monitor, url)
+        if web and monitor is not None:
+            _hold_monitor(monitor, url)
 
 
 @app.command()

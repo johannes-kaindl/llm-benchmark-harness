@@ -1,3 +1,5 @@
+import types
+
 from typer.testing import CliRunner
 
 from ramcheck.cli import _eval_event_writers, app
@@ -89,3 +91,35 @@ def test_eval_emit_events_writes_events_without_monitor(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
     assert (target / "events.jsonl").exists()
     assert not spawned["monitor"]
+
+
+def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "ramcheck.cli._live_monitor",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no monitor")),
+    )
+    # minimal bundle
+    b = tmp_path / "bundle"
+    b.mkdir()
+    (b / "bundle.json").write_text(
+        '{"pack_path":"packs/ndassist.yaml","host":{}}', encoding="utf-8"
+    )
+    (b / "responses.jsonl").write_text("", encoding="utf-8")
+    monkeypatch.setattr("ramcheck.cli.load_responses_jsonl", lambda p: [])
+    monkeypatch.setattr("ramcheck.cli._judge_and_persist", lambda *a, **k: ([], []))
+    monkeypatch.setattr("ramcheck.cli._render_judge_scorecard", lambda *a, **k: None)
+    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", lambda *a, **k: object())
+    monkeypatch.setattr(
+        "ramcheck.cli.load_judge_config",
+        lambda p: types.SimpleNamespace(
+            endpoint=types.SimpleNamespace(base_url="x", api_key="y"),
+            model="m",
+            temperature=0.0,
+        ),
+    )
+    res = runner.invoke(
+        app,
+        ["judge", "--bundle", str(b), "--judge-config", "judge.yaml", "--emit-events"],
+    )
+    assert res.exit_code == 0, res.output
+    assert (b / "judge_events.jsonl").exists()

@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import time
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 SENTINEL_NAME = "run.json"
 
@@ -83,3 +87,145 @@ def _pid_alive(pid: int) -> bool:
     except PermissionError:
         return True  # exists, owned by someone else
     return True
+
+
+class RunInProgress(RuntimeError):
+    """Raised when a start is attempted while a measurement run is already active."""
+
+
+@dataclass
+class RunHandle:
+    kind: str  # "eval" | "judge"
+    run_dir: Path
+    pid: int
+
+
+@runtime_checkable
+class ProcessLauncher(Protocol):
+    def spawn(self, argv: list[str]) -> int: ...
+    def alive(self, pid: int) -> bool: ...
+    def terminate(self, pid: int) -> None: ...
+
+
+class RealProcessLauncher:
+    """Spawns `sys.executable -m ramcheck …` (inherits the GUI's venv/interpreter)."""
+
+    def __init__(self) -> None:
+        self._procs: dict[int, subprocess.Popen[bytes]] = {}
+
+    def spawn(self, argv: list[str]) -> int:
+        proc = subprocess.Popen([sys.executable, "-m", "ramcheck", *argv])
+        self._procs[proc.pid] = proc
+        return proc.pid
+
+    def alive(self, pid: int) -> bool:
+        proc = self._procs.get(pid)
+        if proc is not None:
+            return proc.poll() is None
+        return _pid_alive(pid)
+
+    def terminate(self, pid: int) -> None:
+        proc = self._procs.get(pid)
+        if proc is None:
+            return
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+class RunRegistry:
+    """One active measurement run at a time, enforced by the on-disk sentinel lock."""
+
+    def __init__(self, runs_dir: Path, launcher: ProcessLauncher) -> None:
+        self.runs_dir = runs_dir
+        self.launcher = launcher
+
+    # ---- lock ----
+    def _active_run_dir(self) -> Path | None:
+        """Scan runs/ for an active (running + live pid) sentinel; reclaim stale ones."""
+        if not self.runs_dir.exists():
+            return None
+        for child in self.runs_dir.iterdir():
+            if not child.is_dir():
+                continue
+            s = read_sentinel(child)
+            if s is None or s.get("state") != "running":
+                continue
+            if self.launcher.alive(int(s["pid"])):
+                return child
+            mark_sentinel(child, "failed")  # stale: reclaim the lock
+        return None
+
+    def _guard_free(self) -> None:
+        active = self._active_run_dir()
+        if active is not None:
+            raise RunInProgress(f"a measurement run is active in {active}")
+
+    # ---- start ----
+    def start_eval(
+        self,
+        *,
+        pack_path: str,
+        config_path: str,
+        resume_dir: Path | None = None,
+    ) -> RunHandle:
+        self._guard_free()
+        run_dir = resume_dir or self._new_run_dir(pack_path)
+        argv = [
+            "eval",
+            "--pack",
+            pack_path,
+            "--config",
+            config_path,
+            "--run-dir",
+            str(run_dir),
+            "--emit-events",
+        ]
+        if resume_dir is not None:
+            argv += ["--resume", str(resume_dir)]
+        pid = self.launcher.spawn(argv)
+        write_sentinel(run_dir, kind="eval", pid=pid, pack_path=pack_path, config_path=config_path)
+        return RunHandle("eval", run_dir, pid)
+
+    def start_judge(self, *, bundle: Path, judge_config_path: str) -> RunHandle:
+        self._guard_free()
+        argv = [
+            "judge",
+            "--bundle",
+            str(bundle),
+            "--judge-config",
+            judge_config_path,
+            "--emit-events",
+        ]
+        pid = self.launcher.spawn(argv)
+        write_sentinel(bundle, kind="judge", pid=pid, pack_path="", config_path=judge_config_path)
+        return RunHandle("judge", bundle, pid)
+
+    def _new_run_dir(self, pack_path: str) -> Path:
+        ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        try:
+            from ramcheck.pack import load_pack
+
+            pk = load_pack(pack_path)
+            pack_id = pk.id
+        except Exception:
+            # fallback: derive from pack filename (supports fake paths in tests)
+            pack_id = Path(pack_path).stem
+        return self.runs_dir / f"{ts}_eval_{pack_id}"
+
+    # ---- lifecycle ----
+    def poll(self, handle: RunHandle) -> str:
+        if self.launcher.alive(handle.pid):
+            return "running"
+        s = read_sentinel(handle.run_dir)
+        state = s.get("state") if s else None
+        if state in {"stopped", "failed"}:
+            return str(state)
+        mark_sentinel(handle.run_dir, "finished")
+        return "finished"
+
+    def stop(self, handle: RunHandle) -> None:
+        self.launcher.terminate(handle.pid)
+        mark_sentinel(handle.run_dir, "stopped")
