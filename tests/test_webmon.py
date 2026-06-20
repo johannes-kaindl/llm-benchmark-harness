@@ -9,17 +9,34 @@ from ramcheck.runner import _WebMonitorProcess
 
 def _bundle(tmp_path):
     (tmp_path / "events.jsonl").write_text(
-        json.dumps({"ts": 1.0, "type": "run_start", "total": 2}) + "\n"
-        + json.dumps({
-            "ts": 2.0, "type": "cell_done", "i": 0, "model": "m", "variant": "v",
-            "prompt_id": "p", "repeat": 0, "ok": True, "ttft_s": 0.3, "e2e_s": 1.0,
-            "decode_tps": 5.0, "completion_tokens": 3, "content_empty": False, "error": "",
-        }) + "\n",
+        json.dumps({"ts": 1.0, "type": "run_start", "total": 2})
+        + "\n"
+        + json.dumps(
+            {
+                "ts": 2.0,
+                "type": "cell_done",
+                "i": 0,
+                "model": "m",
+                "variant": "v",
+                "prompt_id": "p",
+                "repeat": 0,
+                "ok": True,
+                "ttft_s": 0.3,
+                "e2e_s": 1.0,
+                "decode_tps": 5.0,
+                "completion_tokens": 3,
+                "content_empty": False,
+                "error": "",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     (tmp_path / "resources.jsonl").write_text(
-        json.dumps({"ts": 1.5, "sys_used_mb": 1234.0, "mem_pressure_level": "normal",
-                    "throttled": False}) + "\n",
+        json.dumps(
+            {"ts": 1.5, "sys_used_mb": 1234.0, "mem_pressure_level": "normal", "throttled": False}
+        )
+        + "\n",
         encoding="utf-8",
     )
     srv = ThreadingHTTPServer(("127.0.0.1", 0), webmon.make_handler(tmp_path))
@@ -56,10 +73,13 @@ def test_sse_streams_view_and_load(tmp_path):
         assert "event: view" in text and "event: load" in text
         # pull the first `view` data payload and check it parsed correctly
         view_line = next(
-            ln for blk in text.split("\n\n") if "event: view" in blk
-            for ln in blk.split("\n") if ln.startswith("data: ")
+            ln
+            for blk in text.split("\n\n")
+            if "event: view" in blk
+            for ln in blk.split("\n")
+            if ln.startswith("data: ")
         )
-        view = json.loads(view_line[len("data: "):])
+        view = json.loads(view_line[len("data: ") :])
         assert view["total"] == 2 and view["done"] == 1 and view["ok"] == 1
     finally:
         c.close()

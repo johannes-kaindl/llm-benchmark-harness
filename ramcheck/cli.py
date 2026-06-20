@@ -179,21 +179,43 @@ def _eval_event_writers(
         _w(events_mod.run_start_event(time.time(), total))
 
     def on_cell_start(i: int, cell: EvalCell) -> None:
-        _w(events_mod.cell_start_event(
-            time.time(), i, cell.model.id, cell.variant.id, cell.category.id,
-            cell.prompt.id, cell.repeat,
-        ))
+        _w(
+            events_mod.cell_start_event(
+                time.time(),
+                i,
+                cell.model.id,
+                cell.variant.id,
+                cell.category.id,
+                cell.prompt.id,
+                cell.repeat,
+            )
+        )
 
     def on_cell_done(i: int, resp: EvalResponse) -> None:
-        _w(events_mod.cell_done_event(
-            time.time(), i, resp.model, resp.variant, resp.prompt_id, resp.repeat,
-            resp.ok, resp.ttft_s, resp.e2e_s, resp.decode_tps, resp.completion_tokens,
-            resp.content_empty, resp.error,
-        ))
+        _w(
+            events_mod.cell_done_event(
+                time.time(),
+                i,
+                resp.model,
+                resp.variant,
+                resp.prompt_id,
+                resp.repeat,
+                resp.ok,
+                resp.ttft_s,
+                resp.e2e_s,
+                resp.decode_tps,
+                resp.completion_tokens,
+                resp.content_empty,
+                resp.error,
+            )
+        )
 
     def run_done(responses: list[EvalResponse]) -> None:
-        _w(events_mod.run_done_event(
-            time.time(), len(responses), sum(1 for r in responses if r.ok)))
+        _w(
+            events_mod.run_done_event(
+                time.time(), len(responses), sum(1 for r in responses if r.ok)
+            )
+        )
         fh.close()
 
     return on_run_start, on_cell_start, on_cell_done, run_done
@@ -240,8 +262,14 @@ def eval_cmd(
         responses: list[EvalResponse] = []
         try:
             responses = run_eval(
-                cfg, pk, client, run_dir=run_dir, resume=resume is not None,
-                on_run_start=on_run_start, on_cell_start=on_cell_start, on_cell_done=on_cell_done,
+                cfg,
+                pk,
+                client,
+                run_dir=run_dir,
+                resume=resume is not None,
+                on_run_start=on_run_start,
+                on_cell_start=on_cell_start,
+                on_cell_done=on_cell_done,
             )
         finally:
             run_done(responses)

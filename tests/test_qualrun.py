@@ -166,7 +166,11 @@ def test_run_eval_resume_after_crash_completes_the_rest(tmp_path):
 def test_run_eval_fires_progress_callbacks(tmp_path):
     starts, cells_started, cells_done = [], [], []
     run_eval(
-        _config(), _pack(), FakeClient(text="hi"), run_dir=tmp_path, sampler=NoopSampler(),
+        _config(),
+        _pack(),
+        FakeClient(text="hi"),
+        run_dir=tmp_path,
+        sampler=NoopSampler(),
         on_run_start=lambda total: starts.append(total),
         on_cell_start=lambda i, cell: cells_started.append((i, cell.prompt.id)),
         on_cell_done=lambda i, resp: cells_done.append((i, resp.prompt_id, resp.ok)),
@@ -183,7 +187,12 @@ def test_run_eval_callbacks_skip_resumed_cells(tmp_path):
     run_eval(cfg, pack, FakeClient(), run_dir=tmp_path, sampler=NoopSampler())  # all 6 done
     started = []
     run_eval(
-        cfg, pack, FakeClient(), run_dir=tmp_path, sampler=NoopSampler(), resume=True,
+        cfg,
+        pack,
+        FakeClient(),
+        run_dir=tmp_path,
+        sampler=NoopSampler(),
+        resume=True,
         on_cell_start=lambda i, cell: started.append(i),
     )
     assert started == []  # every cell already done → no cell_start fired

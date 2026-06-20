@@ -26,21 +26,47 @@ def cell_start_event(
     ts: float, i: int, model: str, variant: str, category: str, prompt_id: str, repeat: int
 ) -> dict[str, object]:
     return {
-        "ts": ts, "type": CELL_START, "i": i, "model": model, "variant": variant,
-        "category": category, "prompt_id": prompt_id, "repeat": repeat,
+        "ts": ts,
+        "type": CELL_START,
+        "i": i,
+        "model": model,
+        "variant": variant,
+        "category": category,
+        "prompt_id": prompt_id,
+        "repeat": repeat,
     }
 
 
 def cell_done_event(
-    ts: float, i: int, model: str, variant: str, prompt_id: str, repeat: int, ok: bool,
-    ttft_s: float, e2e_s: float, decode_tps: float, completion_tokens: int,
-    content_empty: bool, error: str,
+    ts: float,
+    i: int,
+    model: str,
+    variant: str,
+    prompt_id: str,
+    repeat: int,
+    ok: bool,
+    ttft_s: float,
+    e2e_s: float,
+    decode_tps: float,
+    completion_tokens: int,
+    content_empty: bool,
+    error: str,
 ) -> dict[str, object]:
     return {
-        "ts": ts, "type": CELL_DONE, "i": i, "model": model, "variant": variant,
-        "prompt_id": prompt_id, "repeat": repeat, "ok": ok, "ttft_s": ttft_s,
-        "e2e_s": e2e_s, "decode_tps": decode_tps, "completion_tokens": completion_tokens,
-        "content_empty": content_empty, "error": error,
+        "ts": ts,
+        "type": CELL_DONE,
+        "i": i,
+        "model": model,
+        "variant": variant,
+        "prompt_id": prompt_id,
+        "repeat": repeat,
+        "ok": ok,
+        "ttft_s": ttft_s,
+        "e2e_s": e2e_s,
+        "decode_tps": decode_tps,
+        "completion_tokens": completion_tokens,
+        "content_empty": content_empty,
+        "error": error,
     }
 
 
@@ -86,10 +112,18 @@ class CellView:
 
     def as_dict(self) -> dict[str, object]:
         return {
-            "key": list(self.key), "i": self.i, "model": self.model, "variant": self.variant,
-            "prompt_id": self.prompt_id, "status": self.status, "ok": self.ok,
-            "ttft_s": self.ttft_s, "e2e_s": self.e2e_s, "decode_tps": self.decode_tps,
-            "content_empty": self.content_empty, "error": self.error,
+            "key": list(self.key),
+            "i": self.i,
+            "model": self.model,
+            "variant": self.variant,
+            "prompt_id": self.prompt_id,
+            "status": self.status,
+            "ok": self.ok,
+            "ttft_s": self.ttft_s,
+            "e2e_s": self.e2e_s,
+            "decode_tps": self.decode_tps,
+            "content_empty": self.content_empty,
+            "error": self.error,
         }
 
 
@@ -106,15 +140,23 @@ class RunView:
 
     def as_dict(self) -> dict[str, object]:
         return {
-            "total": self.total, "done": self.done, "ok": self.ok, "failed": self.failed,
-            "eta_s": self.eta_s, "finished": self.finished,
+            "total": self.total,
+            "done": self.done,
+            "ok": self.ok,
+            "failed": self.failed,
+            "eta_s": self.eta_s,
+            "finished": self.finished,
             "running": [c.as_dict() for c in self.running],
             "cells": [c.as_dict() for c in self.cells],
         }
 
 
 def _key(ev: dict[str, object]) -> CellKey:
-    return (str(ev["model"]), str(ev["variant"]), str(ev["prompt_id"]), int(ev["repeat"]))  # type: ignore[arg-type]
+    return (str(ev["model"]), str(ev["variant"]), str(ev["prompt_id"]), _as_int(ev["repeat"]))
+
+
+def _as_int(x: object, default: int = 0) -> int:
+    return int(x) if isinstance(x, (int, float, str)) else default
 
 
 def _optf(x: object) -> float | None:
@@ -135,7 +177,7 @@ def build_view(events: Iterable[dict[str, object]]) -> RunView:
     for e in events:
         t = e.get("type")
         if t == RUN_START:
-            total = max(total, int(e.get("total", 0)))  # type: ignore[arg-type]
+            total = max(total, _as_int(e.get("total", 0)))
         elif t == RUN_DONE:
             finished = True
         elif t == CELL_START:
@@ -144,18 +186,29 @@ def build_view(events: Iterable[dict[str, object]]) -> RunView:
                 order.append(k)
             if by_key.get(k) is None or by_key[k].status != "done":
                 by_key[k] = CellView(
-                    key=k, i=int(e.get("i", -1)), model=str(e["model"]),  # type: ignore[arg-type]
-                    variant=str(e["variant"]), prompt_id=str(e["prompt_id"]), status="running",
+                    key=k,
+                    i=_as_int(e.get("i", -1), -1),
+                    model=str(e["model"]),
+                    variant=str(e["variant"]),
+                    prompt_id=str(e["prompt_id"]),
+                    status="running",
                 )
         elif t == CELL_DONE:
             k = _key(e)
             if k not in by_key:
                 order.append(k)
             by_key[k] = CellView(
-                key=k, i=int(e.get("i", -1)), model=str(e["model"]),  # type: ignore[arg-type]
-                variant=str(e["variant"]), prompt_id=str(e["prompt_id"]), status="done",
-                ok=bool(e.get("ok")), ttft_s=_optf(e.get("ttft_s")), e2e_s=_optf(e.get("e2e_s")),
-                decode_tps=_optf(e.get("decode_tps")), content_empty=_optb(e.get("content_empty")),
+                key=k,
+                i=_as_int(e.get("i", -1), -1),
+                model=str(e["model"]),
+                variant=str(e["variant"]),
+                prompt_id=str(e["prompt_id"]),
+                status="done",
+                ok=bool(e.get("ok")),
+                ttft_s=_optf(e.get("ttft_s")),
+                e2e_s=_optf(e.get("e2e_s")),
+                decode_tps=_optf(e.get("decode_tps")),
+                content_empty=_optb(e.get("content_empty")),
                 error=str(e.get("error", "")),
             )
     cells = [by_key[k] for k in order]
@@ -166,6 +219,12 @@ def build_view(events: Iterable[dict[str, object]]) -> RunView:
     e2es = [c.e2e_s for c in done_cells if c.e2e_s is not None]
     eta_s = (sum(e2es) / len(e2es)) * (total - done) if (e2es and total > done) else None
     return RunView(
-        total=total, done=done, ok=ok, failed=done - ok, running=running,
-        cells=cells, eta_s=eta_s, finished=finished,
+        total=total,
+        done=done,
+        ok=ok,
+        failed=done - ok,
+        running=running,
+        cells=cells,
+        eta_s=eta_s,
+        finished=finished,
     )

@@ -6,15 +6,27 @@ from ramcheck.cli import _eval_event_writers
 
 def _cell():
     return SimpleNamespace(
-        model=SimpleNamespace(id="m"), variant=SimpleNamespace(id="v"),
-        category=SimpleNamespace(id="A"), prompt=SimpleNamespace(id="p"), repeat=0,
+        model=SimpleNamespace(id="m"),
+        variant=SimpleNamespace(id="v"),
+        category=SimpleNamespace(id="A"),
+        prompt=SimpleNamespace(id="p"),
+        repeat=0,
     )
 
 
 def _resp():
     return SimpleNamespace(
-        model="m", variant="v", prompt_id="p", repeat=0, ok=True, ttft_s=0.3,
-        e2e_s=1.2, decode_tps=5.0, completion_tokens=7, content_empty=False, error="",
+        model="m",
+        variant="v",
+        prompt_id="p",
+        repeat=0,
+        ok=True,
+        ttft_s=0.3,
+        e2e_s=1.2,
+        decode_tps=5.0,
+        completion_tokens=7,
+        content_empty=False,
+        error="",
     )
 
 

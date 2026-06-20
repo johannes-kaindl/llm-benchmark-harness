@@ -16,11 +16,14 @@ def test_missing_or_empty_returns_none(tmp_path):
 
 def test_returns_latest_sample_and_throttle_history(tmp_path):
     p = tmp_path / "r.jsonl"
-    _write(p, [
-        {"ts": 1.0, "sys_used_mb": 1000.0, "mem_pressure_level": "normal", "throttled": False},
-        {"ts": 2.0, "sys_used_mb": 2000.0, "mem_pressure_level": "warn", "throttled": True},
-        {"ts": 3.0, "sys_used_mb": 1500.0, "mem_pressure_level": "normal", "throttled": False},
-    ])
+    _write(
+        p,
+        [
+            {"ts": 1.0, "sys_used_mb": 1000.0, "mem_pressure_level": "normal", "throttled": False},
+            {"ts": 2.0, "sys_used_mb": 2000.0, "mem_pressure_level": "warn", "throttled": True},
+            {"ts": 3.0, "sys_used_mb": 1500.0, "mem_pressure_level": "normal", "throttled": False},
+        ],
+    )
     lv = latest_load(p)
     assert lv is not None
     assert lv.sys_used_mb == 1500.0 and lv.mem_pressure == "normal"
@@ -31,7 +34,8 @@ def test_tolerates_partial_last_line(tmp_path):
     p = tmp_path / "r.jsonl"
     p.write_text(
         json.dumps({"ts": 1.0, "sys_used_mb": 9.0, "mem_pressure_level": "x", "throttled": False})
-        + "\n" + '{"ts": 2.0, "sys',  # half-written
+        + "\n"
+        + '{"ts": 2.0, "sys',  # half-written
         encoding="utf-8",
     )
     lv = latest_load(p)

@@ -19,9 +19,9 @@ def test_dumps_roundtrips_through_parse_line():
 def test_parse_line_tolerates_garbage():
     assert ev.parse_line("") is None
     assert ev.parse_line("   ") is None
-    assert ev.parse_line('{"truncated": ') is None   # half-written line
-    assert ev.parse_line("[1,2,3]") is None           # not a dict
-    assert ev.parse_line('{"no":"type"}') is None     # missing type tag
+    assert ev.parse_line('{"truncated": ') is None  # half-written line
+    assert ev.parse_line("[1,2,3]") is None  # not a dict
+    assert ev.parse_line('{"no":"type"}') is None  # missing type tag
 
 
 def test_build_view_empty():
@@ -66,9 +66,11 @@ def test_build_view_finished_on_run_done():
 def test_run_view_as_dict_is_json_safe():
     import json
 
-    v = ev.build_view([
-        ev.run_start_event(0.0, 1),
-        ev.cell_done_event(0.2, 0, "m", "v", "p1", 0, True, 0.3, 9.0, 5.0, 7, False, ""),
-    ])
+    v = ev.build_view(
+        [
+            ev.run_start_event(0.0, 1),
+            ev.cell_done_event(0.2, 0, "m", "v", "p1", 0, True, 0.3, 9.0, 5.0, 7, False, ""),
+        ]
+    )
     json.dumps(v.as_dict())  # must not raise
     assert v.as_dict()["cells"][0]["key"] == ["m", "v", "p1", 0]

@@ -9,6 +9,7 @@ reads the two append-only files the run produces.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -74,7 +75,7 @@ def make_handler(bundle: str | Path) -> type[BaseHTTPRequestHandler]:
         def log_message(self, *args: object) -> None:  # keep stdout clean (parent reads port)
             pass
 
-        def do_GET(self) -> None:  # noqa: N802 (stdlib name)
+        def do_GET(self) -> None:
             if self.path == "/" or self.path.startswith("/?"):
                 self._serve_index()
             elif self.path.startswith("/events"):
@@ -108,10 +109,17 @@ def make_handler(bundle: str | Path) -> type[BaseHTTPRequestHandler]:
                     self._send("view", json.dumps(view.as_dict()))
                     load = loadview_mod.latest_load(resources_path)
                     if load is not None:
-                        self._send("load", json.dumps({
-                            "sys_used_mb": load.sys_used_mb, "mem_pressure": load.mem_pressure,
-                            "throttled": load.throttled, "any_throttle_seen": load.any_throttle_seen,
-                        }))
+                        self._send(
+                            "load",
+                            json.dumps(
+                                {
+                                    "sys_used_mb": load.sys_used_mb,
+                                    "mem_pressure": load.mem_pressure,
+                                    "throttled": load.throttled,
+                                    "any_throttle_seen": load.any_throttle_seen,
+                                }
+                            ),
+                        )
                     time.sleep(POLL_S)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 return  # browser closed the connection
@@ -130,10 +138,8 @@ def main(argv: list[str] | None = None) -> None:
     args = ap.parse_args(argv)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.bundle))
     print(server.server_address[1], flush=True)  # parent reads this to open the browser
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
-    except KeyboardInterrupt:
-        pass
 
 
 if __name__ == "__main__":

@@ -333,8 +333,13 @@ class _WebMonitorProcess:
     def start(self) -> int | None:
         """Spawn the monitor; return the bound port (read from its stdout), or None."""
         cmd = [
-            sys.executable, "-m", "ramcheck.webmon",
-            "--bundle", str(self.bundle), "--port", str(self.port),
+            sys.executable,
+            "-m",
+            "ramcheck.webmon",
+            "--bundle",
+            str(self.bundle),
+            "--port",
+            str(self.port),
         ]
         try:
             self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)

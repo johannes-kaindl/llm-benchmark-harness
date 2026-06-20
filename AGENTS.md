@@ -16,7 +16,9 @@ Non-negotiable design decisions (from the architect brief):
   (the single thin adapter is `client.py`).
 - **Two decoupled producers, merged by timestamp:** latency runner + host sampler.
   Memory is **never** estimated from the request thread.
-- **Output is Markdown + CSV, nothing else.** No DOCX/PDF/HTML.
+- **Persisted output is Markdown + CSV, nothing else.** No DOCX/PDF/HTML *artifacts*.
+  (The opt-in `eval --web` live monitor serves HTML transiently for viewing; it persists
+  nothing as HTML — the bundle stays jsonl/csv/md.)
 - **Distribution over mean:** TTFT P50/P95, decode/prefill median, TTFT CV% for consistency.
 - Warmup discarded, **cold-start TTFT reported separately**; throttled/battery runs flagged
   and excluded from aggregates (kept raw).
@@ -35,7 +37,7 @@ merge.py    latency log × resource log, joined by [t_start,t_end] window per ru
 stats.py    P50/P95 · median · CV%   (pure, no numpy)
 report.py   raw.csv (every request) + report.md (SSOT columns, aggregates exclude noise)
 embed.py    embedding throughput sub-run
-cli.py      typer app: run · embed · report · eval · judge
+cli.py      typer app: run · embed · report · eval [--web] · judge
 
 # qualitative use-case evaluation (the second half — answer quality, not speed):
 pack.py     a use-case "pack" (YAML) → validated Pack: prompts + green/red flags +
@@ -46,6 +48,13 @@ qualrun.py  deterministic run: matrix (model × variant × prompt × repeat) →
 judge.py    pluggable LLM-as-judge (JudgeBackend protocol): per-answer score vs. flags
             + holistic weighted master scorecard + safety K.-o.
 scorecard.py weighting/K.-o./category math (pure) + renders scorecard.md + scores.csv
+
+# live monitoring (Ink. 3 — opt-in `eval --web`, a separate viewing process):
+webmon.py   separate live-monitor process (stdlib http.server + SSE): tails events.jsonl
+            + resources.jsonl, serves a read-only dashboard. Spawned like _SamplerProcess.
+events.py   events.jsonl contract (append-only) + view-model aggregation for the monitor
+tail.py     byte-offset tail tolerant of missing/partial files (used by webmon)
+loadview.py latest host-load snapshot from resources.jsonl (used by webmon)
 ```
 
 The qualitative half is **two decoupled phases**: `eval` (deterministic, on the
@@ -111,6 +120,9 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   peak *system* memory + `memory_pressure`; RSS is only a parenthetical hint.
 - **Cold-start** is the very first request of a whole run (flagged `is_cold_start`), reported
   on its own line, never in the aggregates.
+- **The live monitor never tails `responses.jsonl`.** It is rewritten wholesale at finalize
+  (`qualrun._write_responses`). Live progress comes from the append-only `events.jsonl`
+  (fed by `run_eval`'s `on_cell_*` callbacks); live host-load from `resources.jsonl`.
 
 ## Memory
 

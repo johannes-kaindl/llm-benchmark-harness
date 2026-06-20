@@ -15,11 +15,11 @@ def test_reads_complete_lines_and_advances_offset(tmp_path):
 
 def test_partial_last_line_is_not_consumed_until_complete(tmp_path):
     p = tmp_path / "e.jsonl"
-    p.write_text("a\nb", encoding="utf-8")          # 'b' has no newline yet
+    p.write_text("a\nb", encoding="utf-8")  # 'b' has no newline yet
     lines, off = read_new(p, 0)
-    assert lines == ["a"] and off == 2              # only 'a\n' consumed
+    assert lines == ["a"] and off == 2  # only 'a\n' consumed
     with p.open("a", encoding="utf-8") as fh:
-        fh.write("\n")                              # complete the partial 'b' line
+        fh.write("\n")  # complete the partial 'b' line
     lines2, off2 = read_new(p, off)
     assert lines2 == ["b"] and off2 == 4
 
