@@ -67,9 +67,11 @@ es.onerror=()=>{document.title='ramcheck monitor (offline)';};
 </script></body></html>"""
 
 
-def make_handler(bundle: str | Path) -> type[BaseHTTPRequestHandler]:
+def make_handler(
+    bundle: str | Path, events_name: str = "events.jsonl"
+) -> type[BaseHTTPRequestHandler]:
     bundle_dir = Path(bundle)
-    events_path = bundle_dir / "events.jsonl"
+    events_path = bundle_dir / events_name
     resources_path = bundle_dir / "resources.jsonl"
 
     class Handler(BaseHTTPRequestHandler):
@@ -138,8 +140,9 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="ramcheck live monitor server")
     ap.add_argument("--bundle", required=True)
     ap.add_argument("--port", type=int, default=0)
+    ap.add_argument("--events", default="events.jsonl")
     args = ap.parse_args(argv)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.bundle))
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.bundle, args.events))
     print(server.server_address[1], flush=True)  # parent reads this to open the browser
     with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()

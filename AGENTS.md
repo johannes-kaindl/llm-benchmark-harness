@@ -37,7 +37,7 @@ merge.py    latency log × resource log, joined by [t_start,t_end] window per ru
 stats.py    P50/P95 · median · CV%   (pure, no numpy)
 report.py   raw.csv (every request) + report.md (SSOT columns, aggregates exclude noise)
 embed.py    embedding throughput sub-run
-cli.py      typer app: run · embed · report · aggregate · eval [--web] · judge
+cli.py      typer app: run [--web] · embed · report · aggregate · eval [--web] · judge
 
 # qualitative use-case evaluation (the second half — answer quality, not speed):
 pack.py     a use-case "pack" (YAML) → validated Pack: prompts + green/red flags +

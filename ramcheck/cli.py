@@ -13,7 +13,7 @@ import csv
 import json
 import time
 import webbrowser
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
 
@@ -33,11 +33,12 @@ from ramcheck.judge import (
     load_judge_config,
     load_judgements_jsonl,
 )
+from ramcheck.models import RunRecord
 from ramcheck.pack import Pack, load_pack
 from ramcheck.qualrun import EvalCell, load_responses_jsonl, run_eval
 from ramcheck.report import load_raw_csv
 from ramcheck.results import EvalResponse, Verdict
-from ramcheck.runner import _WebMonitorProcess, resolve_engine, run_benchmark
+from ramcheck.runner import Cell, _WebMonitorProcess, resolve_engine, run_benchmark
 
 app = typer.Typer(add_completion=False, help="Thin local-LLM benchmark harness.")
 console = Console()
@@ -68,6 +69,9 @@ def run(
     settle: float = typer.Option(
         1.0, "--settle", help="seconds to let the sampler settle before requests"
     ),
+    web: bool = typer.Option(False, "--web", help="live browser monitor for this run"),
+    port: int = typer.Option(0, "--port", help="monitor port (0 = auto)"),
+    no_open: bool = typer.Option(False, "--no-open", help="don't auto-open the browser"),
 ) -> None:
     """Run the chat benchmark matrix and write report.md + raw.csv."""
     cfg = load_config(config)
@@ -83,15 +87,31 @@ def run(
         )
 
     client = _make_client(cfg)
-    records = run_benchmark(cfg, client, run_dir=run_dir, settle_s=settle)
+    if not web:
+        records = run_benchmark(cfg, client, run_dir=run_dir, settle_s=settle)
+        _finalize_run_report(records, run_dir)
+        return
 
-    md_path, raw_path = report.write_report(
-        records, run_dir, date_str=_today(), host=hostinfo.summary()
-    )
-    ok = sum(1 for r in records if r.ok and not r.warmup and not r.is_cold_start)
-    console.print(
-        f"[green]✓[/] {len(records)} Requests ({ok} gewertet) · [bold]{md_path}[/] · {raw_path}"
-    )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with _live_monitor(run_dir, port, no_open) as (monitor, url):
+        on_run_start, on_cell_start, on_cell_done, run_done = _run_event_writers(
+            run_dir / "events.jsonl"
+        )
+        records = []
+        try:
+            records = run_benchmark(
+                cfg,
+                client,
+                run_dir=run_dir,
+                settle_s=settle,
+                on_run_start=on_run_start,
+                on_cell_start=on_cell_start,
+                on_cell_done=on_cell_done,
+            )
+        finally:
+            run_done(records)
+        _finalize_run_report(records, run_dir)
+        _hold_monitor(monitor, url)
 
 
 @app.command()
@@ -186,6 +206,34 @@ def _write_bundle_manifest(
     )
 
 
+@contextlib.contextmanager
+def _live_monitor(
+    run_dir: Path, port: int, no_open: bool, events_name: str = "events.jsonl"
+) -> Iterator[tuple[_WebMonitorProcess, str | None]]:
+    """Spawn the live-monitor subprocess, open the browser, and always stop it on exit."""
+    monitor = _WebMonitorProcess(run_dir, port=port, events_name=events_name)
+    bound = monitor.start()
+    url = f"http://127.0.0.1:{bound}" if bound else None
+    if url is not None:
+        console.print(f"[bold]Monitor:[/] [cyan]{url}[/] [dim](Ctrl-C zum Beenden)[/]")
+        if not no_open:
+            webbrowser.open(url)
+    else:
+        console.print("[yellow]Web-Monitor konnte nicht starten — Lauf läuft ohne ihn.[/]")
+    try:
+        yield monitor, url
+    finally:
+        monitor.stop()
+
+
+def _hold_monitor(monitor: _WebMonitorProcess, url: str | None) -> None:
+    """After the run + finalize, keep the dashboard readable until the user presses Ctrl-C."""
+    if url is not None:
+        console.print(f"[dim]Monitor läuft weiter auf {url} — Ctrl-C zum Beenden.[/]")
+        with contextlib.suppress(KeyboardInterrupt):
+            monitor.wait()
+
+
 def _eval_event_writers(
     events_path: Path,
 ) -> tuple[
@@ -249,6 +297,77 @@ def _eval_event_writers(
     return on_run_start, on_cell_start, on_cell_done, run_done
 
 
+def _run_event_writers(
+    events_path: Path,
+) -> tuple[
+    Callable[[int], None],
+    Callable[[int, Cell], None],
+    Callable[[int, RunRecord], None],
+    Callable[[list[RunRecord]], None],
+]:
+    """Closures that translate run_benchmark's callbacks into events.jsonl lines."""
+    fh = events_path.open("a", encoding="utf-8")
+
+    def _w(event: dict[str, object]) -> None:
+        fh.write(events_mod.dumps(event) + "\n")
+        fh.flush()
+
+    def _variant(ctx: int) -> str:
+        return "native" if ctx == 0 else f"ctx{ctx}"
+
+    def on_run_start(total: int) -> None:
+        _w(events_mod.run_start_event(time.time(), total))
+
+    def on_cell_start(i: int, cell: Cell) -> None:
+        _w(
+            events_mod.cell_start_event(
+                time.time(),
+                i,
+                cell.model.id,
+                _variant(cell.target_ctx),
+                cell.scenario,
+                cell.scenario,
+                0,
+            )
+        )
+
+    def on_cell_done(i: int, rec: RunRecord) -> None:
+        _w(
+            events_mod.cell_done_event(
+                time.time(),
+                i,
+                rec.model,
+                _variant(rec.target_ctx),
+                rec.scenario,
+                0,
+                rec.ok,
+                rec.ttft_s,
+                rec.e2e_s,
+                rec.decode_tps,
+                rec.completion_tokens,
+                False,
+                rec.error,
+            )
+        )
+
+    def run_done(records: list[RunRecord]) -> None:
+        _w(events_mod.run_done_event(time.time(), len(records), sum(1 for r in records if r.ok)))
+        fh.close()
+
+    return on_run_start, on_cell_start, on_cell_done, run_done
+
+
+def _finalize_run_report(records: list[RunRecord], run_dir: Path) -> None:
+    """Write report.md + raw.csv for a finished benchmark run and print the summary."""
+    md_path, raw_path = report.write_report(
+        records, run_dir, date_str=_today(), host=hostinfo.summary()
+    )
+    ok = sum(1 for r in records if r.ok and not r.warmup and not r.is_cold_start)
+    console.print(
+        f"[green]✓[/] {len(records)} Requests ({ok} gewertet) · [bold]{md_path}[/] · {raw_path}"
+    )
+
+
 def _finalize_eval_bundle(
     run_dir: Path, pack: Path, cfg: Config, pk: Pack, responses: list[EvalResponse]
 ) -> None:
@@ -295,20 +414,11 @@ def eval_cmd(
         return
 
     run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl is opened before run_eval
-    monitor = _WebMonitorProcess(run_dir, port=port)
-    bound = monitor.start()
-    monitor_url = f"http://127.0.0.1:{bound}" if bound else None
-    if monitor_url is not None:
-        console.print(f"[bold]Monitor:[/] [cyan]{monitor_url}[/] [dim](Ctrl-C zum Beenden)[/]")
-        if not no_open:
-            webbrowser.open(monitor_url)
-    else:
-        console.print("[yellow]Web-Monitor konnte nicht starten — Lauf läuft ohne ihn.[/]")
-    on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(
-        run_dir / "events.jsonl"
-    )
-    responses = []
-    try:
+    with _live_monitor(run_dir, port, no_open) as (monitor, url):
+        on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(
+            run_dir / "events.jsonl"
+        )
+        responses = []
         try:
             responses = run_eval(
                 cfg,
@@ -323,13 +433,7 @@ def eval_cmd(
         finally:
             run_done(responses)  # final event so the dashboard shows "fertig"
         _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
-        if monitor_url is not None:
-            # Keep the monitor up so the final state stays readable; Ctrl-C ends it.
-            console.print(f"[dim]Monitor läuft weiter auf {monitor_url} — Ctrl-C zum Beenden.[/]")
-            with contextlib.suppress(KeyboardInterrupt):
-                monitor.wait()
-    finally:
-        monitor.stop()
+        _hold_monitor(monitor, url)
 
 
 @app.command()

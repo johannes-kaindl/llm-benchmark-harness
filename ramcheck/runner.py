@@ -326,9 +326,10 @@ class _WebMonitorProcess:
     measurement process — that would defeat the decoupling. It just fails to start.
     """
 
-    def __init__(self, bundle: Path, port: int = 0) -> None:
+    def __init__(self, bundle: Path, port: int = 0, events_name: str = "events.jsonl") -> None:
         self.bundle = bundle
         self.port = port
+        self.events_name = events_name
         self._proc: subprocess.Popen[bytes] | None = None
 
     def start(self) -> int | None:
@@ -341,6 +342,8 @@ class _WebMonitorProcess:
             str(self.bundle),
             "--port",
             str(self.port),
+            "--events",
+            self.events_name,
         ]
         try:
             self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -385,6 +388,9 @@ def run_benchmark(
     run_dir: Path,
     settle_s: float = 0.0,
     sampler: Sampler | None = None,
+    on_run_start: Callable[[int], None] | None = None,
+    on_cell_start: Callable[[int, Cell], None] | None = None,
+    on_cell_done: Callable[[int, RunRecord], None] | None = None,
 ) -> list[RunRecord]:
     """Drive the full matrix and return merged records.
 
@@ -413,10 +419,14 @@ def run_benchmark(
 
     records: list[RunRecord] = []
     cells = iter_cells(config)
+    if on_run_start is not None:
+        on_run_start(len(cells))
     cold_done = False
 
     try:
         for ci, cell in enumerate(cells):
+            if on_cell_start is not None:
+                on_cell_start(ci, cell)
             messages = _build_messages(ctx, cell)
             counter = ctx.counter_for(cell.model.id)
 
@@ -470,6 +480,8 @@ def run_benchmark(
                         is_cold_start=False,
                     )
                 )
+            if on_cell_done is not None and records:
+                on_cell_done(ci, records[-1])
     finally:
         sampler.stop()
 
