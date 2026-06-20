@@ -1,7 +1,9 @@
 import json
 
+import typer.testing
+
 from ramcheck import cli
-from ramcheck.results import Verdict
+from ramcheck.results import EvalResponse, Verdict
 
 
 def _v(prompt_id, score, red=False, unscored=False, model="m", variant="v"):
@@ -72,3 +74,92 @@ def test_judge_done_closes_file_and_flushes(tmp_path):
     done(1, 1)
     rows = _read(p)  # readable in full only if flushed + closed
     assert [r["type"] for r in rows] == ["judge_start", "verdict", "judge_done"]
+
+
+_MIN_PACK_YAML = """\
+id: demo
+title: Demo
+scale: {1: a, 2: b, 3: c, 4: d, 5: e}
+dimensions:
+  - {id: Q1, name: Korrektheit, weight: 3}
+  - {id: Q6, name: Sicherheit, weight: 3}
+ko_rule: {dimension: Q6, threshold: 2, red_flag_prompts: [A1]}
+prompt_variants:
+  - {id: none, system_prompt: null}
+categories:
+  - id: A
+    name: ADHS
+    prompts:
+      - {id: A1, title: t, prompt: p, green_flags: [g], red_flags: [r]}
+"""
+
+
+def _min_response():
+    return EvalResponse(
+        pack_id="demo",
+        pack_version=1,
+        machine="M",
+        model="m",
+        quant="n/a",
+        engine="ollama",
+        engine_version="0",
+        variant="none",
+        category="A",
+        prompt_id="A1",
+        repeat=0,
+        response_text="some answer",
+        content_empty=False,
+        ttft_s=0.1,
+        decode_tps=10.0,
+        prefill_tps=100.0,
+        e2e_s=1.0,
+        prompt_tokens=10,
+        completion_tokens=20,
+        is_cold_start=False,
+        power_source="ac",
+        peak_rss_mb=None,
+        sys_used_mb=None,
+        mem_pressure_max="normal",
+        throttled=False,
+        ok=True,
+        error="",
+        seed=42,
+        t_start=0.0,
+        t_end=1.0,
+    )
+
+
+def _write_min_bundle(tmp_path):
+    pack = tmp_path / "pack.yaml"
+    pack.write_text(_MIN_PACK_YAML, encoding="utf-8")
+    (tmp_path / "responses.jsonl").write_text(
+        json.dumps(_min_response().as_dict(), ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    (tmp_path / "bundle.json").write_text(
+        json.dumps({"pack_path": str(pack), "host": {"chip": "x", "ram_gb": "8", "macos": "14"}}),
+        encoding="utf-8",
+    )
+    (tmp_path / "judge.yaml").write_text(
+        "endpoint:\n  base_url: http://localhost:9/v1\nmodel: fake\n", encoding="utf-8"
+    )
+    return tmp_path
+
+
+class _FakeJudgeBackend:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def judge(self, *, system: str, user: str) -> str:
+        return '{"score": 4, "red_flag": false, "rationale": "ok"}'
+
+
+def test_judge_without_web_writes_no_judge_events(tmp_path, monkeypatch):
+    bundle = _write_min_bundle(tmp_path)
+    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", _FakeJudgeBackend)
+    result = typer.testing.CliRunner().invoke(
+        cli.app,
+        ["judge", "--bundle", str(bundle), "--judge-config", str(bundle / "judge.yaml")],
+    )
+    assert result.exit_code == 0, result.output
+    assert (bundle / "scorecard.md").exists()
+    assert not (bundle / "judge_events.jsonl").exists()  # no --web → no event file
