@@ -55,8 +55,17 @@ class OpenAIStreamClient:
             if choices:
                 delta = getattr(choices[0], "delta", None)
                 content = getattr(delta, "content", None) if delta else None
+                # "Thinking" models (LM Studio / mlx / DeepSeek-style) put their reasoning
+                # on a separate field — capture it instead of dropping it on the floor.
+                reasoning = None
+                if delta is not None:
+                    reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                        delta, "reasoning", None
+                    )
                 if content:
                     yield StreamEvent(delta_text=content)
+                if reasoning:
+                    yield StreamEvent(reasoning_text=reasoning)
             usage = getattr(chunk, "usage", None)
             if usage is not None:
                 yield StreamEvent(

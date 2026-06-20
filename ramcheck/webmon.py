@@ -57,7 +57,8 @@ es.addEventListener('view',e=>{let v;try{v=JSON.parse(e.data)}catch(_){return}
  rows.innerHTML=v.cells.slice().reverse().map(c=>{
   const st=c.status==='done'?(c.ok?'<span class="ok">✓</span>':'<span class="fail">✗</span>'):'<span class="muted">…</span>';
   const tt=c.ttft_s!=null?c.ttft_s.toFixed(2)+'s':''; const dc=c.decode_tps!=null?c.decode_tps.toFixed(1):'';
-  return `<tr><td>${c.i}</td><td>${c.model}</td><td>${c.variant}</td><td>${c.prompt_id}</td><td>${st}</td><td>${tt}</td><td>${dc}</td></tr>`;
+  const th=c.reasoning_chars>0?` <span class="muted" title="${c.reasoning_chars} reasoning chars">💭</span>`:'';
+  return `<tr><td>${c.i}</td><td>${c.model}</td><td>${c.variant}</td><td>${c.prompt_id}${th}</td><td>${st}</td><td>${tt}</td><td>${dc}</td></tr>`;
  }).join('');});
 es.addEventListener('load',e=>{let l;try{l=JSON.parse(e.data)}catch(_){return}
  ram.textContent=l.sys_used_mb!=null?Math.round(l.sys_used_mb)+' MB':'–';

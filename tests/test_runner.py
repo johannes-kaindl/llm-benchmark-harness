@@ -111,6 +111,56 @@ def test_stream_once_error_is_captured_not_raised():
     assert "connection refused" in out.error
 
 
+def test_stream_once_captures_reasoning_separately():
+    class ReasoningClient:
+        engine = "x"
+        engine_version = "0"
+
+        def stream(self, **kwargs):
+            yield StreamEvent(reasoning_text="let me think ")
+            yield StreamEvent(reasoning_text="hard")
+            yield StreamEvent(delta_text="Answer")
+            yield StreamEvent(prompt_tokens=5, completion_tokens=2)
+
+    out = stream_once(
+        ReasoningClient(),
+        messages=[],
+        model="m",
+        max_tokens=10,
+        temperature=0.0,
+        seed=1,
+        clock=SeqClock([0.0, 0.3, 1.0]),
+        wall=SeqClock([0.0, 1.0]),
+    )
+    assert out.text == "Answer"
+    assert out.reasoning_text == "let me think hard"
+    assert out.ttft_s == 0.3  # TTFT is content-based, reasoning doesn't trigger it
+
+
+def test_stream_once_reasoning_only_leaves_content_empty():
+    class ThinkOnly:
+        engine = "x"
+        engine_version = "0"
+
+        def stream(self, **kwargs):
+            yield StreamEvent(reasoning_text="thinking...")
+            yield StreamEvent(prompt_tokens=3, completion_tokens=0)
+
+    out = stream_once(
+        ThinkOnly(),
+        messages=[],
+        model="m",
+        max_tokens=10,
+        temperature=0.0,
+        seed=1,
+        clock=SeqClock([0.0, 1.0]),
+        wall=SeqClock([0.0, 1.0]),
+    )
+    assert out.text == ""
+    assert out.reasoning_text == "thinking..."
+    assert math.isnan(out.ttft_s)  # no content token → no content TTFT
+
+
 def test_resolve_engine_by_port():
     assert resolve_engine("http://localhost:1234/v1") == "lm-studio"
     assert resolve_engine("http://localhost:8080/v1") == "mlx"

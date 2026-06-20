@@ -281,6 +281,7 @@ def _eval_event_writers(
                 resp.completion_tokens,
                 resp.content_empty,
                 resp.error,
+                resp.reasoning_chars,
             )
         )
 

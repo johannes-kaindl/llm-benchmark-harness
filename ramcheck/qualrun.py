@@ -167,6 +167,7 @@ def run_eval(
                     seed=pack.sampling.seed,
                     t_start=outcome.t_start,
                     t_end=outcome.t_end,
+                    reasoning_chars=len(outcome.reasoning_text),
                 )
                 # Persist immediately so an interruption keeps every finished answer.
                 fh.write(json.dumps(resp.as_dict(), ensure_ascii=False) + "\n")

@@ -163,6 +163,23 @@ def test_run_eval_resume_after_crash_completes_the_rest(tmp_path):
     assert len(responses) == 6
 
 
+def test_run_eval_records_reasoning_chars(tmp_path):
+    class ReasoningClient:
+        engine = "fake"
+        engine_version = "0"
+
+        def stream(self, *, messages, model, max_tokens, temperature, seed):
+            yield StreamEvent(reasoning_text="abcde")  # 5 chars of "thinking"
+            yield StreamEvent(delta_text="hi")
+            yield StreamEvent(prompt_tokens=1, completion_tokens=1)
+
+    responses = run_eval(
+        _config(), _pack(), ReasoningClient(), run_dir=tmp_path, sampler=NoopSampler()
+    )
+    assert all(r.reasoning_chars == 5 for r in responses)
+    assert all(r.content_empty is False for r in responses)  # content present alongside reasoning
+
+
 def test_run_eval_fires_progress_callbacks(tmp_path):
     starts, cells_started, cells_done = [], [], []
     run_eval(

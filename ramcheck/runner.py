@@ -32,9 +32,10 @@ from ramcheck.models import RunRecord
 
 @dataclass
 class StreamEvent:
-    """One streamed chunk. Either carries text, or final usage, or both."""
+    """One streamed chunk. Carries content text, reasoning ("thinking") text, or final usage."""
 
     delta_text: str = ""
+    reasoning_text: str = ""
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
 
@@ -70,6 +71,7 @@ class RequestOutcome:
     t_start: float
     t_end: float
     text: str = ""
+    reasoning_text: str = ""  # "thinking" tokens (separate channel; not counted toward TTFT)
     ok: bool = True
     error: str = ""
 
@@ -104,6 +106,7 @@ def stream_once(
     wall_start = wall()
     ttft: float | None = None
     text_parts: list[str] = []
+    reasoning_parts: list[str] = []
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     error = ""
@@ -121,6 +124,8 @@ def stream_once(
                 if ttft is None:
                     ttft = clock() - t0
                 text_parts.append(ev.delta_text)
+            if ev.reasoning_text:
+                reasoning_parts.append(ev.reasoning_text)
             if ev.prompt_tokens is not None:
                 prompt_tokens = ev.prompt_tokens
             if ev.completion_tokens is not None:
@@ -132,6 +137,7 @@ def stream_once(
     e2e = clock() - t0
     wall_end = wall()
     text = "".join(text_parts)
+    reasoning = "".join(reasoning_parts)
 
     if ttft is None:
         ttft = math.nan
@@ -149,6 +155,7 @@ def stream_once(
         t_start=wall_start,
         t_end=wall_end,
         text=text,
+        reasoning_text=reasoning,
         ok=ok,
         error=error,
     )

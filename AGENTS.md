@@ -121,6 +121,12 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   peak *system* memory + `memory_pressure`; RSS is only a parenthetical hint.
 - **Cold-start** is the very first request of a whole run (flagged `is_cold_start`), reported
   on its own line, never in the aggregates.
+- **Reasoning ("thinking") models are captured, not dropped.** `client.py` reads the separate
+  `delta.reasoning_content` / `delta.reasoning` field into `StreamEvent.reasoning_text`; `stream_once`
+  accumulates it (separately from content, so it never triggers content-TTFT) and `run_eval` records
+  its length as `EvalResponse.reasoning_chars`. A reasoning-only answer (e.g. ollama `gemma4:e4b`) still
+  has `content_empty=True` but now carries a non-zero `reasoning_chars` instead of looking like a silent
+  failure. The monitor shows a 💭 marker per such cell.
 - **The live monitor never tails `responses.jsonl`.** It is rewritten wholesale at finalize
   (`qualrun._write_responses`). Live progress comes from the append-only `events.jsonl`
   (fed by `run_eval`'s `on_cell_*` callbacks); live host-load from `resources.jsonl`.

@@ -51,6 +51,7 @@ class EvalResponse:
     seed: int
     t_start: float
     t_end: float
+    reasoning_chars: int = 0  # length of "thinking" output (0 if none / non-reasoning model)
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)

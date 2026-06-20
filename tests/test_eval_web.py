@@ -27,6 +27,7 @@ def _resp():
         completion_tokens=7,
         content_empty=False,
         error="",
+        reasoning_chars=12,
     )
 
 
@@ -44,6 +45,7 @@ def test_eval_event_writers_emit_well_formed_events(tmp_path):
     assert parsed[0]["total"] == 3
     assert parsed[1]["model"] == "m" and parsed[1]["prompt_id"] == "p"
     assert parsed[2]["ok"] is True and parsed[2]["e2e_s"] == 1.2
+    assert parsed[2]["reasoning_chars"] == 12
     assert parsed[3]["ok"] == 2  # both responses ok
 
 

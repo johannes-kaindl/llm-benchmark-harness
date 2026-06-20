@@ -51,6 +51,7 @@ def cell_done_event(
     completion_tokens: int,
     content_empty: bool,
     error: str,
+    reasoning_chars: int = 0,
 ) -> dict[str, object]:
     return {
         "ts": ts,
@@ -67,6 +68,7 @@ def cell_done_event(
         "completion_tokens": completion_tokens,
         "content_empty": content_empty,
         "error": error,
+        "reasoning_chars": reasoning_chars,
     }
 
 
@@ -109,6 +111,7 @@ class CellView:
     decode_tps: float | None = None
     content_empty: bool | None = None
     error: str = ""
+    reasoning_chars: int = 0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -124,6 +127,7 @@ class CellView:
             "decode_tps": self.decode_tps,
             "content_empty": self.content_empty,
             "error": self.error,
+            "reasoning_chars": self.reasoning_chars,
         }
 
 
@@ -210,6 +214,7 @@ def build_view(events: Iterable[dict[str, object]]) -> RunView:
                 decode_tps=_optf(e.get("decode_tps")),
                 content_empty=_optb(e.get("content_empty")),
                 error=str(e.get("error", "")),
+                reasoning_chars=_as_int(e.get("reasoning_chars", 0)) or 0,
             )
     cells = [by_key[k] for k in order]
     done_cells = [c for c in cells if c.status == "done"]
