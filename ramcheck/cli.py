@@ -28,6 +28,7 @@ from ramcheck.client import OpenAIStreamClient
 from ramcheck.config import Config, load_config
 from ramcheck.embed import render_embed_md, run_embed
 from ramcheck.judge import (
+    JudgeBackend,
     OpenAIJudgeBackend,
     judge_bundle,
     load_judge_config,
@@ -37,7 +38,7 @@ from ramcheck.models import RunRecord
 from ramcheck.pack import Pack, load_pack
 from ramcheck.qualrun import EvalCell, load_responses_jsonl, run_eval
 from ramcheck.report import load_raw_csv
-from ramcheck.results import EvalResponse, Verdict
+from ramcheck.results import EvalResponse, ModelReport, Verdict
 from ramcheck.runner import Cell, _WebMonitorProcess, resolve_engine, run_benchmark
 
 app = typer.Typer(add_completion=False, help="Thin local-LLM benchmark harness.")
@@ -447,6 +448,54 @@ def eval_cmd(
         _hold_monitor(monitor, url)
 
 
+def _judge_and_persist(
+    backend: JudgeBackend,
+    responses: list[EvalResponse],
+    pk: Pack,
+    prior: list[Verdict],
+    jpath: Path,
+    *,
+    on_verdict: Callable[[Verdict], None] | None = None,
+) -> tuple[list[Verdict], list[ModelReport]]:
+    """Judge fresh responses, persist judgements.jsonl (append-stream then clean rewrite),
+    return (verdicts, reports). ``on_verdict`` (web) is called in addition to the append."""
+    with jpath.open("a", encoding="utf-8") as jh:
+
+        def _append(v: Verdict) -> None:
+            jh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
+            jh.flush()
+            if on_verdict is not None:
+                on_verdict(v)
+
+        verdicts, reports = judge_bundle(
+            backend, responses, pk, prior_verdicts=prior, on_verdict=_append
+        )
+    with jpath.open("w", encoding="utf-8") as jh:  # clean rewrite: prior + new, deduped
+        for v in verdicts:
+            jh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
+    return verdicts, reports
+
+
+def _render_judge_scorecard(
+    bundle: Path,
+    pk: Pack,
+    responses: list[EvalResponse],
+    verdicts: list[Verdict],
+    reports: list[ModelReport],
+    host: dict[str, str],
+) -> None:
+    md = scorecard_mod.render_scorecard_md(
+        pk, responses, verdicts, reports, host=host, date_str=_today()
+    )
+    (bundle / "scorecard.md").write_text(md, encoding="utf-8")
+    rows = scorecard_mod.scores_csv_rows(pk, responses, verdicts, reports, host=host)
+    if rows:
+        with (bundle / "scores.csv").open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+
+
 @app.command()
 def judge(
     bundle: Path = typer.Option(..., "--bundle", exists=True, help="an eval bundle dir"),
@@ -474,29 +523,8 @@ def judge(
     console.print(f"[bold]ramcheck judge[/] [{pk.id}] · judge: {jc.model}")
 
     jpath = bundle / "judgements.jsonl"
-    with jpath.open("a", encoding="utf-8") as jh:
-
-        def _append(v: Verdict) -> None:  # persist each verdict immediately (resumable)
-            jh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
-            jh.flush()
-
-        verdicts, reports = judge_bundle(
-            backend, responses, pk, prior_verdicts=prior, on_verdict=_append
-        )
-    with jpath.open("w", encoding="utf-8") as jh:  # clean rewrite: prior + new, deduped
-        for v in verdicts:
-            jh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
-
-    md = scorecard_mod.render_scorecard_md(
-        pk, responses, verdicts, reports, host=host, date_str=_today()
-    )
-    (bundle / "scorecard.md").write_text(md, encoding="utf-8")
-    rows = scorecard_mod.scores_csv_rows(pk, responses, verdicts, reports, host=host)
-    if rows:
-        with (bundle / "scores.csv").open("w", encoding="utf-8", newline="") as fh:
-            writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
-            writer.writeheader()
-            writer.writerows(rows)
+    verdicts, reports = _judge_and_persist(backend, responses, pk, prior, jpath)
+    _render_judge_scorecard(bundle, pk, responses, verdicts, reports, host)
     scored = sum(1 for v in verdicts if not v.unscored)
     console.print(
         f"[green]✓[/] {scored}/{len(verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
