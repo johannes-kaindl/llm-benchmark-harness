@@ -1,3 +1,4 @@
+import contextlib
 import json
 
 import typer.testing
@@ -150,7 +151,9 @@ class _FakeJudgeBackend:
         pass
 
     def judge(self, *, system: str, user: str) -> str:
-        return '{"score": 4, "red_flag": false, "rationale": "ok"}'
+        # covers both per-prompt scoring (score/red_flag/rationale) and
+        # dimension scoring (Q1/Q6 are the dimension IDs in _MIN_PACK_YAML)
+        return '{"score": 4, "red_flag": false, "rationale": "ok", "Q1": 4, "Q6": 4}'
 
 
 def test_judge_without_web_writes_no_judge_events(tmp_path, monkeypatch):
@@ -163,3 +166,64 @@ def test_judge_without_web_writes_no_judge_events(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert (bundle / "scorecard.md").exists()
     assert not (bundle / "judge_events.jsonl").exists()  # no --web → no event file
+
+
+def _patch_monitor(monkeypatch):
+    @contextlib.contextmanager
+    def _fake_live_monitor(*args, **kwargs):
+        yield (None, None)
+
+    monkeypatch.setattr("ramcheck.cli._live_monitor", _fake_live_monitor)
+    monkeypatch.setattr("ramcheck.cli._hold_monitor", lambda *a, **k: None)
+    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", _FakeJudgeBackend)
+
+
+def test_judge_web_writes_full_event_stream(tmp_path, monkeypatch):
+    bundle = _write_min_bundle(tmp_path)
+    _patch_monitor(monkeypatch)
+    result = typer.testing.CliRunner().invoke(
+        cli.app,
+        [
+            "judge",
+            "--bundle",
+            str(bundle),
+            "--judge-config",
+            str(bundle / "judge.yaml"),
+            "--web",
+            "--no-open",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    types = [
+        json.loads(ln)["type"]
+        for ln in (bundle / "judge_events.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    assert types[0] == "judge_start"
+    assert "verdict" in types and "master" in types
+    assert types[-1] == "judge_done"
+    assert (bundle / "scorecard.md").exists()
+
+
+def test_judge_web_truncates_stale_events(tmp_path, monkeypatch):
+    bundle = _write_min_bundle(tmp_path)
+    _patch_monitor(monkeypatch)
+    args = [
+        "judge",
+        "--bundle",
+        str(bundle),
+        "--judge-config",
+        str(bundle / "judge.yaml"),
+        "--web",
+        "--no-open",
+    ]
+    runner = typer.testing.CliRunner()
+    assert runner.invoke(cli.app, args).exit_code == 0
+    assert runner.invoke(cli.app, args).exit_code == 0  # second --web run on the same bundle
+    types = [
+        json.loads(ln)["type"]
+        for ln in (bundle / "judge_events.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    assert types.count("judge_start") == 1  # fresh stream, no stale accumulation
+    assert types.count("judge_done") == 1

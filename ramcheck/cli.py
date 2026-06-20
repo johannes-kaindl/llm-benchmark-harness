@@ -318,7 +318,10 @@ def _judge_event_writers(
     writes the total and replays prior verdicts (resume) so the dashboard seeds correctly.
     A shared counter gives every verdict a stable display index.
     Callers MUST call ``judge_done`` (e.g. in a ``finally`` block) — it closes the file handle."""
-    fh = events_path.open("a", encoding="utf-8")
+    # truncate: judge_events.jsonl is transient monitor instrumentation, not persistence
+    # (that's judgements.jsonl). on_judge_start replays prior verdicts, so each --web run
+    # starts a fresh, complete event stream. (eval keeps append for its resume semantics.)
+    fh = events_path.open("w", encoding="utf-8")
     counter = {"i": 0}
 
     def _w(event: dict[str, object]) -> None:
@@ -650,10 +653,10 @@ def judge(
         on_judge_start, on_verdict, write_masters, judge_done = _judge_event_writers(
             bundle / "judge_events.jsonl"
         )
-        on_judge_start(len(responses), prior)
         web_verdicts: list[Verdict] = []
         web_reports: list[ModelReport] = []
         try:
+            on_judge_start(len(responses), prior)
             web_verdicts, web_reports = _judge_and_persist(
                 backend, responses, pk, prior, jpath, on_verdict=on_verdict
             )
