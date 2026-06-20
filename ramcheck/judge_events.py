@@ -9,7 +9,10 @@ no I/O beyond (de)serialising dicts. Unlike the eval view it does NOT tail resou
 
 from __future__ import annotations
 
+import itertools
 import json
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 JUDGE_START = "judge_start"
 VERDICT = "verdict"
@@ -94,3 +97,162 @@ def parse_line(line: str) -> dict[str, object] | None:
     if not isinstance(obj, dict) or "type" not in obj:
         return None
     return obj
+
+
+VerdictKey = tuple[str, str, str, int]  # (model, variant, prompt_id, repeat)
+ETA_GAP_FLOOR = 0.05  # ignore sub-50ms gaps (the resume replay burst) when estimating ETA
+
+
+def _as_int(x: object, default: int = 0) -> int:
+    return int(x) if isinstance(x, (int, float, str)) else default
+
+
+def _as_float(x: object, default: float = 0.0) -> float:
+    return float(x) if isinstance(x, (int, float, str)) else default
+
+
+@dataclass
+class VerdictView:
+    key: VerdictKey
+    i: int
+    model: str
+    variant: str
+    prompt_id: str
+    category: str
+    score: int
+    red_flag: bool
+    unscored: bool
+    rationale: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "key": list(self.key),
+            "i": self.i,
+            "model": self.model,
+            "variant": self.variant,
+            "prompt_id": self.prompt_id,
+            "category": self.category,
+            "score": self.score,
+            "red_flag": self.red_flag,
+            "unscored": self.unscored,
+            "rationale": self.rationale,
+        }
+
+
+@dataclass
+class MasterRow:
+    model: str
+    variant: str
+    pct: float
+    safety_passed: bool
+    safety_reason: str
+    recommendation: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "model": self.model,
+            "variant": self.variant,
+            "pct": self.pct,
+            "safety_passed": self.safety_passed,
+            "safety_reason": self.safety_reason,
+            "recommendation": self.recommendation,
+        }
+
+
+@dataclass
+class JudgeRunView:
+    total: int = 0
+    done: int = 0
+    histogram: dict[int, int] = field(default_factory=lambda: {s: 0 for s in (1, 2, 3, 4, 5)})
+    red_flags: int = 0
+    mean_score: float | None = None
+    eta_s: float | None = None
+    verdicts: list[VerdictView] = field(default_factory=list)
+    masters: list[MasterRow] = field(default_factory=list)
+    finished: bool = False
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "total": self.total,
+            "done": self.done,
+            "histogram": {str(k): v for k, v in self.histogram.items()},
+            "red_flags": self.red_flags,
+            "mean_score": self.mean_score,
+            "eta_s": self.eta_s,
+            "finished": self.finished,
+            "verdicts": [v.as_dict() for v in self.verdicts],
+            "masters": [m.as_dict() for m in self.masters],
+        }
+
+
+def _key(ev: dict[str, object]) -> VerdictKey:
+    return (str(ev["model"]), str(ev["variant"]), str(ev["prompt_id"]), _as_int(ev["repeat"]))
+
+
+def _eta(ts_list: list[float], total: int, done: int) -> float | None:
+    gaps = [b - a for a, b in itertools.pairwise(ts_list) if (b - a) > ETA_GAP_FLOOR]
+    if not gaps or total <= done:
+        return None
+    return (sum(gaps) / len(gaps)) * (total - done)
+
+
+def build_view(events: Iterable[dict[str, object]]) -> JudgeRunView:
+    """Fold a judge event stream into a render-ready view. Verdicts dedup by cell key
+    (last wins) so a cell re-judged across crash+resume counts once."""
+    total = 0
+    finished = False
+    by_key: dict[VerdictKey, VerdictView] = {}
+    order: list[VerdictKey] = []
+    masters_by: dict[tuple[str, str], MasterRow] = {}
+    master_order: list[tuple[str, str]] = []
+    ts_list: list[float] = []
+    for e in events:
+        t = e.get("type")
+        if t == JUDGE_START:
+            total = max(total, _as_int(e.get("total", 0)))
+        elif t == JUDGE_DONE:
+            finished = True
+        elif t == VERDICT:
+            k = _key(e)
+            if k not in by_key:
+                order.append(k)
+            by_key[k] = VerdictView(
+                key=k,
+                i=_as_int(e.get("i", -1), -1),
+                model=str(e["model"]),
+                variant=str(e["variant"]),
+                prompt_id=str(e["prompt_id"]),
+                category=str(e.get("category", "")),
+                score=_as_int(e.get("score", 0)),
+                red_flag=bool(e.get("red_flag")),
+                unscored=bool(e.get("unscored")),
+                rationale=str(e.get("rationale", "")),
+            )
+            ts_list.append(_as_float(e.get("ts", 0.0)))
+        elif t == MASTER:
+            mk = (str(e["model"]), str(e["variant"]))
+            if mk not in masters_by:
+                master_order.append(mk)
+            masters_by[mk] = MasterRow(
+                model=mk[0],
+                variant=mk[1],
+                pct=_as_float(e.get("pct", 0.0)),
+                safety_passed=bool(e.get("safety_passed")),
+                safety_reason=str(e.get("safety_reason", "")),
+                recommendation=str(e.get("recommendation", "")),
+            )
+    verdicts = [by_key[k] for k in order]
+    scored = [v for v in verdicts if not v.unscored]
+    histogram = {s: sum(1 for v in scored if v.score == s) for s in (1, 2, 3, 4, 5)}
+    mean = (sum(v.score for v in scored) / len(scored)) if scored else None
+    return JudgeRunView(
+        total=total,
+        done=len(verdicts),
+        histogram=histogram,
+        red_flags=sum(1 for v in scored if v.red_flag),
+        mean_score=mean,
+        eta_s=_eta(ts_list, total, len(verdicts)),
+        verdicts=verdicts,
+        masters=[masters_by[k] for k in master_order],
+        finished=finished,
+    )
