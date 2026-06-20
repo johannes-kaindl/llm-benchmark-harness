@@ -4,6 +4,7 @@ The eval loop fires callbacks (run_eval's on_run_start/on_cell_start/on_cell_don
 the CLI's --web wiring turns them into lines of an append-only events.jsonl. The
 monitor subprocess reads those lines back and aggregates them with build_view().
 Pure: no I/O beyond (de)serialising dicts.
+It also serves as the eval *view module* for webmon (INDEX_HTML, TAILS_RESOURCES, parse_line, build_view).
 """
 
 from __future__ import annotations

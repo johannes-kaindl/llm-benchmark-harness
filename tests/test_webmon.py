@@ -98,3 +98,10 @@ def test_webmonitor_process_spawns_and_serves(tmp_path):
         assert c.getresponse().status == 200
     finally:
         mon.stop()
+
+
+def test_make_handler_rejects_unknown_view(tmp_path):
+    import pytest
+
+    with pytest.raises(ValueError, match="Unknown view"):
+        webmon.make_handler(tmp_path, "events.jsonl", "nonsense")

@@ -22,6 +22,8 @@ from ramcheck import tail as tail_mod
 
 POLL_S = 0.25
 
+# Each view module must expose: INDEX_HTML: str, TAILS_RESOURCES: bool,
+# parse_line(line: str) -> dict | None, build_view(events) -> obj with .as_dict()
 _VIEWS = {"eval": events_mod, "judge": judge_events_mod}
 
 
@@ -31,6 +33,8 @@ def make_handler(
     bundle_dir = Path(bundle)
     events_path = bundle_dir / events_name
     resources_path = bundle_dir / "resources.jsonl"
+    if view not in _VIEWS:
+        raise ValueError(f"Unknown view {view!r}. Valid: {sorted(_VIEWS)}")
     view_mod = _VIEWS[view]
 
     class Handler(BaseHTTPRequestHandler):
