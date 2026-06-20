@@ -50,12 +50,16 @@ judge.py    pluggable LLM-as-judge (JudgeBackend protocol): per-answer score vs.
 scorecard.py weighting/K.-o./category math (pure) + renders scorecard.md + scores.csv
 aggregate.py cross-run/machine: many scores.csv → one Hardware×Quality table (md + scores_all.csv)
 
-# live monitoring (Ink. 3 — opt-in `eval --web`, a separate viewing process):
-webmon.py   separate live-monitor process (stdlib http.server + SSE): tails events.jsonl
-            + resources.jsonl, serves a read-only dashboard. Spawned like _SamplerProcess.
-events.py   events.jsonl contract (append-only) + view-model aggregation for the monitor
+# live monitoring (Ink. 3/5 — opt-in `eval --web` / `judge --web`, a separate viewing process):
+webmon.py   transport-only live-monitor process (stdlib http.server + SSE): tails the event
+            file + (eval only) resources.jsonl, serves a read-only dashboard via a pluggable
+            VIEW module chosen by --view eval|judge. Spawned like _SamplerProcess.
+events.py   eval view: events.jsonl contract (append-only) + build_view + INDEX_HTML;
+            TAILS_RESOURCES=True (the eval dashboard shows live host load)
+judge_events.py  judge view: judge_events.jsonl contract + build_view (score histogram,
+            red-flags, ETA, master-scorecard preview) + INDEX_HTML; TAILS_RESOURCES=False
 tail.py     byte-offset tail tolerant of missing/partial files (used by webmon)
-loadview.py latest host-load snapshot from resources.jsonl (used by webmon)
+loadview.py latest host-load snapshot from resources.jsonl (used by the eval view)
 ```
 
 The qualitative half is **two decoupled phases**: `eval` (deterministic, on the
@@ -87,6 +91,7 @@ uv run ramcheck report --runs ./runs           # (re)generate report.md from raw
 uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml  # qualitative run → bundle (tech-specs auto)
 uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml --resume runs/<ts>_eval_ndassist  # nach Abbruch weiter
 uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml  # LLM-as-judge → filled scorecard (resumebar)
+uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml --web  # + live judge monitor (score dist / red-flags / master preview)
 
 uv run pytest -q                               # tests (no server/sudo needed)
 uv run ruff check . && uv run ruff format .    # lint + format
@@ -130,6 +135,14 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
 - **The live monitor never tails `responses.jsonl`.** It is rewritten wholesale at finalize
   (`qualrun._write_responses`). Live progress comes from the append-only `events.jsonl`
   (fed by `run_eval`'s `on_cell_*` callbacks); live host-load from `resources.jsonl`.
+- **The judge monitor (`judge --web`) never tails `resources.jsonl`.** The judge runs on a
+  *different* endpoint (a cloud/local judge), so the bundle's `resources.jsonl` (from the
+  earlier `eval` run) is stale and irrelevant. The judge view (`ramcheck/judge_events.py`,
+  `TAILS_RESOURCES=False`) shows score distribution / red-flags / a master-scorecard preview
+  instead of a load panel. The master `%`/safety values are computed in the host process and
+  shipped pre-rendered (the monitor never sees the `Pack`). Like `eval --web`, the judge path
+  is byte-identical without `--web` (additive callbacks, default off) and `_hold_monitor`
+  keeps the dashboard up until Ctrl-C.
 
 ## Memory
 
