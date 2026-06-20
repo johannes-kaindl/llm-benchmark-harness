@@ -515,6 +515,9 @@ def eval_cmd(
     resume: Path | None = typer.Option(
         None, "--resume", exists=True, help="continue an existing bundle dir (skip done cells)"
     ),
+    run_dir_opt: Path | None = typer.Option(
+        None, "--run-dir", help="use this exact run dir (GUI control-plane); overrides --out"
+    ),
     web: bool = typer.Option(False, "--web", help="live browser monitor for this run"),
     port: int = typer.Option(0, "--port", help="monitor port (0 = auto)"),
     no_open: bool = typer.Option(False, "--no-open", help="don't auto-open the browser"),
@@ -525,6 +528,9 @@ def eval_cmd(
     if resume is not None:
         run_dir = resume
         console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/] [dim](resume)[/]")
+    elif run_dir_opt is not None:
+        run_dir = run_dir_opt
+        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
     else:
         base_out = out or cfg.output_path()
         run_dir = base_out / f"{_timestamp()}_eval_{pk.id}"
