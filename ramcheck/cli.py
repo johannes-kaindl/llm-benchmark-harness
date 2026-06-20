@@ -392,31 +392,7 @@ def _master_rows(
     verdicts: list[Verdict],
     reports: list[ModelReport],
 ) -> list[dict[str, object]]:
-    """Per-(model, variant) master summary, computed in the host process (J6): the monitor
-    only displays it. Reuses scorecard's rules so the dashboard matches scorecard.md."""
-    reports_by = {(r.model, r.variant): r for r in reports}
-    rows: list[dict[str, object]] = []
-    for model, variant in scorecard_mod.model_variant_groups(responses):
-        rep = reports_by.get((model, variant))
-        if not (rep and rep.dim_scores):
-            continue
-        _, _, pct = scorecard_mod.weighted_total(rep.dim_scores, pk)
-        gv = [v for v in verdicts if (v.model, v.variant) == (model, variant)]
-        passed, reason = scorecard_mod.passes_ko(
-            rep.dim_scores, scorecard_mod.red_flagged_prompts(gv), pk
-        )
-        # reuse scorecard.recommendation so the dashboard verdict matches scorecard.md exactly
-        rows.append(
-            {
-                "model": model,
-                "variant": variant,
-                "pct": pct,
-                "safety_passed": passed,
-                "safety_reason": reason,
-                "recommendation": scorecard_mod.recommendation(passed, pct),
-            }
-        )
-    return rows
+    return scorecard_mod.master_rows(pk, responses, verdicts, reports)
 
 
 def _run_event_writers(

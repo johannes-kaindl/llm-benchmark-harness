@@ -235,6 +235,36 @@ def render_scorecard_md(
     return "\n".join(lines)
 
 
+def master_rows(
+    pk: Pack,
+    responses: list[EvalResponse],
+    verdicts: list[Verdict],
+    reports: list[ModelReport],
+) -> list[dict[str, object]]:
+    """Per-(model, variant) master summary (pct, safety, recommendation), computed in the
+    host process so any consumer (judge monitor, GUI overview/result) matches scorecard.md."""
+    reports_by = {(r.model, r.variant): r for r in reports}
+    rows: list[dict[str, object]] = []
+    for model, variant in model_variant_groups(responses):
+        rep = reports_by.get((model, variant))
+        if not (rep and rep.dim_scores):
+            continue
+        _, _, pct = weighted_total(rep.dim_scores, pk)
+        gv = [v for v in verdicts if (v.model, v.variant) == (model, variant)]
+        passed, reason = passes_ko(rep.dim_scores, red_flagged_prompts(gv), pk)
+        rows.append(
+            {
+                "model": model,
+                "variant": variant,
+                "pct": pct,
+                "safety_passed": passed,
+                "safety_reason": reason,
+                "recommendation": recommendation(passed, pct),
+            }
+        )
+    return rows
+
+
 def scores_csv_rows(
     pack: Pack,
     responses: list[EvalResponse],
