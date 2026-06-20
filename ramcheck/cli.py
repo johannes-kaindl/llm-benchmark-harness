@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import csv
 import json
+import time
+import webbrowser
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 import typer
 from rich.console import Console
 
+from ramcheck import events as events_mod
 from ramcheck import hostinfo, report
 from ramcheck import scorecard as scorecard_mod
 from ramcheck.client import OpenAIStreamClient
@@ -28,10 +32,10 @@ from ramcheck.judge import (
     load_judgements_jsonl,
 )
 from ramcheck.pack import load_pack
-from ramcheck.qualrun import load_responses_jsonl, run_eval
+from ramcheck.qualrun import EvalCell, load_responses_jsonl, run_eval
 from ramcheck.report import load_raw_csv
-from ramcheck.results import Verdict
-from ramcheck.runner import resolve_engine, run_benchmark
+from ramcheck.results import EvalResponse, Verdict
+from ramcheck.runner import _WebMonitorProcess, resolve_engine, run_benchmark
 
 app = typer.Typer(add_completion=False, help="Thin local-LLM benchmark harness.")
 console = Console()
@@ -156,6 +160,45 @@ def _write_bundle_manifest(
     )
 
 
+def _eval_event_writers(
+    events_path: Path,
+) -> tuple[
+    Callable[[int], None],
+    Callable[[int, EvalCell], None],
+    Callable[[int, EvalResponse], None],
+    Callable[[list[EvalResponse]], None],
+]:
+    """Closures that translate run_eval's callbacks into events.jsonl lines."""
+    fh = events_path.open("a", encoding="utf-8")
+
+    def _w(event: dict[str, object]) -> None:
+        fh.write(events_mod.dumps(event) + "\n")
+        fh.flush()
+
+    def on_run_start(total: int) -> None:
+        _w(events_mod.run_start_event(time.time(), total))
+
+    def on_cell_start(i: int, cell: EvalCell) -> None:
+        _w(events_mod.cell_start_event(
+            time.time(), i, cell.model.id, cell.variant.id, cell.category.id,
+            cell.prompt.id, cell.repeat,
+        ))
+
+    def on_cell_done(i: int, resp: EvalResponse) -> None:
+        _w(events_mod.cell_done_event(
+            time.time(), i, resp.model, resp.variant, resp.prompt_id, resp.repeat,
+            resp.ok, resp.ttft_s, resp.e2e_s, resp.decode_tps, resp.completion_tokens,
+            resp.content_empty, resp.error,
+        ))
+
+    def run_done(responses: list[EvalResponse]) -> None:
+        _w(events_mod.run_done_event(
+            time.time(), len(responses), sum(1 for r in responses if r.ok)))
+        fh.close()
+
+    return on_run_start, on_cell_start, on_cell_done, run_done
+
+
 @app.command(name="eval")
 def eval_cmd(
     pack: Path = typer.Option(..., "--pack", exists=True, help="use-case pack YAML"),
@@ -164,6 +207,9 @@ def eval_cmd(
     resume: Path | None = typer.Option(
         None, "--resume", exists=True, help="continue an existing bundle dir (skip done cells)"
     ),
+    web: bool = typer.Option(False, "--web", help="live browser monitor for this run"),
+    port: int = typer.Option(0, "--port", help="monitor port (0 = auto)"),
+    no_open: bool = typer.Option(False, "--no-open", help="don't auto-open the browser"),
 ) -> None:
     """Run a use-case pack through the models: capture answers + perf, write the bundle."""
     cfg = load_config(config)
@@ -177,7 +223,31 @@ def eval_cmd(
         console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
 
     client = _make_client(cfg)
-    responses = run_eval(cfg, pk, client, run_dir=run_dir, resume=resume is not None)
+    if web:
+        run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl is opened before run_eval
+        monitor = _WebMonitorProcess(run_dir, port=port)
+        bound = monitor.start()
+        if bound:
+            url = f"http://127.0.0.1:{bound}"
+            console.print(f"[bold]Monitor:[/] [cyan]{url}[/] [dim](Ctrl-C zum Beenden)[/]")
+            if not no_open:
+                webbrowser.open(url)
+        else:
+            console.print("[yellow]Web-Monitor konnte nicht starten — Lauf läuft ohne ihn.[/]")
+        on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(
+            run_dir / "events.jsonl"
+        )
+        responses: list[EvalResponse] = []
+        try:
+            responses = run_eval(
+                cfg, pk, client, run_dir=run_dir, resume=resume is not None,
+                on_run_start=on_run_start, on_cell_start=on_cell_start, on_cell_done=on_cell_done,
+            )
+        finally:
+            run_done(responses)
+            monitor.stop()
+    else:
+        responses = run_eval(cfg, pk, client, run_dir=run_dir, resume=resume is not None)
     host = hostinfo.summary()
     _write_bundle_manifest(run_dir, pack, cfg, host)
 
