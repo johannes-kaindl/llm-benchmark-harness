@@ -105,3 +105,73 @@ def test_make_handler_rejects_unknown_view(tmp_path):
 
     with pytest.raises(ValueError, match="Unknown view"):
         webmon.make_handler(tmp_path, "events.jsonl", "nonsense")
+
+
+def test_judge_view_serves_judge_html_without_load(tmp_path):
+    (tmp_path / "judge_events.jsonl").write_text(
+        json.dumps({"ts": 1.0, "type": "judge_start", "total": 1})
+        + "\n"
+        + json.dumps(
+            {
+                "ts": 2.0,
+                "type": "verdict",
+                "i": 0,
+                "model": "m",
+                "variant": "v",
+                "prompt_id": "p",
+                "repeat": 0,
+                "category": "A",
+                "score": 4,
+                "red_flag": False,
+                "unscored": False,
+                "rationale": "gut",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    srv = ThreadingHTTPServer(
+        ("127.0.0.1", 0), webmon.make_handler(tmp_path, "judge_events.jsonl", "judge")
+    )
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=3)
+        c.request("GET", "/")
+        body = c.getresponse().read().decode("utf-8")
+        assert "judge monitor" in body and "Master" in body
+        c2 = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+        c2.request("GET", "/events")
+        r = c2.getresponse()
+        buf = b""
+        for _ in range(80):
+            buf += r.read(256)
+            if b"event: view" in buf and b"\n\n" in buf[buf.index(b"event: view") :]:
+                break
+        text = buf.decode("utf-8", errors="replace")
+        assert "event: view" in text
+        assert "event: load" not in text  # judge view never tails resources (J5)
+        view_line = next(
+            ln
+            for blk in text.split("\n\n")
+            if "event: view" in blk
+            for ln in blk.split("\n")
+            if ln.startswith("data: ")
+        )
+        view = json.loads(view_line[len("data: ") :])
+        assert view["total"] == 1 and view["done"] == 1 and view["histogram"]["4"] == 1
+    finally:
+        c2.close()
+        srv.shutdown()
+
+
+def test_webmonitor_process_passes_view(tmp_path):
+    (tmp_path / "judge_events.jsonl").write_text("", encoding="utf-8")
+    mon = _WebMonitorProcess(tmp_path, port=0, events_name="judge_events.jsonl", view="judge")
+    port = mon.start()
+    try:
+        assert isinstance(port, int) and port > 0
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        c.request("GET", "/")
+        assert "judge monitor" in c.getresponse().read().decode("utf-8")
+    finally:
+        mon.stop()

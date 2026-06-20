@@ -333,10 +333,13 @@ class _WebMonitorProcess:
     measurement process — that would defeat the decoupling. It just fails to start.
     """
 
-    def __init__(self, bundle: Path, port: int = 0, events_name: str = "events.jsonl") -> None:
+    def __init__(
+        self, bundle: Path, port: int = 0, events_name: str = "events.jsonl", view: str = "eval"
+    ) -> None:
         self.bundle = bundle
         self.port = port
         self.events_name = events_name
+        self.view = view
         self._proc: subprocess.Popen[bytes] | None = None
 
     def start(self) -> int | None:
@@ -351,6 +354,8 @@ class _WebMonitorProcess:
             str(self.port),
             "--events",
             self.events_name,
+            "--view",
+            self.view,
         ]
         try:
             self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
