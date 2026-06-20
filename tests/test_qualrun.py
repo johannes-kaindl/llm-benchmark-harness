@@ -163,6 +163,32 @@ def test_run_eval_resume_after_crash_completes_the_rest(tmp_path):
     assert len(responses) == 6
 
 
+def test_run_eval_fires_progress_callbacks(tmp_path):
+    starts, cells_started, cells_done = [], [], []
+    run_eval(
+        _config(), _pack(), FakeClient(text="hi"), run_dir=tmp_path, sampler=NoopSampler(),
+        on_run_start=lambda total: starts.append(total),
+        on_cell_start=lambda i, cell: cells_started.append((i, cell.prompt.id)),
+        on_cell_done=lambda i, resp: cells_done.append((i, resp.prompt_id, resp.ok)),
+    )
+    assert starts == [6]  # total reported once, before the loop
+    assert len(cells_started) == 6
+    assert len(cells_done) == 6
+    assert all(ok for _, _, ok in cells_done)
+    assert [i for i, _ in cells_started] == [0, 1, 2, 3, 4, 5]  # enumerate index
+
+
+def test_run_eval_callbacks_skip_resumed_cells(tmp_path):
+    cfg, pack = _config(), _pack()
+    run_eval(cfg, pack, FakeClient(), run_dir=tmp_path, sampler=NoopSampler())  # all 6 done
+    started = []
+    run_eval(
+        cfg, pack, FakeClient(), run_dir=tmp_path, sampler=NoopSampler(), resume=True,
+        on_cell_start=lambda i, cell: started.append(i),
+    )
+    assert started == []  # every cell already done → no cell_start fired
+
+
 def test_load_responses_jsonl_tolerates_bad_last_line(tmp_path):
     run_eval(_config(), _pack(), FakeClient(), run_dir=tmp_path, sampler=NoopSampler())
     p = tmp_path / "responses.jsonl"

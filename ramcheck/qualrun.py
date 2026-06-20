@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -75,6 +76,9 @@ def run_eval(
     sampler: Sampler | None = None,
     settle_s: float = 0.0,
     resume: bool = False,
+    on_run_start: Callable[[int], None] | None = None,
+    on_cell_start: Callable[[int, EvalCell], None] | None = None,
+    on_cell_done: Callable[[int, EvalResponse], None] | None = None,
 ) -> list[EvalResponse]:
     """Drive the eval matrix; append answers incrementally; resume skips done cells."""
     from ramcheck.runner import _SamplerProcess
@@ -105,6 +109,8 @@ def run_eval(
         return counters[model_id]
 
     cells = iter_eval_cells(config, pack)
+    if on_run_start is not None:
+        on_run_start(len(cells))
     sampler.start()
     time.sleep(settle_s)
 
@@ -113,9 +119,11 @@ def run_eval(
     mode = "a" if prior else "w"
     try:
         with responses_path.open(mode, encoding="utf-8") as fh:
-            for cell in cells:
+            for i, cell in enumerate(cells):
                 if _cell_key(cell) in done_keys:
                     continue
+                if on_cell_start is not None:
+                    on_cell_start(i, cell)
                 outcome = stream_once(
                     client,
                     messages=_messages(cell.variant, cell.prompt),
@@ -164,6 +172,8 @@ def run_eval(
                 fh.write(json.dumps(resp.as_dict(), ensure_ascii=False) + "\n")
                 fh.flush()
                 new.append(resp)
+                if on_cell_done is not None:
+                    on_cell_done(i, resp)
     finally:
         sampler.stop()
 
