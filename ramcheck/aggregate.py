@@ -144,9 +144,10 @@ def render_aggregate_md(agg: list[AggRow], *, date_str: str = "") -> str:
     lines.append("|---|---|---|---|---|---|---|:-:|:-:|:-:|:-:|:-:|")
     for a in agg:
         q = f"{a.quality_pct:.1f}" if a.quality_pct is not None else "—"
+        pack_cell = (a.pack or "—") + (f" v{a.pack_version}" if a.pack_version else "")
         lines.append(
-            f"| {a.chip or '—'} | {a.ram_gb or '—'} | {a.machine or '—'} | {a.model} | "
-            f"{a.quant or '—'} | {a.variant} | {a.pack} v{a.pack_version} | {q} | "
+            f"| {a.chip or '—'} | {a.ram_gb or '—'} | {a.machine or '—'} | {a.model or '—'} | "
+            f"{a.quant or '—'} | {a.variant or '—'} | {pack_cell} | {q} | "
             f"{a.ttft_p50 or '—'} | {a.decode_med or '—'} | {a.peak_ram_gb or '—'} | "
             f"{a.power or '—'} |"
         )

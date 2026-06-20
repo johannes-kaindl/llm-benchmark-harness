@@ -157,6 +157,19 @@ def test_render_aggregate_md_has_table():
     assert "Qualität %" in md
 
 
+def test_render_aggregate_md_graceful_with_empty_identity_fields():
+    rows = [_row(metric_type="dimension", metric="Q1", weight="1", score="3")]  # all identity ""
+    md = agg.render_aggregate_md(agg.aggregate(rows))
+    data = [
+        ln for ln in md.splitlines() if ln.startswith("| ") and "Chip" not in ln and ":-:" not in ln
+    ]
+    assert len(data) == 1
+    cells = data[0].split("|")
+    assert cells[4].strip() == "—"  # model → em-dash, not blank
+    assert "v" not in cells[7]  # pack cell is "—", not a malformed " v"
+    assert "60.0" in data[0]  # quality % = 3 / (5*1) = 60
+
+
 def test_write_scores_all_csv_roundtrip(tmp_path):
     rows = [_row(model="m1", metric="Q1"), _row(model="m2", metric="Q2")]
     p = tmp_path / "scores_all.csv"
