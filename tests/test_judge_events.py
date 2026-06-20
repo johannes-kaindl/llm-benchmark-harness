@@ -91,3 +91,16 @@ def test_build_view_masters_and_finished():
     d = v.as_dict()
     assert d["histogram"] == {"1": 0, "2": 0, "3": 1, "4": 0, "5": 0}  # str keys for JSON
     assert d["masters"][0]["safety_reason"] == "Q6 <= 2"
+
+
+def test_build_view_ignores_out_of_range_score():
+    # defensive: score=0 with unscored=False (corrupt line) must not pollute histogram/mean/red
+    events = [
+        je.judge_start_event(0.0, 1),
+        je.verdict_event(0.1, 0, "m", "v", "p1", 0, "A", 0, True, False, "bogus"),
+    ]
+    v = je.build_view(events)
+    assert v.done == 1  # still a verdict row
+    assert v.histogram == {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    assert v.mean_score is None  # no in-range scored verdict
+    assert v.red_flags == 0  # out-of-range verdict's red_flag not aggregated

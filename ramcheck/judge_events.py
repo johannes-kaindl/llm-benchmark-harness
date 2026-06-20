@@ -242,9 +242,13 @@ def build_view(events: Iterable[dict[str, object]]) -> JudgeRunView:
                 recommendation=str(e.get("recommendation", "")),
             )
     verdicts = [by_key[k] for k in order]
-    scored = [v for v in verdicts if not v.unscored]
+    # "scored" = a usable 1..5 score. Guards against a corrupt/out-of-range score
+    # (e.g. a malformed events line) polluting the histogram/mean while done still counts it.
+    scored = [v for v in verdicts if not v.unscored and 1 <= v.score <= 5]
     histogram = {s: sum(1 for v in scored if v.score == s) for s in (1, 2, 3, 4, 5)}
     mean = (sum(v.score for v in scored) / len(scored)) if scored else None
+    # red_flags aggregates only scored verdicts, mirroring scorecard.red_flagged_prompts
+    # (which also ignores unscored); a per-row red_flag still shows in VerdictView.red_flag.
     return JudgeRunView(
         total=total,
         done=len(verdicts),
