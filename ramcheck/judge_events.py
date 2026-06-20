@@ -22,6 +22,60 @@ JUDGE_DONE = "judge_done"
 TAILS_RESOURCES = False
 RATIONALE_MAX = 160
 
+INDEX_HTML = """<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>ramcheck judge monitor</title>
+<style>
+ body{font-family:system-ui,sans-serif;margin:1.5rem;background:#111;color:#eee}
+ h1{font-size:1.1rem} h2{font-size:1rem;margin-top:1.5rem}
+ .bar{background:#333;border-radius:4px;height:1.2rem;overflow:hidden}
+ .bar>div{background:#3a7;height:100%;width:0;transition:width .3s}
+ .grid{display:flex;gap:1rem;margin:1rem 0;flex-wrap:wrap}
+ .card{background:#1b1b1b;padding:.7rem 1rem;border-radius:6px;min-width:6rem}
+ .num{font-size:1.3rem;font-weight:600}
+ table{border-collapse:collapse;width:100%;font-size:.85rem;margin-top:.5rem}
+ td,th{padding:.25rem .5rem;border-bottom:1px solid #2a2a2a;text-align:left}
+ .ok{color:#5c5} .fail{color:#e66} .muted{color:#999}
+</style></head>
+<body>
+<h1>ramcheck — live judge monitor</h1>
+<div class="bar"><div id="barfill"></div></div>
+<div class="grid">
+ <div class="card"><div class="muted">Fortschritt</div><div class="num"><span id="done">0</span>/<span id="total">0</span></div></div>
+ <div class="card"><div class="muted">&Oslash; Score</div><div class="num" id="mean">&ndash;</div></div>
+ <div class="card"><div class="muted">Red-Flags</div><div class="num fail" id="red">0</div></div>
+ <div class="card"><div class="muted">ETA</div><div class="num" id="eta">&ndash;</div></div>
+</div>
+<h2>Score-Verteilung</h2>
+<div class="grid" id="histwrap"></div>
+<h2>Verdicts</h2>
+<table><thead><tr><th>#</th><th>Prompt</th><th>Modell &middot; Variante</th><th>Score</th><th>Red?</th><th>Begr&uuml;ndung</th></tr></thead>
+<tbody id="rows"></tbody></table>
+<h2>Master-Scorecard (am Ende)</h2>
+<table><thead><tr><th>Modell &middot; Variante</th><th>In %</th><th>Sicherheit</th><th>Empfehlung</th></tr></thead>
+<tbody id="masterbody"></tbody></table>
+<script>
+function fmtEta(s){if(s==null)return '\\u2013';s=Math.round(s);return Math.floor(s/60)+'m '+(s%60)+'s';}
+function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+const es=new EventSource('/events');
+es.addEventListener('view',e=>{let v;try{v=JSON.parse(e.data)}catch(_){return}
+ done.textContent=v.done; total.textContent=v.total;
+ mean.textContent=v.mean_score!=null?v.mean_score.toFixed(2):'\\u2013';
+ red.textContent=v.red_flags;
+ eta.textContent=v.finished?'fertig':fmtEta(v.eta_s);
+ barfill.style.width=(v.total?100*v.done/v.total:0)+'%';
+ histwrap.innerHTML=[1,2,3,4,5].map(s=>`<div class="card"><div class="muted">Score ${s}</div><div class="num">${(v.histogram&&v.histogram[s])||0}</div></div>`).join('');
+ rows.innerHTML=v.verdicts.slice().reverse().map(c=>{
+  const sc=c.unscored?'<span class="muted">\\u2014</span>':c.score;
+  const rf=c.red_flag?'<span class="fail">\\ud83d\\udd34</span>':'';
+  return `<tr><td>${c.i}</td><td>${esc(c.prompt_id)}</td><td>${esc(c.model)} \\u00b7 ${esc(c.variant)}</td><td>${sc}</td><td>${rf}</td><td class="muted">${esc(c.rationale)}</td></tr>`;
+ }).join('');
+ masterbody.innerHTML=v.masters.map(m=>{
+  const safe=m.safety_passed?'<span class="ok">ja</span>':`<span class="fail">nein</span> <span class="muted">(${esc(m.safety_reason)})</span>`;
+  return `<tr><td>${esc(m.model)} \\u00b7 ${esc(m.variant)}</td><td>${m.pct.toFixed(1)} %</td><td>${safe}</td><td>${esc(m.recommendation)}</td></tr>`;
+ }).join('');});
+es.onerror=()=>{document.title='ramcheck judge monitor (offline)';};
+</script></body></html>"""
+
 
 def judge_start_event(ts: float, total: int) -> dict[str, object]:
     return {"ts": ts, "type": JUDGE_START, "total": total}

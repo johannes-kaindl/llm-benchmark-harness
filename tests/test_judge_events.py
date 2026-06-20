@@ -104,3 +104,11 @@ def test_build_view_ignores_out_of_range_score():
     assert v.histogram == {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
     assert v.mean_score is None  # no in-range scored verdict
     assert v.red_flags == 0  # out-of-range verdict's red_flag not aggregated
+
+
+def test_index_html_is_judge_dashboard():
+    html = je.INDEX_HTML
+    assert "EventSource" in html  # SSE client present
+    assert "Score" in html and "Master" in html  # judge-specific panels
+    assert "Throttle" not in html  # no load panel (J5)
+    assert je.TAILS_RESOURCES is False
