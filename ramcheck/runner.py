@@ -318,6 +318,45 @@ class _SamplerProcess:
             self._thread.join(timeout=3)
 
 
+class _WebMonitorProcess:
+    """Decoupled live monitor as its own process (mirrors _SamplerProcess).
+
+    No thread fallback on purpose: a monitor that can't spawn must NOT run inside the
+    measurement process — that would defeat the decoupling. It just fails to start.
+    """
+
+    def __init__(self, bundle: Path, port: int = 0) -> None:
+        self.bundle = bundle
+        self.port = port
+        self._proc: subprocess.Popen[bytes] | None = None
+
+    def start(self) -> int | None:
+        """Spawn the monitor; return the bound port (read from its stdout), or None."""
+        cmd = [
+            sys.executable, "-m", "ramcheck.webmon",
+            "--bundle", str(self.bundle), "--port", str(self.port),
+        ]
+        try:
+            self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        except Exception:
+            return None
+        if self._proc.stdout is None:
+            return None
+        line = self._proc.stdout.readline().decode("utf-8").strip()
+        try:
+            return int(line)
+        except ValueError:
+            return None
+
+    def stop(self) -> None:
+        if self._proc is not None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+
+
 def run_benchmark(
     config: Config,
     client: StreamClient,
