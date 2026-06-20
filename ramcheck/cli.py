@@ -208,10 +208,14 @@ def _write_bundle_manifest(
 
 @contextlib.contextmanager
 def _live_monitor(
-    run_dir: Path, port: int, no_open: bool, events_name: str = "events.jsonl"
+    run_dir: Path,
+    port: int,
+    no_open: bool,
+    events_name: str = "events.jsonl",
+    view: str = "eval",
 ) -> Iterator[tuple[_WebMonitorProcess, str | None]]:
     """Spawn the live-monitor subprocess, open the browser, and always stop it on exit."""
-    monitor = _WebMonitorProcess(run_dir, port=port, events_name=events_name)
+    monitor = _WebMonitorProcess(run_dir, port=port, events_name=events_name, view=view)
     bound = monitor.start()
     url = f"http://127.0.0.1:{bound}" if bound else None
     if url is not None:
