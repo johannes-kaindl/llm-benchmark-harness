@@ -667,5 +667,25 @@ def judge(
         _hold_monitor(monitor, url)
 
 
+@app.command()
+def gui(
+    runs: Path = typer.Option(
+        Path("./runs"), "--runs", help="runs dir to read/write bundles under"
+    ),
+    port: int = typer.Option(0, "--port", help="server port (0 = auto)"),
+    no_open: bool = typer.Option(False, "--no-open", help="don't auto-open the browser"),
+) -> None:
+    """Launch the local web control-center (requires the [gui] extra)."""
+    try:
+        from ramcheck.gui.app import serve
+    except ImportError:
+        console.print(
+            "[red]GUI-Abhängigkeiten fehlen.[/] Installiere sie mit "
+            r"[cyan]pip install -e '.\[gui]'[/] (oder [cyan]uv sync --extra gui[/])."
+        )
+        raise typer.Exit(code=1) from None
+    serve(runs_dir=runs, port=port, open_browser=not no_open)
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

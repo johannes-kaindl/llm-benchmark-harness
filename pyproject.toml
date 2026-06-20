@@ -31,6 +31,13 @@ dependencies = [
 tokenizer = [
     "transformers>=4.44",
 ]
+# Local control-center web UI (ramcheck gui). Build-free: vendored HTMX/Alpine assets.
+gui = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+]
 
 [project.scripts]
 ramcheck = "ramcheck.cli:app"
