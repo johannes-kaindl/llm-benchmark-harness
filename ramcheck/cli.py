@@ -316,7 +316,8 @@ def _judge_event_writers(
 
     Returns (on_judge_start, on_verdict, write_masters, judge_done). ``on_judge_start``
     writes the total and replays prior verdicts (resume) so the dashboard seeds correctly.
-    A shared counter gives every verdict a stable display index."""
+    A shared counter gives every verdict a stable display index.
+    Callers MUST call ``judge_done`` (e.g. in a ``finally`` block) — it closes the file handle."""
     fh = events_path.open("a", encoding="utf-8")
     counter = {"i": 0}
 
@@ -353,6 +354,7 @@ def _judge_event_writers(
 
     def write_masters(rows: list[dict[str, object]]) -> None:
         for row in rows:
+            # row is dict[str, object]; narrow pct to float for mypy strict (no type: ignore)
             pct_raw = row["pct"]
             pct = float(pct_raw) if isinstance(pct_raw, (int, float)) else float(str(pct_raw))
             _w(
@@ -371,7 +373,7 @@ def _judge_event_writers(
         try:
             _w(judge_events_mod.judge_done_event(time.time(), total, scored))
         finally:
-            fh.close()
+            fh.close()  # close even if the final write fails (e.g. disk full)
 
     return on_judge_start, on_verdict, write_masters, judge_done
 
@@ -395,7 +397,7 @@ def _master_rows(
         passed, reason = scorecard_mod.passes_ko(
             rep.dim_scores, scorecard_mod.red_flagged_prompts(gv), pk
         )
-        # reuse scorecard._recommendation so the dashboard verdict matches scorecard.md exactly
+        # reuse scorecard.recommendation so the dashboard verdict matches scorecard.md exactly
         rows.append(
             {
                 "model": model,
@@ -403,7 +405,7 @@ def _master_rows(
                 "pct": pct,
                 "safety_passed": passed,
                 "safety_reason": reason,
-                "recommendation": scorecard_mod._recommendation(passed, pct),
+                "recommendation": scorecard_mod.recommendation(passed, pct),
             }
         )
     return rows

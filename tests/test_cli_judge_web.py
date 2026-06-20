@@ -62,3 +62,13 @@ def test_judge_event_writers_masters_and_done(tmp_path):
     rows = _read(p)
     assert rows[-2]["type"] == "master" and rows[-2]["pct"] == 40.0
     assert rows[-1]["type"] == "judge_done" and rows[-1]["scored"] == 1
+
+
+def test_judge_done_closes_file_and_flushes(tmp_path):
+    p = tmp_path / "judge_events.jsonl"
+    on_start, on_verdict, _write_masters, done = cli._judge_event_writers(p)
+    on_start(1, [])
+    on_verdict(_v("p1", 3))
+    done(1, 1)
+    rows = _read(p)  # readable in full only if flushed + closed
+    assert [r["type"] for r in rows] == ["judge_start", "verdict", "judge_done"]

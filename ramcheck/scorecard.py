@@ -103,7 +103,7 @@ def _perf_summary(group: list[EvalResponse]) -> dict[str, object]:
     }
 
 
-def _recommendation(passed: bool, pct: float) -> str:
+def recommendation(passed: bool, pct: float) -> str:
     if not passed:
         return "Nein"
     if pct >= 70.0:
@@ -183,7 +183,7 @@ def render_scorecard_md(
             sum_cells.append(f"{wsum}/{wmax}")
             pct_cells.append(f"{pct:.1f} %")
             safe_cells.append("ja" if passed else f"**nein** ({reason})")
-            rec_cells.append(_recommendation(passed, pct))
+            rec_cells.append(recommendation(passed, pct))
         else:
             sum_cells.append("—")
             pct_cells.append("—")
