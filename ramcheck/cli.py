@@ -23,6 +23,7 @@ from rich.console import Console
 from ramcheck import aggregate as aggregate_mod
 from ramcheck import events as events_mod
 from ramcheck import hostinfo, report
+from ramcheck import judge_events as judge_events_mod
 from ramcheck import scorecard as scorecard_mod
 from ramcheck.client import OpenAIStreamClient
 from ramcheck.config import Config, load_config
@@ -301,6 +302,111 @@ def _eval_event_writers(
             fh.close()  # close even if the final write fails (e.g. disk full)
 
     return on_run_start, on_cell_start, on_cell_done, run_done
+
+
+def _judge_event_writers(
+    events_path: Path,
+) -> tuple[
+    Callable[[int, list[Verdict]], None],
+    Callable[[Verdict], None],
+    Callable[[list[dict[str, object]]], None],
+    Callable[[int, int], None],
+]:
+    """Closures translating the judge run into judge_events.jsonl lines.
+
+    Returns (on_judge_start, on_verdict, write_masters, judge_done). ``on_judge_start``
+    writes the total and replays prior verdicts (resume) so the dashboard seeds correctly.
+    A shared counter gives every verdict a stable display index."""
+    fh = events_path.open("a", encoding="utf-8")
+    counter = {"i": 0}
+
+    def _w(event: dict[str, object]) -> None:
+        fh.write(judge_events_mod.dumps(event) + "\n")
+        fh.flush()
+
+    def _verdict(v: Verdict) -> None:
+        i = counter["i"]
+        counter["i"] += 1
+        _w(
+            judge_events_mod.verdict_event(
+                time.time(),
+                i,
+                v.model,
+                v.variant,
+                v.prompt_id,
+                v.repeat,
+                v.category,
+                v.score,
+                v.red_flag,
+                v.unscored,
+                v.rationale,
+            )
+        )
+
+    def on_judge_start(total: int, prior: list[Verdict]) -> None:
+        _w(judge_events_mod.judge_start_event(time.time(), total))
+        for v in prior:
+            _verdict(v)
+
+    def on_verdict(v: Verdict) -> None:
+        _verdict(v)
+
+    def write_masters(rows: list[dict[str, object]]) -> None:
+        for row in rows:
+            pct_raw = row["pct"]
+            pct = float(pct_raw) if isinstance(pct_raw, (int, float)) else float(str(pct_raw))
+            _w(
+                judge_events_mod.master_event(
+                    time.time(),
+                    str(row["model"]),
+                    str(row["variant"]),
+                    pct,
+                    bool(row["safety_passed"]),
+                    str(row["safety_reason"]),
+                    str(row["recommendation"]),
+                )
+            )
+
+    def judge_done(total: int, scored: int) -> None:
+        try:
+            _w(judge_events_mod.judge_done_event(time.time(), total, scored))
+        finally:
+            fh.close()
+
+    return on_judge_start, on_verdict, write_masters, judge_done
+
+
+def _master_rows(
+    pk: Pack,
+    responses: list[EvalResponse],
+    verdicts: list[Verdict],
+    reports: list[ModelReport],
+) -> list[dict[str, object]]:
+    """Per-(model, variant) master summary, computed in the host process (J6): the monitor
+    only displays it. Reuses scorecard's rules so the dashboard matches scorecard.md."""
+    reports_by = {(r.model, r.variant): r for r in reports}
+    rows: list[dict[str, object]] = []
+    for model, variant in scorecard_mod.model_variant_groups(responses):
+        rep = reports_by.get((model, variant))
+        if not (rep and rep.dim_scores):
+            continue
+        _, _, pct = scorecard_mod.weighted_total(rep.dim_scores, pk)
+        gv = [v for v in verdicts if (v.model, v.variant) == (model, variant)]
+        passed, reason = scorecard_mod.passes_ko(
+            rep.dim_scores, scorecard_mod.red_flagged_prompts(gv), pk
+        )
+        # reuse scorecard._recommendation so the dashboard verdict matches scorecard.md exactly
+        rows.append(
+            {
+                "model": model,
+                "variant": variant,
+                "pct": pct,
+                "safety_passed": passed,
+                "safety_reason": reason,
+                "recommendation": scorecard_mod._recommendation(passed, pct),
+            }
+        )
+    return rows
 
 
 def _run_event_writers(
