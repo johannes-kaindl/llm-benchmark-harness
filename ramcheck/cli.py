@@ -8,6 +8,7 @@ ramcheck report --runs ./runs              # report.md (re)generieren
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import json
 import time
@@ -31,7 +32,7 @@ from ramcheck.judge import (
     load_judge_config,
     load_judgements_jsonl,
 )
-from ramcheck.pack import load_pack
+from ramcheck.pack import Pack, load_pack
 from ramcheck.qualrun import EvalCell, load_responses_jsonl, run_eval
 from ramcheck.report import load_raw_csv
 from ramcheck.results import EvalResponse, Verdict
@@ -223,6 +224,22 @@ def _eval_event_writers(
     return on_run_start, on_cell_start, on_cell_done, run_done
 
 
+def _finalize_eval_bundle(
+    run_dir: Path, pack: Path, cfg: Config, pk: Pack, responses: list[EvalResponse]
+) -> None:
+    """Write manifest + scorecard for a finished eval and print the summary line."""
+    host = hostinfo.summary()
+    _write_bundle_manifest(run_dir, pack, cfg, host)
+    md = scorecard_mod.render_scorecard_md(pk, responses, [], [], host=host, date_str=_today())
+    (run_dir / "scorecard.md").write_text(md, encoding="utf-8")
+    errors = sum(1 for r in responses if not r.ok)
+    console.print(
+        f"[green]✓[/] {len(responses)} Antworten ({errors} Fehler) · "
+        f"[bold]{run_dir / 'scorecard.md'}[/] (Tech-Specs gefüllt, Qualität offen) · "
+        f"bewerten: [cyan]ramcheck judge --bundle {run_dir} --judge-config judge.yaml[/]"
+    )
+
+
 @app.command(name="eval")
 def eval_cmd(
     pack: Path = typer.Option(..., "--pack", exists=True, help="use-case pack YAML"),
@@ -247,21 +264,26 @@ def eval_cmd(
         console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
 
     client = _make_client(cfg)
-    if web:
-        run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl is opened before run_eval
-        monitor = _WebMonitorProcess(run_dir, port=port)
-        bound = monitor.start()
-        if bound:
-            url = f"http://127.0.0.1:{bound}"
-            console.print(f"[bold]Monitor:[/] [cyan]{url}[/] [dim](Ctrl-C zum Beenden)[/]")
-            if not no_open:
-                webbrowser.open(url)
-        else:
-            console.print("[yellow]Web-Monitor konnte nicht starten — Lauf läuft ohne ihn.[/]")
-        on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(
-            run_dir / "events.jsonl"
-        )
-        responses: list[EvalResponse] = []
+    if not web:
+        responses = run_eval(cfg, pk, client, run_dir=run_dir, resume=resume is not None)
+        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
+        return
+
+    run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl is opened before run_eval
+    monitor = _WebMonitorProcess(run_dir, port=port)
+    bound = monitor.start()
+    monitor_url = f"http://127.0.0.1:{bound}" if bound else None
+    if monitor_url is not None:
+        console.print(f"[bold]Monitor:[/] [cyan]{monitor_url}[/] [dim](Ctrl-C zum Beenden)[/]")
+        if not no_open:
+            webbrowser.open(monitor_url)
+    else:
+        console.print("[yellow]Web-Monitor konnte nicht starten — Lauf läuft ohne ihn.[/]")
+    on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(
+        run_dir / "events.jsonl"
+    )
+    responses = []
+    try:
         try:
             responses = run_eval(
                 cfg,
@@ -274,21 +296,15 @@ def eval_cmd(
                 on_cell_done=on_cell_done,
             )
         finally:
-            run_done(responses)
-            monitor.stop()
-    else:
-        responses = run_eval(cfg, pk, client, run_dir=run_dir, resume=resume is not None)
-    host = hostinfo.summary()
-    _write_bundle_manifest(run_dir, pack, cfg, host)
-
-    md = scorecard_mod.render_scorecard_md(pk, responses, [], [], host=host, date_str=_today())
-    (run_dir / "scorecard.md").write_text(md, encoding="utf-8")
-    errors = sum(1 for r in responses if not r.ok)
-    console.print(
-        f"[green]✓[/] {len(responses)} Antworten ({errors} Fehler) · "
-        f"[bold]{run_dir / 'scorecard.md'}[/] (Tech-Specs gefüllt, Qualität offen) · "
-        f"bewerten: [cyan]ramcheck judge --bundle {run_dir} --judge-config judge.yaml[/]"
-    )
+            run_done(responses)  # final event so the dashboard shows "fertig"
+        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
+        if monitor_url is not None:
+            # Keep the monitor up so the final state stays readable; Ctrl-C ends it.
+            console.print(f"[dim]Monitor läuft weiter auf {monitor_url} — Ctrl-C zum Beenden.[/]")
+            with contextlib.suppress(KeyboardInterrupt):
+                monitor.wait()
+    finally:
+        monitor.stop()
 
 
 @app.command()

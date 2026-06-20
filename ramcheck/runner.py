@@ -364,6 +364,11 @@ class _WebMonitorProcess:
         except ValueError:
             return None
 
+    def wait(self) -> None:
+        """Block until the monitor process exits (i.e. until the user presses Ctrl-C)."""
+        if self._proc is not None:
+            self._proc.wait()
+
     def stop(self) -> None:
         if self._proc is not None:
             self._proc.terminate()
