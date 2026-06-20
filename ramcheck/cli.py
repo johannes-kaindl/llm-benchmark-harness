@@ -242,14 +242,19 @@ def _hold_monitor(monitor: _WebMonitorProcess, url: str | None) -> None:
 
 def _eval_event_writers(
     events_path: Path,
+    *,
+    append: bool = True,
 ) -> tuple[
     Callable[[int], None],
     Callable[[int, EvalCell], None],
     Callable[[int, EvalResponse], None],
     Callable[[list[EvalResponse]], None],
 ]:
-    """Closures that translate run_eval's callbacks into events.jsonl lines."""
-    fh = events_path.open("a", encoding="utf-8")
+    """Closures that translate run_eval's callbacks into events.jsonl lines.
+
+    append=True keeps the historical --web semantics; append=False truncates so a
+    GUI-spawned run starts a fresh stream (no stale run_done → no false 'finished')."""
+    fh = events_path.open("a" if append else "w", encoding="utf-8")
 
     def _w(event: dict[str, object]) -> None:
         fh.write(events_mod.dumps(event) + "\n")
@@ -521,6 +526,9 @@ def eval_cmd(
     web: bool = typer.Option(False, "--web", help="live browser monitor for this run"),
     port: int = typer.Option(0, "--port", help="monitor port (0 = auto)"),
     no_open: bool = typer.Option(False, "--no-open", help="don't auto-open the browser"),
+    emit_events: bool = typer.Option(
+        False, "--emit-events", help="write events.jsonl without spawning the monitor (GUI)"
+    ),
 ) -> None:
     """Run a use-case pack through the models: capture answers + perf, write the bundle."""
     cfg = load_config(config)
@@ -537,15 +545,20 @@ def eval_cmd(
         console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
 
     client = _make_client(cfg)
-    if not web:
+    emit = web or emit_events
+    if not emit:
         responses = run_eval(cfg, pk, client, run_dir=run_dir, resume=resume is not None)
         _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
         return
 
     run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl is opened before run_eval
-    with _live_monitor(run_dir, port, no_open) as (monitor, url):
+    monitor_cm = (
+        _live_monitor(run_dir, port, no_open) if web else contextlib.nullcontext((None, None))
+    )
+    with monitor_cm as (monitor, url):
+        # --web keeps append (resume semantics); GUI --emit-events truncates (fresh stream).
         on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(
-            run_dir / "events.jsonl"
+            run_dir / "events.jsonl", append=web
         )
         responses = []
         try:
@@ -560,9 +573,10 @@ def eval_cmd(
                 on_cell_done=on_cell_done,
             )
         finally:
-            run_done(responses)  # final event so the dashboard shows "fertig"
+            run_done(responses)
         _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
-        _hold_monitor(monitor, url)
+        if web and monitor is not None:
+            _hold_monitor(monitor, url)
 
 
 def _judge_and_persist(
