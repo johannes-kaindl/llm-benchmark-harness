@@ -155,7 +155,7 @@ def bundle_detail(run_dir: Path) -> dict[str, Any] | None:
     responses = load_responses_jsonl(run_dir / "responses.jsonl")
     verdicts = load_judgements_jsonl(run_dir / "judgements.jsonl")
     reports = _load_reports(run_dir, pk)
-    rows = scorecard.master_rows(pk, responses, verdicts, reports) if reports else []
+    rows = scorecard.master_rows(pk, responses, verdicts, reports)
     samples = load_samples_jsonl(run_dir / "resources.jsonl")
     known_ids = {p.id for _, p in pk.all_prompts()}
     return {
@@ -169,12 +169,16 @@ def bundle_detail(run_dir: Path) -> dict[str, Any] | None:
         "ko": _ko_branches(pk, verdicts, rows),  # which branch fired + its root
         "cpu": [s.cpu_pct for s in samples],
         "ram": [s.sys_used_mb for s in samples],
-        "cited_ids": _cited_prompt_ids(reports, known_ids),  # {dim_id: [prompt_id,...]}
+        "cited_ids": _cited_prompt_ids(reports, known_ids),  # {"model|variant|dim_id": [prompt_id,...]}
     }
 
 
 def _cited_prompt_ids(reports: list[Any], known_ids: set[str]) -> dict[str, list[str]]:
-    """Parse the prompt_ids the judge cited in each dim_rationale (match against pack ids)."""
+    """Parse the prompt_ids the judge cited in each dim_rationale (match against pack ids).
+
+    Keys are composite ``"model|variant|dim_id"`` strings so multi-model bundles stay
+    unambiguous.  Shape: ``{"model|variant|dim_id": [prompt_id, ...]}``.
+    """
     import re
 
     out: dict[str, list[str]] = {}
@@ -182,23 +186,30 @@ def _cited_prompt_ids(reports: list[Any], known_ids: set[str]) -> dict[str, list
         for dim_id, text in getattr(rep, "dim_rationales", {}).items():
             hits = [tok for tok in re.findall(r"[A-Za-z]\d+", text or "") if tok in known_ids]
             if hits:
-                out.setdefault(dim_id, [])
                 out[f"{rep.model}|{rep.variant}|{dim_id}"] = hits
     return out
 
 
 def _ko_branches(pk: Any, verdicts: list[Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """For each failed-KO group, which of the two roots fired (dimension-floor / red-flag-prompt)."""
-    red_flagged = {v.prompt_id for v in verdicts if v.red_flag and not v.unscored}
+    """For each failed-KO group, which of the two roots fired (dimension-floor / red-flag-prompt).
+
+    Red-flag hits are computed per (model, variant) group — matching the scorecard math —
+    so that a failure in one model's group never pollutes another's branch entry.
+    """
+    from ramcheck import scorecard
+
     branches: list[dict[str, Any]] = []
     for r in rows:
         if r.get("safety_passed"):
             continue
-        hit_prompts = [p for p in pk.ko_rule.red_flag_prompts if p in red_flagged]
+        model, variant = r["model"], r["variant"]
+        gv = [v for v in verdicts if (v.model, v.variant) == (model, variant)]
+        group_red_flagged = scorecard.red_flagged_prompts(gv)
+        hit_prompts = [p for p in pk.ko_rule.red_flag_prompts if p in group_red_flagged]
         branches.append(
             {
-                "model": r["model"],
-                "variant": r["variant"],
+                "model": model,
+                "variant": variant,
                 "dimension": pk.ko_rule.dimension,
                 "threshold": pk.ko_rule.threshold,
                 "red_flag_prompts": hit_prompts,  # non-empty → red-flag branch fired
