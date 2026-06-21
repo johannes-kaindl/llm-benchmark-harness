@@ -53,3 +53,55 @@ def test_eval_cmd_exposes_models_json_option():
     res = CliRunner().invoke(cli_app, ["eval", "--help"])
     assert res.exit_code == 0
     assert "--models-json" in res.output
+
+
+from fastapi.testclient import TestClient
+
+from ramcheck.gui import app as gui_app
+
+
+def _client_and_launcher(tmp_path):
+    rec = _Rec()
+    reg = control.RunRegistry(runs_dir=tmp_path, launcher=rec)
+    return TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg)), rec
+
+
+def test_route_valid_models_json_spawns_with_flag(tmp_path):
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/eval",
+        data={
+            "pack_path": "packs/ndassist.yaml",
+            "config_path": "config.m5.yaml",
+            "models_json": '[{"id":"a","quant":"Q4"}]',
+        },
+    )
+    assert r.status_code == 200
+    assert "--models-json" in rec.calls[0]
+
+
+def test_route_empty_array_is_400_and_no_spawn(tmp_path):
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/eval",
+        data={"pack_path": "p", "config_path": "c", "models_json": "[]"},
+    )
+    assert r.status_code == 400
+    assert rec.calls == []
+
+
+def test_route_invalid_models_json_is_400_and_no_spawn(tmp_path):
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/eval",
+        data={"pack_path": "p", "config_path": "c", "models_json": "{bad"},
+    )
+    assert r.status_code == 400
+    assert rec.calls == []
+
+
+def test_route_no_models_json_still_works(tmp_path):
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post("/runs/eval", data={"pack_path": "p", "config_path": "c"})
+    assert r.status_code == 200
+    assert "--models-json" not in rec.calls[0]

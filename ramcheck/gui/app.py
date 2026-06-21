@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ramcheck import aggregate as aggregate_mod
+from ramcheck.config import models_from_json
 from ramcheck.gui import bundles, compare
 from ramcheck.gui.control import RunRegistry
 from ramcheck.pack import load_pack
@@ -213,14 +214,25 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
         pack_path: str = Form(...),
         config_path: str = Form(...),
         resume_dir: str | None = Form(None),
+        models_json: str = Form(""),
     ) -> Any:
         pack_path = _confine_cwd(pack_path)
         config_path = _confine_cwd(config_path)
         # "Fortsetzen": confine the posted resume dir under runs_dir and pass it through
         # so the registry adds --resume and reuses the dir instead of starting fresh.
         resume: Path | None = _confine(resume_dir) if resume_dir else None
+        # Resume never overrides models (the bundle's cells are fixed); otherwise apply
+        # the picker selection. Invalid/empty selection must not spawn a run.
+        models = None
+        if resume is None and models_json.strip():
+            try:
+                models = models_from_json(models_json)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from None
         try:
-            h = registry.start_eval(pack_path=pack_path, config_path=config_path, resume_dir=resume)
+            h = registry.start_eval(
+                pack_path=pack_path, config_path=config_path, resume_dir=resume, models=models
+            )
         except RunInProgress as e:
             raise HTTPException(status_code=409, detail=str(e)) from None
         return {"run_dir": h.run_dir.name, "kind": h.kind}
