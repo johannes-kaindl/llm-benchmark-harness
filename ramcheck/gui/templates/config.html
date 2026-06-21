@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title_suffix %} · Konfig + Start{% endblock %}
 {% block body %}
+<script defer src="/static/model_picker.js"></script>
 <div class="page-header">
   <h1 class="page-title">Konfig + Start</h1>
 </div>
@@ -41,6 +42,32 @@
         {% endfor %}
       </select>
     </div>
+    {% if not resume %}
+    <div x-data='modelPicker({{ models_by_config | tojson }})'>
+      <div class="form-group" x-init="config = document.getElementById('config_path').value; syncFromConfig()">
+        <label class="form-label">Modelle</label>
+        <template x-for="(m, i) in models" :key="i">
+          <label style="display:block; font-size:0.9rem">
+            <input type="checkbox" x-model="m.on">
+            <span x-text="m.id"></span>
+            <span class="muted text-xs" x-text="m.quant ? ('· ' + m.quant) : ''"></span>
+          </label>
+        </template>
+        <template x-for="(a, i) in adhoc" :key="'a' + i">
+          <div class="flex gap-2" style="margin-top:0.25rem">
+            <input class="form-input" type="text" placeholder="id" x-model="a.id" style="flex:1">
+            <input class="form-input" type="text" placeholder="quant" x-model="a.quant" style="width:8rem">
+            <button type="button" class="btn btn-secondary" @click="removeAdhoc(i)">✕</button>
+          </div>
+        </template>
+        <button type="button" class="btn btn-secondary" style="margin-top:0.4rem" @click="addAdhoc()">+ Modell</button>
+        <input type="hidden" name="models_json" :value="modelsJson()">
+        <p class="muted text-xs" x-show="count() === 0" style="color:var(--nein); margin-top:0.25rem">
+          Wähle mindestens ein Modell.
+        </p>
+      </div>
+    </div>
+    {% endif %}
     <button type="submit" class="btn btn-primary">
       {% if resume %}Fortsetzen{% else %}Eval starten{% endif %}
     </button>

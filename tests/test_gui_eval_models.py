@@ -100,3 +100,19 @@ def test_route_no_models_json_still_works(tmp_path):
     r = client.post("/runs/eval", data={"pack_path": "p", "config_path": "c"})
     assert r.status_code == 200
     assert "--models-json" not in rec.calls[0]
+
+
+def test_config_page_renders_model_picker(tmp_path):
+    client, _ = _client_and_launcher(tmp_path)
+    body = client.get("/config").text
+    assert "modelPicker(" in body            # Alpine component bound
+    assert 'name="models_json"' in body      # hidden field present
+    assert "/static/model_picker.js" in body
+    assert "+ Modell" in body                # ad-hoc add button
+
+
+def test_config_page_hides_picker_on_resume(tmp_path):
+    client, _ = _client_and_launcher(tmp_path)
+    body = client.get("/config?resume=somebundle").text
+    assert "modelPicker(" not in body
+    assert 'name="models_json"' not in body

@@ -16,7 +16,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ramcheck import aggregate as aggregate_mod
 from ramcheck.config import models_from_json
-from ramcheck.gui import bundles, compare
+from ramcheck.gui import bundles, compare, configs as configs_mod
 from ramcheck.gui.control import RunRegistry
 from ramcheck.pack import load_pack
 
@@ -154,6 +154,7 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             request,
             packs=pack_files,
             configs=config_files,
+            models_by_config=configs_mod.models_by_config(config_files),
             judge_configs=judge_config_files,
             eval_only_bundles=eval_only,
             resume=resume,
