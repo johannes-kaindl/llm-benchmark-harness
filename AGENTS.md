@@ -168,6 +168,13 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   `docs/explanation/design-decisions.md` and surfaced UI-retrievably via `templates/_method_explainer.html`.
 - **`resources.jsonl` ticks carry `cpu_pct`** (system CPU %, `None` for pre-cpu ticks) — additive,
   does not touch `RAW_CSV_COLUMNS`. The result view plots RAM + CPU over the run.
+- **GUI-Modell-Override (ephemer):** Die „Konfig + Start"-Seite zeigt die `models:` der gewählten
+  Config als Checkboxen + eine Ad-hoc-Zeile (id/quant). Die Auswahl geht als `models_json` an
+  `/runs/eval` → `RunRegistry.start_eval(models=…)` → `eval --models-json` → `apply_models_override`
+  **ersetzt** `config.models` nur für diesen Lauf (Endpoint/seed bleiben aus der Config; nichts wird
+  in die Config zurückgeschrieben — das Bundle protokolliert, was lief). Leeres/ungültiges
+  `models_json` → 400, kein Spawn; `resume` ignoriert den Override. Pure Logik:
+  `config.models_from_json`/`apply_models_override`, `gui/configs.py`.
 - **Zwei Vergleichs-Ebenen, klar getrennt:** `/compare` (Station 6) ist das **Cross-Run-Aggregat**
   über *alle* Bundles (`aggregate.load_all_scores` → Tabelle Hardware×Qualität). `/compare/{bundle}`
   ist der **Innerhalb-Bundle-Achsen-Vergleich** (Ink. 8): eine kontrollierte Ansicht entlang `model`
