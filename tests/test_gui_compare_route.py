@@ -1,12 +1,13 @@
 # tests/test_gui_compare_route.py
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
+from test_gui_compare import _resp, _two_model_bundle, _two_variant_bundle, _write_compare_bundle
 
 from ramcheck.gui import app as gui_app
 from ramcheck.gui.control import RunRegistry
-
-from test_gui_compare import _two_variant_bundle, _two_model_bundle, _write_compare_bundle
 
 
 class _FakeLauncher:
@@ -67,8 +68,6 @@ def test_compare_route_unjudged_perf_only(tmp_path):
     # un-judged: reports.jsonl absent + no scores.csv dims -> no quality, perf only
     d = tmp_path / "2026_eval_raw"
     d.mkdir()
-    import json
-    from test_gui_compare import _resp
     (d / "bundle.json").write_text(json.dumps({
         "pack_id": "ndassist", "pack_path": "packs/ndassist.yaml",
         "models": [{"id": "m", "quant": "q"}], "date": "2026-06-20", "host": {"machine": "t"},
