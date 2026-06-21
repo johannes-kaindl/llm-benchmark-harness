@@ -10,6 +10,7 @@ document.addEventListener("alpine:init", () => {
     config: Object.keys(byConfig)[0] || "",
     models: [],
     adhoc: [],
+    _nextK: 0, // monotonic key so x-for rows stay stable across removals
     init() {
       this.syncFromConfig();
     },
@@ -25,10 +26,10 @@ document.addEventListener("alpine:init", () => {
       this.adhoc = [];
     },
     addAdhoc() {
-      this.adhoc.push({ id: "", quant: "" });
+      this.adhoc.push({ id: "", quant: "", k: this._nextK++ });
     },
-    removeAdhoc(i) {
-      this.adhoc.splice(i, 1);
+    removeAdhoc(k) {
+      this.adhoc = this.adhoc.filter((a) => a.k !== k);
     },
     count() {
       const checked = this.models.filter((m) => m.on).length;

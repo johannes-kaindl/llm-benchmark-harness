@@ -124,7 +124,8 @@ def load_config(path: str | Path) -> Config:
 
 def models_from_json(s: str) -> list[ModelSpec]:
     """Parse a JSON array of model specs (GUI picker). Raises ValueError on bad JSON,
-    a non-array, an empty array, or a spec missing required fields."""
+    a non-array, an empty array, or a spec with a missing/blank ``id``. De-duplicates by
+    (id, quant) so a config model left checked AND re-added ad-hoc never doubles an eval cell."""
     try:
         data = json.loads(s)
     except json.JSONDecodeError as e:
@@ -132,9 +133,19 @@ def models_from_json(s: str) -> list[ModelSpec]:
     if not isinstance(data, list) or not data:
         raise ValueError("models_json must be a non-empty JSON array")
     try:
-        return [ModelSpec(**m) for m in data]
+        specs = [ModelSpec(**m) for m in data]
     except (ValidationError, TypeError) as e:
         raise ValueError(f"invalid model spec: {e}") from e
+    if any(not m.id.strip() for m in specs):
+        raise ValueError("model id must be non-empty")
+    out: list[ModelSpec] = []
+    seen: set[tuple[str, str]] = set()
+    for m in specs:
+        key = (m.id, m.quant)
+        if key not in seen:
+            seen.add(key)
+            out.append(m)
+    return out
 
 
 def apply_models_override(cfg: Config, models_json: str) -> Config:

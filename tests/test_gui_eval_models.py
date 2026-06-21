@@ -109,6 +109,7 @@ def test_config_page_renders_model_picker(tmp_path):
     assert 'name="models_json"' in body  # hidden field present
     assert "/static/model_picker.js" in body
     assert "+ Modell" in body  # ad-hoc add button
+    assert ":disabled" in body  # submit disabled at 0 models (no empty-submit dead-end)
 
 
 def test_config_page_hides_picker_on_resume(tmp_path):
@@ -116,3 +117,102 @@ def test_config_page_hides_picker_on_resume(tmp_path):
     body = client.get("/config?resume=somebundle").text
     assert "modelPicker(" not in body
     assert 'name="models_json"' not in body
+
+
+# ── Review fixes ──────────────────────────────────────────────────────────────
+
+
+def test_route_blank_id_is_400_and_no_spawn(tmp_path):
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/eval",
+        data={"pack_path": "p", "config_path": "c", "models_json": '[{"id":""}]'},
+    )
+    assert r.status_code == 400
+    assert rec.calls == []
+
+
+def test_route_resume_ignores_models_json(tmp_path):
+    (tmp_path / "2026_eval_x").mkdir()  # resume dir must exist under runs_dir for _confine
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/eval",
+        data={
+            "pack_path": "p",
+            "config_path": "c",
+            "resume_dir": "2026_eval_x",
+            "models_json": '[{"id":"a"}]',
+        },
+    )
+    assert r.status_code == 200
+    argv = rec.calls[0]
+    assert "--resume" in argv
+    assert "--models-json" not in argv  # override ignored on resume (M7)
+
+
+def test_route_resume_ignores_even_invalid_models_json(tmp_path):
+    (tmp_path / "2026_eval_y").mkdir()
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/eval",
+        data={
+            "pack_path": "p",
+            "config_path": "c",
+            "resume_dir": "2026_eval_y",
+            "models_json": "{bad",
+        },
+    )
+    assert r.status_code == 200  # not 400 — override path skipped on resume
+    assert "--models-json" not in rec.calls[0]
+
+
+def test_eval_cmd_applies_override_and_skips_on_resume(tmp_path, monkeypatch):
+    import ramcheck.cli as cli
+
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_eval(cfg, pk, client, **kw):
+        captured["models"] = [m.id for m in cfg.models]
+        return []
+
+    monkeypatch.setattr(cli, "run_eval", fake_run_eval)
+    monkeypatch.setattr(cli, "_make_client", lambda cfg: None)
+    monkeypatch.setattr(cli, "_finalize_eval_bundle", lambda *a, **k: None)
+    runner = CliRunner()
+
+    # non-resume: --models-json replaces config.models for the run
+    res = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--pack",
+            "packs/ndassist.yaml",
+            "--config",
+            "config.m5.yaml",
+            "--models-json",
+            '[{"id":"OVERRIDE"}]',
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert captured["models"] == ["OVERRIDE"]
+
+    # resume: override is skipped (bundle cells are fixed)
+    captured.clear()
+    rdir = tmp_path / "rz"
+    rdir.mkdir()
+    res2 = runner.invoke(
+        cli.app,
+        [
+            "eval",
+            "--pack",
+            "packs/ndassist.yaml",
+            "--config",
+            "config.m5.yaml",
+            "--resume",
+            str(rdir),
+            "--models-json",
+            '[{"id":"OVERRIDE"}]',
+        ],
+    )
+    assert res2.exit_code == 0, res2.output
+    assert "OVERRIDE" not in captured["models"]

@@ -51,7 +51,7 @@ config.html (Alpine baut models_json aus Checkboxen + Ad-hoc)
   - `models_by_config(files: list[str]) -> dict[str, list[dict]]` — `{config_path: [model.model_dump(), …]}` für die Vorlage (JSON-serialisierbar).
 - **`ramcheck/gui/app.py`:**
   - `/config`-Route: zusätzlich `models_by_config(config_files)` an die Vorlage geben (Key `models_by_config`).
-  - `/runs/eval`-POST: neues optionales Form-Feld `models_json: str = Form("")`. Wenn nicht-leer → `json.loads` + `[ModelSpec(**m) for m in …]`; bei JSON-/Validierungsfehler **oder** leerer Liste → `config.html` mit `error` re-rendern (kein Spawn). Gültige Liste → `start_eval(..., models=specs)`.
+  - `/runs/eval`-POST: neues optionales Form-Feld `models_json: str = Form("")`. Bei `resume` wird der Override ignoriert. Sonst, wenn nicht-leer → `models_from_json(...)`; bei JSON-/Validierungs-/Leer-Fehler → **`HTTPException(400)`, kein Spawn** (codebase-konform: die Route liefert sonst JSON und nutzt `HTTPException`, z. B. 409 bei RunInProgress — daher 400 statt HTML-Re-render; der Front-end-Submit ist bei 0 Modellen ohnehin deaktiviert). Gültige Liste → `start_eval(..., models=specs)`.
 - **`ramcheck/gui/control.py` — `RunRegistry.start_eval`:** Signatur erweitern um `models: list[ModelSpec] | None = None`; falls gesetzt → `argv += ["--models-json", json.dumps([m.model_dump() for m in models])]`.
 - **`ramcheck/cli.py` — `eval_cmd`:** Option `models_json: str = typer.Option("", "--models-json", help="JSON list[ModelSpec]; replaces config.models for this run (GUI picker)")`. Wenn nicht-leer → parsen → `cfg.models = [ModelSpec(**m) …]` vor dem Lauf. (Helfer `_apply_models_override(cfg, models_json) -> Config` rein/testbar.)
 - **`ramcheck/gui/templates/config.html`:** Alpine-Block im „Eval starten"-Formular:
@@ -65,8 +65,8 @@ config.html (Alpine baut models_json aus Checkboxen + Ad-hoc)
 
 Genaue Semantik des `models_json`-Feldes (löst die „leer"-Mehrdeutigkeit auf):
 - **`models_json` = leerer String / Feld fehlt** → **kein Override**, Lauf nutzt `config.models` wie heute. Deckt `resume` und Alt-/Nicht-GUI-Clients ab (Rückwärtskompat).
-- **`models_json` = `"[]"`** (explizit leere Auswahl) → Fehler „Wähle mindestens ein Modell", Route re-rendert `config.html` mit Meldung, **kein** Spawn. (Front-end blockt 0-Auswahl zusätzlich, also Defense-in-Depth.)
-- **`models_json` = ungültiges JSON / Element ohne Pflichtfeld `id`** → Fehler-Re-render, **kein** Spawn.
+- **`models_json` = `"[]"`** (explizit leere Auswahl) → `HTTPException(400)`, **kein** Spawn. Der Front-end-Submit ist bei 0 Modellen deaktiviert (`:disabled="count() === 0"`), das 400 ist Defense-in-Depth für gecraftete Posts.
+- **`models_json` = ungültiges JSON / Element mit fehlender oder leerer `id`** → `HTTPException(400)`, **kein** Spawn. (`models_from_json` lehnt leere/whitespace-`id` ab und dedupliziert nach `(id, quant)`.)
 - **Kaputte Config beim Anzeigen:** `config_models` → `[]`; diese Config zeigt keine Modelle (defensiv), die Seite bleibt. Wird sie ohne Override gestartet, verhält sich der Lauf wie heute.
 - **CLI `--models-json` ungültig:** klarer Fehler-Exit (kein halber Lauf).
 

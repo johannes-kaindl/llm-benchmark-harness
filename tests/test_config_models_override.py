@@ -42,3 +42,20 @@ def test_apply_models_override_replaces_models():
     out = apply_models_override(cfg, '[{"id":"x","quant":"Q2"}]')
     assert [m.id for m in out.models] == ["x"]
     assert out.endpoint == cfg.endpoint  # everything else preserved
+
+
+# ── Review fixes ──────────────────────────────────────────────────────────────
+
+
+def test_models_from_json_rejects_blank_id():
+    with pytest.raises(ValueError):
+        models_from_json('[{"id":""}]')
+    with pytest.raises(ValueError):
+        models_from_json('[{"id":"   "}]')
+
+
+def test_models_from_json_dedupes_by_id_quant():
+    specs = models_from_json(
+        '[{"id":"a","quant":"Q4"},{"id":"a","quant":"Q4"},{"id":"a","quant":"Q2"}]'
+    )
+    assert [(m.id, m.quant) for m in specs] == [("a", "Q4"), ("a", "Q2")]

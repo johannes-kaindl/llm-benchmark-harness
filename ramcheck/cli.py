@@ -514,11 +514,14 @@ def eval_cmd(
 ) -> None:
     """Run a use-case pack through the models: capture answers + perf, write the bundle."""
     cfg = load_config(config)
-    try:
-        cfg = apply_models_override(cfg, models_json)
-    except ValueError as e:
-        console.print(f"[red]--models-json:[/] {e}")
-        raise typer.Exit(1) from None
+    # Resume reruns the bundle's fixed cells — the model override never applies (M7; matches
+    # the GUI route, which also gates the override on a non-resume start).
+    if resume is None:
+        try:
+            cfg = apply_models_override(cfg, models_json)
+        except ValueError as e:
+            console.print(f"[red]--models-json:[/] {e}")
+            raise typer.Exit(1) from None
     pk = load_pack(pack)
     if resume is not None:
         run_dir = resume

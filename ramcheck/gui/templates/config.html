@@ -43,6 +43,7 @@
         {% endfor %}
       </select>
     </div>
+    <button type="submit" class="btn btn-primary">Fortsetzen</button>
     {% else %}
     <div x-data='modelPicker({{ models_by_config | tojson }})'>
       <div class="form-group">
@@ -63,11 +64,11 @@
             <span class="muted text-xs" x-text="m.quant ? ('· ' + m.quant) : ''"></span>
           </label>
         </template>
-        <template x-for="(a, i) in adhoc" :key="'a' + i">
+        <template x-for="a in adhoc" :key="a.k">
           <div class="flex gap-2" style="margin-top:0.25rem">
             <input class="form-input" type="text" placeholder="id" x-model="a.id" style="flex:1">
             <input class="form-input" type="text" placeholder="quant" x-model="a.quant" style="width:8rem">
-            <button type="button" class="btn btn-secondary" @click="removeAdhoc(i)">✕</button>
+            <button type="button" class="btn btn-secondary" @click="removeAdhoc(a.k)">✕</button>
           </div>
         </template>
         <button type="button" class="btn btn-secondary" style="margin-top:0.4rem" @click="addAdhoc()">+ Modell</button>
@@ -76,11 +77,9 @@
           Wähle mindestens ein Modell.
         </p>
       </div>
+      <button type="submit" class="btn btn-primary" :disabled="count() === 0">Eval starten</button>
     </div>
     {% endif %}
-    <button type="submit" class="btn btn-primary">
-      {% if resume %}Fortsetzen{% else %}Eval starten{% endif %}
-    </button>
   </form>
 </div>
 
