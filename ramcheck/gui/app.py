@@ -157,8 +157,12 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
     """Station 3 (control) + Station 4 (live SSE): POST endpoints drive the registry;
     GET /live/{name} streams the folded view as Server-Sent Events."""
     from ramcheck.gui import live as live_mod
-    from ramcheck.gui.control import RunHandle, RunInProgress, read_sentinel
+    from ramcheck.gui.control import RunHandle, RunInProgress, is_active, read_sentinel
     from ramcheck.webmon import POLL_S
+
+    # Once a run is no longer alive and no terminal event has arrived, stop after this
+    # many idle snapshots (no new bytes) so a crashed subprocess can't busy-loop forever.
+    IDLE_CAP = 3
 
     _runs_dir = runs_dir.resolve()
 
@@ -202,12 +206,32 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
         stream = live_mod.LiveStream(run_dir / fname, kind=kind)
 
         def gen() -> Any:
+            idle = 0
             try:
                 while True:
+                    prev_offset = stream._offset
                     view = stream.snapshot()
                     yield f"event: view\ndata: {json.dumps(view)}\n\n"
                     if view.get("finished"):
                         break
+                    # No terminal event arrived. If the run is no longer alive (its
+                    # sentinel pid is dead), the subprocess crashed without writing
+                    # run_done — emit a terminal 'crashed' frame and stop rather than
+                    # busy-looping forever, leaking a server thread (MAJOR 2).
+                    if not is_active(read_sentinel(run_dir)):
+                        # Allow a few idle reads so any final flushed bytes are picked
+                        # up; once no new bytes arrive, mark crashed and break.
+                        if stream._offset == prev_offset:
+                            idle += 1
+                        else:
+                            idle = 0
+                        if idle >= IDLE_CAP:
+                            view["finished"] = True
+                            view["crashed"] = True
+                            yield f"event: view\ndata: {json.dumps(view)}\n\n"
+                            break
+                    else:
+                        idle = 0
                     time.sleep(POLL_S)
             except (BrokenPipeError, ConnectionResetError, OSError):
                 return

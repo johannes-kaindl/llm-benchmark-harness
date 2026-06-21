@@ -224,3 +224,54 @@ def test_live_stream_rejects_traversal(tmp_path):
     """Path traversal in live/{name} must be rejected with 404."""
     r = _client(tmp_path).get("/live/../../etc")
     assert r.status_code == 404
+
+
+def _dead_pid():
+    """A pid that is (almost certainly) not alive."""
+    import os
+
+    pid = 2_000_000_000
+    while True:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return pid
+        except PermissionError:
+            pass
+        pid -= 1
+
+
+def test_live_stream_crashed_subprocess_terminates(tmp_path):
+    """A crashed run (sentinel pid dead, no run_done) must terminate the SSE stream
+    with a terminal 'crashed' frame instead of busy-looping forever (MAJOR 2)."""
+    from ramcheck import events as ev
+    from ramcheck.gui.control import write_sentinel
+
+    run_dir = tmp_path / "run_crash"
+    run_dir.mkdir()
+    # A non-terminal event stream: started, one cell done, but NO run_done.
+    lines = [
+        ev.dumps(ev.run_start_event(1.0, 2)),
+        ev.dumps(ev.cell_done_event(1.2, 0, "m", "v", "A1", 0, True, 0.3, 1.0, 5.0, 7, False, "")),
+    ]
+    (run_dir / "events.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Sentinel says running but its pid is dead → is_active() is False.
+    write_sentinel(run_dir, kind="eval", pid=_dead_pid(), pack_path="p", config_path="c")
+
+    r = _client(tmp_path).get(f"/live/{run_dir.name}?kind=eval")
+    assert r.status_code == 200
+    body = r.text
+    # The generator must have terminated (TestClient drained the whole body) and
+    # emitted a terminal frame flagged as crashed.
+    crashed_seen = False
+    finished_seen = False
+    for line in body.splitlines():
+        if line.startswith("data: "):
+            payload = json.loads(line[len("data: ") :])
+            if payload.get("crashed"):
+                crashed_seen = True
+            if payload.get("finished"):
+                finished_seen = True
+    assert crashed_seen, body
+    # finished must be truthy on the terminal frame so the client stops polling.
+    assert finished_seen, body
