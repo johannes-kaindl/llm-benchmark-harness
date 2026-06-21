@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -65,6 +66,15 @@ def mark_sentinel(run_dir: Path, state: str) -> None:
     if s is None:
         return
     s["state"] = state
+    sentinel_path(run_dir).write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def set_sentinel_pid(run_dir: Path, pid: int) -> None:
+    """Patch the pid on an existing sentinel (it was written pre-spawn with a placeholder)."""
+    s = read_sentinel(run_dir)
+    if s is None:
+        return
+    s["pid"] = pid
     sentinel_path(run_dir).write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -141,6 +151,11 @@ class RunRegistry:
     def __init__(self, runs_dir: Path, launcher: ProcessLauncher) -> None:
         self.runs_dir = runs_dir
         self.launcher = launcher
+        # Serializes guard+reserve+sentinel+spawn within this process. FastAPI runs sync
+        # handlers in a threadpool, so without this two concurrent starts can both pass
+        # the guard before either writes the sentinel (TOCTOU). The on-disk sentinel
+        # still provides the cross-process / GUI-restart lock.
+        self._lock = threading.Lock()
 
     # ---- lock ----
     def _active_run_dir(self) -> Path | None:
@@ -171,37 +186,49 @@ class RunRegistry:
         config_path: str,
         resume_dir: Path | None = None,
     ) -> RunHandle:
-        self._guard_free()
-        run_dir = resume_dir or self._new_run_dir(pack_path)
-        argv = [
-            "eval",
-            "--pack",
-            pack_path,
-            "--config",
-            config_path,
-            "--run-dir",
-            str(run_dir),
-            "--emit-events",
-        ]
-        if resume_dir is not None:
-            argv += ["--resume", str(resume_dir)]
-        pid = self.launcher.spawn(argv)
-        write_sentinel(run_dir, kind="eval", pid=pid, pack_path=pack_path, config_path=config_path)
-        return RunHandle("eval", run_dir, pid)
+        # Hold the lock across guard+reserve+sentinel+spawn so no window opens between
+        # the guard and the on-disk lock being written (TOCTOU).
+        with self._lock:
+            self._guard_free()
+            run_dir = resume_dir or self._new_run_dir(pack_path)
+            argv = [
+                "eval",
+                "--pack",
+                pack_path,
+                "--config",
+                config_path,
+                "--run-dir",
+                str(run_dir),
+                "--emit-events",
+            ]
+            if resume_dir is not None:
+                argv += ["--resume", str(resume_dir)]
+            # Write the sentinel (state='running') BEFORE spawn so the on-disk lock
+            # exists before any window opens; patch the real pid in post-spawn.
+            write_sentinel(
+                run_dir, kind="eval", pid=-1, pack_path=pack_path, config_path=config_path
+            )
+            pid = self.launcher.spawn(argv)
+            set_sentinel_pid(run_dir, pid)
+            return RunHandle("eval", run_dir, pid)
 
     def start_judge(self, *, bundle: Path, judge_config_path: str) -> RunHandle:
-        self._guard_free()
-        argv = [
-            "judge",
-            "--bundle",
-            str(bundle),
-            "--judge-config",
-            judge_config_path,
-            "--emit-events",
-        ]
-        pid = self.launcher.spawn(argv)
-        write_sentinel(bundle, kind="judge", pid=pid, pack_path="", config_path=judge_config_path)
-        return RunHandle("judge", bundle, pid)
+        with self._lock:
+            self._guard_free()
+            argv = [
+                "judge",
+                "--bundle",
+                str(bundle),
+                "--judge-config",
+                judge_config_path,
+                "--emit-events",
+            ]
+            write_sentinel(
+                bundle, kind="judge", pid=-1, pack_path="", config_path=judge_config_path
+            )
+            pid = self.launcher.spawn(argv)
+            set_sentinel_pid(bundle, pid)
+            return RunHandle("judge", bundle, pid)
 
     def _new_run_dir(self, pack_path: str) -> Path:
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
