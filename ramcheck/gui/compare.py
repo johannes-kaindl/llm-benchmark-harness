@@ -12,9 +12,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from ramcheck.merge import DEFAULT_TOLERANCE_S, load_samples_jsonl
 from ramcheck.models import ResourceSample, pressure_max
+from ramcheck.pack import Dimension, Pack
 from ramcheck.results import EvalResponse, Verdict
 from ramcheck.scorecard import model_variant_groups
 from ramcheck.stats import median, percentile
@@ -85,7 +87,7 @@ def _cpu_for_window(
 class CompareCell:
     """One axis value (a model or a variant) with quality + cost metrics."""
 
-    label: str            # the axis value shown as a column header
+    label: str  # the axis value shown as a column header
     model: str
     variant: str
     pct: float | None
@@ -106,20 +108,20 @@ class CompareCell:
 
 @dataclass
 class CompareDetail:
-    axis: str                     # resolved: "model" | "variant"
-    axis_label: str               # "Modell" | "Variante"
-    projection: str               # the held-constant value of the other dimension
-    projection_label: str         # "Variante" | "Modell"
-    projection_options: list[str] # other-dimension values to switch to (>1 only)
+    axis: str  # resolved: "model" | "variant"
+    axis_label: str  # "Modell" | "Variante"
+    projection: str  # the held-constant value of the other dimension
+    projection_label: str  # "Variante" | "Modell"
+    projection_options: list[str]  # other-dimension values to switch to (>1 only)
     cells: list[CompareCell]
     relations_summary: str
     winners: dict[str, str | None]
-    scatter_points: list[dict]
-    divergence: list  # list[DivergencePrompt]; filled in Task 5
+    scatter_points: list[dict[str, Any]]
+    divergence: list[DivergencePrompt]
     judged: bool
     single: bool
-    pack: object              # Pack — for the method explainer + dimension labels
-    dimensions: list          # pack.dimensions (id/name/weight) for ② rows
+    pack: Pack  # for the method explainer + dimension labels
+    dimensions: list[Dimension]  # pack.dimensions (id/name/weight) for ② rows
     run_name: str
 
 
@@ -138,7 +140,7 @@ def _cell_metrics(
     model: str,
     variant: str,
     responses: list[EvalResponse],
-    master: dict | None,
+    master: dict[str, Any] | None,
     dim_scores: dict[str, int],
     dim_rationales: dict[str, str],
     samples: list[ResourceSample],
@@ -149,7 +151,9 @@ def _cell_metrics(
     levels = [r.mem_pressure_max for r in cell_resps if r.mem_pressure_max]
     cpu_max, cpu_avg = _cpu_for_window(samples, cell_resps)
     return CompareCell(
-        label=label, model=model, variant=variant,
+        label=label,
+        model=model,
+        variant=variant,
         pct=(master["pct"] if master else None),
         recommendation=(master["recommendation"] if master else None),
         safety_passed=(master["safety_passed"] if master else None),
@@ -161,7 +165,8 @@ def _cell_metrics(
         e2e_med=_med_or_none([r.e2e_s for r in ok]),
         peak_ram_mb=(max(sys_used) if sys_used else None),
         mem_pressure_max=pressure_max(levels),
-        cpu_max=cpu_max, cpu_avg=cpu_avg,
+        cpu_max=cpu_max,
+        cpu_avg=cpu_avg,
         n_ok=len(ok),
     )
 
@@ -198,7 +203,11 @@ def compare_detail(
 
     if resolved == "model":
         axis_label, proj_label = "Modell", "Variante"
-        proj = projection if projection in variants else ("baseline" if "baseline" in variants else (variants[0] if variants else ""))
+        proj = (
+            projection
+            if projection in variants
+            else ("baseline" if "baseline" in variants else (variants[0] if variants else ""))
+        )
         keys = [(m, proj) for m in models if (m, proj) in group_set]
         proj_options = variants if len(variants) > 1 else []
         labels = [m for m, _ in keys]
@@ -213,26 +222,38 @@ def compare_detail(
     master_by = {(row["model"], row["variant"]): row for row in master_rows}
 
     cells: list[CompareCell] = []
-    for (model, variant), label in zip(keys, labels):
+    for (model, variant), label in zip(keys, labels, strict=True):
         rep = reports_by.get((model, variant))
-        cells.append(_cell_metrics(
-            label, model, variant, responses,
-            master_by.get((model, variant)),
-            rep.dim_scores if rep else {},
-            rep.dim_rationales if rep else {},
-            samples,
-        ))
+        cells.append(
+            _cell_metrics(
+                label,
+                model,
+                variant,
+                responses,
+                master_by.get((model, variant)),
+                rep.dim_scores if rep else {},
+                rep.dim_rationales if rep else {},
+                samples,
+            )
+        )
 
     judged = any(c.pct is not None for c in cells)
     return CompareDetail(
-        axis=resolved, axis_label=axis_label, projection=proj, projection_label=proj_label,
-        projection_options=proj_options, cells=cells,
-        relations_summary="",            # Task 4
-        winners={},                      # Task 4
-        scatter_points=[],               # Task 4
+        axis=resolved,
+        axis_label=axis_label,
+        projection=proj,
+        projection_label=proj_label,
+        projection_options=proj_options,
+        cells=cells,
+        relations_summary="",  # Task 4
+        winners={},  # Task 4
+        scatter_points=[],  # Task 4
         divergence=_divergence(cells, responses, verdicts, pk),
-        judged=judged, single=len(cells) <= 1,
-        pack=pk, dimensions=list(pk.dimensions), run_name=run_dir.name,
+        judged=judged,
+        single=len(cells) <= 1,
+        pack=pk,
+        dimensions=list(pk.dimensions),
+        run_name=run_dir.name,
     )
 
 
@@ -256,7 +277,7 @@ class DivergencePrompt:
     category: str
     title: str
     scores: dict[str, float | None]  # axis label -> mean Verdict.score (None if absent)
-    delta: float                     # |max - min| over present means
+    delta: float  # |max - min| over present means
     answers: list[CellAnswer]
 
 
@@ -265,18 +286,31 @@ def _mean_score(verdicts: list[Verdict]) -> float | None:
     return sum(vals) / len(vals) if vals else None
 
 
-def _first_answer(label, model, variant, responses, verdicts) -> CellAnswer | None:
+def _first_answer(
+    label: str,
+    model: str,
+    variant: str,
+    responses: list[EvalResponse],
+    verdicts: list[Verdict],
+) -> CellAnswer | None:
     resps = [r for r in responses if (r.model, r.variant) == (model, variant)]
     if not resps:
         return None
     r = resps[0]
-    v = next((x for x in verdicts if (x.model, x.variant, x.repeat) == (model, variant, r.repeat)), None)
+    v = next(
+        (x for x in verdicts if (x.model, x.variant, x.repeat) == (model, variant, r.repeat)), None
+    )
     return CellAnswer(
-        label=label, model=model, variant=variant,
-        response_text=r.response_text, content_empty=r.content_empty,
+        label=label,
+        model=model,
+        variant=variant,
+        response_text=r.response_text,
+        content_empty=r.content_empty,
         reasoning_chars=r.reasoning_chars,
-        score=(v.score if v else None), rationale=(v.rationale if v else ""),
-        red_flag=(v.red_flag if v else False), unscored=(v.unscored if v else False),
+        score=(v.score if v else None),
+        rationale=(v.rationale if v else ""),
+        red_flag=(v.red_flag if v else False),
+        unscored=(v.unscored if v else False),
     )
 
 
@@ -284,7 +318,7 @@ def _divergence(
     cells: list[CompareCell],
     responses: list[EvalResponse],
     verdicts: list[Verdict],
-    pk,
+    pk: Pack,
 ) -> list[DivergencePrompt]:
     if len(cells) < 2 or not verdicts:
         return []
@@ -300,12 +334,15 @@ def _divergence(
         answers: list[CellAnswer] = []
         for c in cells:
             cell_verdicts = [
-                v for v in verdicts
+                v
+                for v in verdicts
                 if (v.model, v.variant, v.prompt_id) == (c.model, c.variant, pid)
             ]
             scores[c.label] = _mean_score(cell_verdicts)
             ans = _first_answer(
-                c.label, c.model, c.variant,
+                c.label,
+                c.model,
+                c.variant,
                 [r for r in responses if r.prompt_id == pid],
                 cell_verdicts,
             )

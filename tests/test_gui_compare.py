@@ -4,6 +4,8 @@ import json
 import pathlib
 import tempfile
 
+import pytest
+
 from ramcheck.gui import compare
 from ramcheck.judge import write_reports_jsonl
 from ramcheck.models import ResourceSample
@@ -15,13 +17,37 @@ PACK = "packs/ndassist.yaml"
 
 def _resp(model: str, variant: str, **over) -> EvalResponse:
     base = dict(
-        pack_id="ndassist", pack_version=1, machine="t", model=model, quant="q",
-        engine="e", engine_version="x", variant=variant, category="A", prompt_id="A1",
-        repeat=0, response_text="ok", content_empty=False, ttft_s=0.1, decode_tps=10.0,
-        prefill_tps=1.0, e2e_s=1.0, prompt_tokens=1, completion_tokens=1,
-        is_cold_start=False, power_source="ac", peak_rss_mb=0.0, sys_used_mb=8000.0,
-        mem_pressure_max="normal", throttled=False, ok=True, error="", seed=42,
-        t_start=0.0, t_end=1.0, reasoning_chars=0,
+        pack_id="ndassist",
+        pack_version=1,
+        machine="t",
+        model=model,
+        quant="q",
+        engine="e",
+        engine_version="x",
+        variant=variant,
+        category="A",
+        prompt_id="A1",
+        repeat=0,
+        response_text="ok",
+        content_empty=False,
+        ttft_s=0.1,
+        decode_tps=10.0,
+        prefill_tps=1.0,
+        e2e_s=1.0,
+        prompt_tokens=1,
+        completion_tokens=1,
+        is_cold_start=False,
+        power_source="ac",
+        peak_rss_mb=0.0,
+        sys_used_mb=8000.0,
+        mem_pressure_max="normal",
+        throttled=False,
+        ok=True,
+        error="",
+        seed=42,
+        t_start=0.0,
+        t_end=1.0,
+        reasoning_chars=0,
     )
     base.update(over)
     return EvalResponse(**base)
@@ -29,30 +55,40 @@ def _resp(model: str, variant: str, **over) -> EvalResponse:
 
 def _sample(ts: float, cpu: float | None) -> ResourceSample:
     return ResourceSample(
-        ts=ts, sys_used_mb=1.0, sys_available_mb=1.0, swap_used_mb=0.0,
-        server_rss_mb=None, mem_pressure_level="normal", throttled=False, cpu_pct=cpu,
+        ts=ts,
+        sys_used_mb=1.0,
+        sys_available_mb=1.0,
+        swap_used_mb=0.0,
+        server_rss_mb=None,
+        mem_pressure_level="normal",
+        throttled=False,
+        cpu_pct=cpu,
     )
 
 
 def _write_compare_bundle(
     d,
     *,
-    cells,                 # list[(model, variant)]
-    dim_scores_by_cell,    # {(model,variant): {dim_id: int}}
-    perf_by_cell=None,     # {(model,variant): {"decode_tps","ttft_s","e2e_s","sys_used_mb"}}
-    verdicts_by_cell=None, # {(model,variant): list[Verdict]}
+    cells,  # list[(model, variant)]
+    dim_scores_by_cell,  # {(model,variant): {dim_id: int}}
+    perf_by_cell=None,  # {(model,variant): {"decode_tps","ttft_s","e2e_s","sys_used_mb"}}
+    verdicts_by_cell=None,  # {(model,variant): list[Verdict]}
     rationales_by_cell=None,
-    samples=None,          # list[ResourceSample] | None  (resources.jsonl)
+    samples=None,  # list[ResourceSample] | None  (resources.jsonl)
 ):
     """Self-contained judged bundle using the real in-repo pack."""
     d.mkdir(parents=True, exist_ok=True)
     pk = load_pack(PACK)
     (d / "bundle.json").write_text(
-        json.dumps({
-            "pack_id": pk.id, "pack_path": PACK,
-            "models": [{"id": m, "quant": "q"} for m, _ in cells],
-            "date": "2026-06-20", "host": {"machine": "t"},
-        }),
+        json.dumps(
+            {
+                "pack_id": pk.id,
+                "pack_path": PACK,
+                "models": [{"id": m, "quant": "q"} for m, _ in cells],
+                "date": "2026-06-20",
+                "host": {"machine": "t"},
+            }
+        ),
         encoding="utf-8",
     )
     # responses.jsonl: one OK non-cold response per cell (A1), perf overridable
@@ -60,18 +96,25 @@ def _write_compare_bundle(
     resp_lines = []
     for m, v in cells:
         p = perf_by_cell.get((m, v), {})
-        resp_lines.append(json.dumps(_resp(
-            m, v,
-            decode_tps=p.get("decode_tps", 10.0),
-            ttft_s=p.get("ttft_s", 0.1),
-            e2e_s=p.get("e2e_s", 1.0),
-            sys_used_mb=p.get("sys_used_mb", 8000.0),
-        ).as_dict()))
+        resp_lines.append(
+            json.dumps(
+                _resp(
+                    m,
+                    v,
+                    decode_tps=p.get("decode_tps", 10.0),
+                    ttft_s=p.get("ttft_s", 0.1),
+                    e2e_s=p.get("e2e_s", 1.0),
+                    sys_used_mb=p.get("sys_used_mb", 8000.0),
+                ).as_dict()
+            )
+        )
     (d / "responses.jsonl").write_text("\n".join(resp_lines) + "\n", encoding="utf-8")
     # reports.jsonl: holistic dim_scores (+ optional rationales)
     rationales_by_cell = rationales_by_cell or {}
     reports = [
-        ModelReport(m, v, dict(dim_scores_by_cell[(m, v)]), dict(rationales_by_cell.get((m, v), {})))
+        ModelReport(
+            m, v, dict(dim_scores_by_cell[(m, v)]), dict(rationales_by_cell.get((m, v), {}))
+        )
         for m, v in cells
     ]
     write_reports_jsonl(d / "reports.jsonl", reports)
@@ -80,7 +123,9 @@ def _write_compare_bundle(
     # judgements.jsonl (optional, per-prompt verdicts for divergence)
     verdicts_by_cell = verdicts_by_cell or {}
     vlines = [json.dumps(v.as_dict()) for vs in verdicts_by_cell.values() for v in vs]
-    (d / "judgements.jsonl").write_text(("\n".join(vlines) + "\n") if vlines else "", encoding="utf-8")
+    (d / "judgements.jsonl").write_text(
+        ("\n".join(vlines) + "\n") if vlines else "", encoding="utf-8"
+    )
     if samples is not None:
         (d / "resources.jsonl").write_text(
             "\n".join(json.dumps(s.__dict__) for s in samples) + "\n", encoding="utf-8"
@@ -99,8 +144,18 @@ def _two_variant_bundle(tmp_path, **kw):
             ("m", "none"): {q: 2 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
         },
         perf_by_cell={
-            ("m", "baseline"): {"decode_tps": 12.0, "ttft_s": 0.20, "e2e_s": 1.5, "sys_used_mb": 8200.0},
-            ("m", "none"): {"decode_tps": 14.0, "ttft_s": 0.15, "e2e_s": 1.2, "sys_used_mb": 8000.0},
+            ("m", "baseline"): {
+                "decode_tps": 12.0,
+                "ttft_s": 0.20,
+                "e2e_s": 1.5,
+                "sys_used_mb": 8200.0,
+            },
+            ("m", "none"): {
+                "decode_tps": 14.0,
+                "ttft_s": 0.15,
+                "e2e_s": 1.2,
+                "sys_used_mb": 8000.0,
+            },
         },
         **kw,
     )
@@ -167,7 +222,7 @@ def test_compare_detail_variant_axis_quality_and_speed():
     assert round(base.pct) == 80
     assert round(none.pct) == 40
     assert base.recommendation == "Ja"
-    assert none.recommendation == "Nein"        # Q6=2 -> K.-o.
+    assert none.recommendation == "Nein"  # Q6=2 -> K.-o.
     assert none.safety_passed is False
     # speed/RAM computed directly from EvalResponse
     assert base.decode_tps == 12.0
@@ -182,10 +237,61 @@ def test_compare_detail_variant_axis_quality_and_speed():
 def test_compare_detail_single_axis_value_marks_nothing_to_compare():
     d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_one"
     _write_compare_bundle(
-        d, cells=[("m", "baseline")],
-        dim_scores_by_cell={("m", "baseline"): {q: 4 for q in ["Q1","Q2","Q3","Q4","Q5","Q6","Q7"]}},
+        d,
+        cells=[("m", "baseline")],
+        dim_scores_by_cell={
+            ("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+        },
     )
     detail = compare.compare_detail(d, "model")  # only 1 model
     assert detail is not None
     assert detail.single is True
     assert len(detail.cells) == 1
+
+
+def test_divergence_sorted_by_delta():
+    """_divergence returns per-prompt entries sorted descending by score delta."""
+    d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_div"
+    _write_compare_bundle(
+        d,
+        cells=[("m", "baseline"), ("m", "none")],
+        dim_scores_by_cell={
+            ("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+            ("m", "none"): {q: 2 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+        },
+        verdicts_by_cell={
+            ("m", "baseline"): [
+                Verdict(
+                    model="m",
+                    variant="baseline",
+                    prompt_id="A1",
+                    repeat=0,
+                    category="A",
+                    score=5,
+                    red_flag=False,
+                    rationale="good",
+                )
+            ],
+            ("m", "none"): [
+                Verdict(
+                    model="m",
+                    variant="none",
+                    prompt_id="A1",
+                    repeat=0,
+                    category="A",
+                    score=2,
+                    red_flag=False,
+                    rationale="weak",
+                )
+            ],
+        },
+    )
+    detail = compare.compare_detail(d, "variant")
+    assert detail is not None
+    assert len(detail.divergence) == 1
+    dp = detail.divergence[0]
+    assert dp.prompt_id == "A1"
+    assert dp.delta == pytest.approx(3.0)
+    assert dp.scores["baseline"] == pytest.approx(5.0)
+    assert dp.scores["none"] == pytest.approx(2.0)
+    assert len(dp.answers) == 2
