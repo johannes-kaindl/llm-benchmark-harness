@@ -6,8 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -36,12 +36,22 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
     @app.get("/packs/{pack_path:path}", response_class=HTMLResponse)
     def pack_explorer(request: Request, pack_path: str) -> HTMLResponse:
-        pk = load_pack(pack_path)
+        # Confine to cwd-rooted paths only; reject absolute or traversing paths.
+        candidate = Path(pack_path)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise HTTPException(status_code=404)
+        try:
+            pk = load_pack(pack_path)
+        except (FileNotFoundError, OSError):
+            raise HTTPException(status_code=404) from None
         return render("pack.html", request, pack=pk)
 
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(request: Request, name: str) -> HTMLResponse:
-        rd = runs_dir / name
+        # Confine name to a direct child of runs_dir (no traversal).
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
+            raise HTTPException(status_code=404)
         summary = bundles.classify(rd)
         return render("result.html", request, summary=summary, run_dir=rd)
 
@@ -53,15 +63,17 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
     @app.get("/export/{name}/{fname}")
     def export(name: str, fname: str) -> Any:
-        from fastapi.responses import FileResponse
-
-        # only ledger files are exportable (transient event/sentinel files excluded — G10)
+        # Only ledger files are exportable (transient event/sentinel files excluded — G10).
         allowed = {"scorecard.md", "scores.csv", "perf.csv", "report.md", "aggregate.md"}
         if fname not in allowed:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=404)
-        return FileResponse(runs_dir / name / fname)
+        # Resolve and confine to runs_dir to prevent path traversal (e.g. %2e%2e segments).
+        candidate = (runs_dir / name / fname).resolve()
+        if not candidate.is_relative_to(runs_dir.resolve()):
+            raise HTTPException(status_code=404)
+        if not candidate.exists():
+            raise HTTPException(status_code=404)
+        return FileResponse(candidate)
 
     _register_control_routes(app, runs_dir=runs_dir, registry=registry)  # Task 10
     return app

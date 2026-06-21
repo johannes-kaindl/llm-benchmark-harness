@@ -63,3 +63,26 @@ def test_compare_renders_table(tmp_path):
     _mk_judged(tmp_path)
     r = _client(tmp_path).get("/compare")
     assert r.status_code == 200
+
+
+def test_export_allowed_file(tmp_path):
+    d = _mk_judged(tmp_path)
+    # scores.csv was created by _mk_judged; verify it is served
+    r = _client(tmp_path).get(f"/export/{d.name}/scores.csv")
+    assert r.status_code == 200
+    assert "metric_type" in r.text
+
+
+def test_export_disallows_unknown_filename(tmp_path):
+    d = _mk_judged(tmp_path)
+    r = _client(tmp_path).get(f"/export/{d.name}/secrets.txt")
+    assert r.status_code == 404
+
+
+def test_export_rejects_path_traversal(tmp_path):
+    # Plant a file one level above runs_dir to prove it cannot be reached.
+    sensitive = tmp_path.parent / "sensitive.csv"
+    sensitive.write_text("secret", encoding="utf-8")
+    # URL-encoded ".." (%2e%2e) traversal attempt targeting a whitelisted filename.
+    r = _client(tmp_path).get("/export/%2e%2e/scores.csv")
+    assert r.status_code in {404, 422}  # rejected before or at path resolution
