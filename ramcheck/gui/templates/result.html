@@ -73,6 +73,11 @@
           <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">✗ Nicht empfehlenswert</span>
         {% endif %}
       {% endif %}
+      {% if compare_opts and compare_opts.comparable %}
+        <div style="margin-top:0.4rem">
+          <a class="btn btn-secondary" href="/compare/{{ run_dir.name }}?axis={{ compare_opts.default_axis }}">↔ Vergleichen ({{ compare_opts.default_label }})</a>
+        </div>
+      {% endif %}
     </div>
   </div>
 </div>

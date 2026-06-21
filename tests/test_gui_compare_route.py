@@ -101,3 +101,29 @@ def test_compare_route_unjudged_perf_only(tmp_path):
     r = _client(tmp_path).get(f"/compare/{d.name}?axis=variant")
     assert r.status_code == 200
     assert "noch nicht bewertet" in r.text.lower()
+
+
+def test_result_shows_compare_link_when_comparable(tmp_path):
+    d = _two_variant_bundle(tmp_path)
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    assert f"/compare/{d.name}?axis=variant" in r.text
+    assert "↔ Vergleichen" in r.text
+
+
+def test_result_no_compare_link_when_single(tmp_path):
+    d = tmp_path / "2026_eval_one"
+    _write_compare_bundle(
+        d,
+        cells=[("m", "baseline")],
+        dim_scores_by_cell={("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}},
+    )
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert "↔ Vergleichen" not in r.text
+
+
+def test_overview_shows_compare_link_for_multi_variant(tmp_path):
+    d = _two_variant_bundle(tmp_path)
+    r = _client(tmp_path).get("/")
+    assert r.status_code == 200
+    assert f"/compare/{d.name}?axis=variant" in r.text

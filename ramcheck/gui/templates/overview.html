@@ -110,6 +110,10 @@
           {% if b.status in ("eval-only", "judged") %}
           <a href="/config?bundle={{ b.run_dir.name }}" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.75rem">Judge</a>
           {% endif %}
+          {% set co = compare_links.get(b.run_dir.name) %}
+          {% if co and co.comparable %}
+          <a href="/compare/{{ b.run_dir.name }}?axis={{ co.default_axis }}" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.75rem">↔ Vergleichen</a>
+          {% endif %}
         </td>
       </tr>
       {% else %}
