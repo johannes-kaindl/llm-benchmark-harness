@@ -39,3 +39,22 @@ beantwortet die eigene Frage „bleibt das Modell warm?".
 Tokenizer variieren pro Modell. Wir füllen Prompts deterministisch auf eine Ziel-Tokenzahl
 auf, berichten aber gegen die tatsächlichen `prompt_tokens` aus `usage` — sonst würde der
 Kontext-Bucket auf der x-Achse von der Tokenizer-Wahl abhängen statt von der Realität.
+
+## Warum die GUI ein out-of-process Control-Plane ist
+
+Eine persistente Steuerzentrale im **selben** Prozess laufen zu lassen wie die Messung würde
+genau das Kern-Prinzip brechen, für das der Harness gebaut ist: Der Mess-Thread teilte sich
+dann Event-Loop, Garbage-Collection und die schweren Web-Deps (FastAPI etc.) mit dem Server —
+die Latenz wäre nicht mehr sauber messbar. Deshalb **spawnt** `ramcheck gui` die Messung als
+eigenen Subprozess (`python -m ramcheck eval/judge`), genau wie die CLI heute den Host-Sampler
+spawnt, und beobachtet sie nur über das Dateisystem (Tail von `events.jsonl`). Die GUI-Deps
+liegen in einem optionalen `[gui]`-Extra und laden **nie** im Mess-Prozess; der Default-Pfad
+ohne `--web`/`--emit-events` ist byte-identisch.
+
+`runs/` bleibt die Single Source of Truth (MD/CSV/JSONL) — die GUI persistiert keine
+Mess-Wahrheit, nur einen flüchtigen **Run-Sentinel** (`run.json`), der drei Rollen zugleich
+trägt: run_dir-Handle (die GUI kennt das Verzeichnis beim Spawn), Cross-Process-Lock (nur ein
+Mess-Lauf gleichzeitig, überlebt einen GUI-Neustart) und Discovery-Anker für laufende oder
+abgestürzte Läufe. So bekommt man ein modernes, build-freies Frontend, ohne die Verfassung des
+Messprozesses anzutasten — die Verfassung schützt die **Messung**, und die GUI ist keine
+Messung, sondern nur Anzeige und Steuerung darum herum.

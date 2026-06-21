@@ -5,7 +5,9 @@
 Ein dünnes CLI, das ein lokales LLM über einen **OpenAI-kompatiblen Endpoint** benchmarkt —
 es erfasst TTFT, Prefill-tok/s und Decode-tok/s **mit Verteilung**, während ein
 **entkoppelter Host-Sampler** macOS-Speicherdruck und Throttling mitschreibt, und mergt
-beides zu einer Markdown-Tabelle (+ CSV). Gleicher Code auf M1 (LM Studio) und M5 (mlx-lm) —
+beides zu einer Markdown-Tabelle (+ CSV). Es bewertet außerdem die **Antwort-Qualität**
+(deterministische Erfassung + optionaler LLM-as-judge) und steuert den ganzen Ablauf wahlweise
+über eine lokale **Web-Steuerzentrale**. Gleicher Code auf M1 (LM Studio) und M5 (mlx-lm) —
 nur die Config wird getauscht.
 
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
@@ -16,14 +18,19 @@ nur die Config wird getauscht.
 
 ```bash
 uv sync
-# M1 → LM Studio (http://localhost:1234/v1):
+# Latenz-Benchmark — M1 → LM Studio (:1234), M5 → mlx_lm.server (:8080):
 uv run ramcheck run    --config config.m1.yaml
-# M5 → mlx_lm.server (:8080) / mlx-openai-server (:8000):
-uv run ramcheck run    --config config.m5.yaml
-# Embedding-Durchsatz (separat):
-uv run ramcheck embed  --config config.m5.yaml
-# report.md aus gesammelten raw.csv (neu) erzeugen:
-uv run ramcheck report --runs ./runs
+uv run ramcheck embed  --config config.m5.yaml   # Embedding-Durchsatz (separat)
+uv run ramcheck report --runs ./runs             # report.md aus raw.csv (neu) erzeugen
+
+# Qualitäts-Eval — ein Use-Case-Pack laufen lassen, dann bewerten:
+uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml
+uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml
+uv run ramcheck aggregate --runs ./runs          # Cross-Machine Hardware×Qualität-Tabelle
+
+# Web-Steuerzentrale (optionales [gui]-Extra):
+uv sync --extra gui
+uv run ramcheck gui                              # konfigurieren → starten → zusehen → auswerten → vergleichen → exportieren
 ```
 
 ## Nutzung
@@ -41,6 +48,22 @@ Berichtet wird **die Verteilung, nicht der Mittelwert**: TTFT als P50/P95, Decod
 Median, TTFT-Konsistenz als CV%. Throttled- und Akku-Läufe werden geflaggt und aus den
 Aggregaten ausgeschlossen (roh in der CSV erhalten).
 
+**Qualitäts-Eval (die zweite Hälfte).** Perf sagt nicht, ob ein Modell *gut antwortet*. `eval`
+fährt deterministisch ein Use-Case-**Pack** (`packs/*.yaml` — Prompts + Green/Red-Flags +
+gewichtete Dimensionen + Sicherheits-K.-o. + System-Prompt-Varianten) auf der Testmaschine und
+erfasst Antworten + Tech-Specs; `judge` bewertet sie dann mit einem pluggable LLM-as-judge zu
+einer gewichteten Scorecard (`aggregate` rollt viele Bundles in eine Hardware×Qualität-Tabelle).
+Generierung und Bewertung sind **zwei entkoppelte Phasen**, beide inkrementell und fortsetzbar.
+Ein neuer Use-Case ist ein neues YAML, kein neuer Code.
+
+**Web-Steuerzentrale (`ramcheck gui`).** Ein optionaler lokaler FastAPI-Server (das `[gui]`-Extra
+— build-freies HTMX/Alpine, vom Mess-Kern isoliert) bringt den ganzen Ablauf in den Browser:
+sehen, was ein Pack nach welchen Kriterien testet, Läufe konfigurieren und **starten/stoppen**,
+live zusehen, Ergebnisse ansehen, über Maschinen vergleichen und exportieren. Es ist ein
+**out-of-process Control-Plane** — es spawnt dieselben `ramcheck eval/judge`-Subprozesse wie die
+CLI, sodass der Mess-Loop entkoppelt bleibt und `runs/` die Single Source of Truth bleibt. An
+127.0.0.1 gebunden, nur ein Mess-Lauf gleichzeitig.
+
 > **macOS-Hinweis:** Die Throttle-Erkennung ruft `sudo powermetrics` auf. Erlaube
 > passwortloses sudo dafür, sonst bleibt der Throttle-Flag aus (Läufe werden dann *nicht*
 > als throttled ausgeschlossen). Siehe [AGENTS.md](AGENTS.md) → Gotchas.
@@ -48,7 +71,7 @@ Aggregaten ausgeschlossen (roh in der CSV erhalten).
 ## Dokumentation
 
 - [Reference](docs/reference/) — Metrik-Definitionen, CSV-Schema, Config-Schlüssel
-- [Explanation](docs/explanation/) — warum Verteilung statt Mittelwert, der Zwei-Prozess-Split
+- [Explanation](docs/explanation/) — warum Verteilung statt Mittelwert, der Zwei-Prozess-Split, warum die GUI out-of-process ist
 
 ## Lizenz
 
