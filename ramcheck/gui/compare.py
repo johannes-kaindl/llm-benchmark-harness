@@ -148,7 +148,9 @@ def _cell_metrics(
     cell_resps = [r for r in responses if (r.model, r.variant) == (model, variant)]
     ok = [r for r in cell_resps if r.ok and not r.is_cold_start]
     sys_used = [r.sys_used_mb for r in ok if r.sys_used_mb is not None]
-    levels = [r.mem_pressure_max for r in cell_resps if r.mem_pressure_max]
+    # Pressure shares the ok/non-cold population with Peak-RAM (scorecard convention) so a
+    # cold-start spike can't inflate the displayed Druck while the paired RAM number ignores it.
+    levels = [r.mem_pressure_max for r in ok if r.mem_pressure_max]
     cpu_max, cpu_avg = _cpu_for_window(samples, cell_resps)
     return CompareCell(
         label=label,
@@ -223,19 +225,23 @@ def compare_detail(
 
     cells: list[CompareCell] = []
     for (model, variant), label in zip(keys, labels, strict=True):
-        rep = reports_by.get((model, variant))
-        cells.append(
-            _cell_metrics(
-                label,
-                model,
-                variant,
-                responses,
-                master_by.get((model, variant)),
-                rep.dim_scores if rep else {},
-                rep.dim_rationales if rep else {},
-                samples,
+        # Spec §7: a corrupt group degrades only its own column — never collapses the page.
+        try:
+            rep = reports_by.get((model, variant))
+            cells.append(
+                _cell_metrics(
+                    label,
+                    model,
+                    variant,
+                    responses,
+                    master_by.get((model, variant)),
+                    rep.dim_scores if rep else {},
+                    rep.dim_rationales if rep else {},
+                    samples,
+                )
             )
-        )
+        except Exception:
+            continue
 
     judged = any(c.pct is not None for c in cells)
     return CompareDetail(
@@ -353,7 +359,10 @@ def _winners(cells: list[CompareCell], dimensions: list[Dimension]) -> dict[str,
         scored = [(getter(c), c.label) for c in cells if getter(c) is not None]
         if not scored:
             return None
-        return (max if higher else min)(scored, key=lambda t: t[0])[1]
+        best_val = (max if higher else min)(v for v, _ in scored)
+        leaders = [label for v, label in scored if v == best_val]
+        # No silent first-cell-wins: a genuine tie awards no trophy.
+        return leaders[0] if len(leaders) == 1 else None
 
     w: dict[str, str | None] = {
         "pct": best(lambda c: c.pct, True),

@@ -4,10 +4,20 @@ from __future__ import annotations
 import json
 
 from fastapi.testclient import TestClient
-from test_gui_compare import _resp, _two_model_bundle, _two_variant_bundle, _write_compare_bundle
+from test_gui_compare import (
+    PACK,
+    _resp,
+    _two_model_bundle,
+    _two_variant_bundle,
+    _verdict,
+    _write_compare_bundle,
+)
 
 from ramcheck.gui import app as gui_app
 from ramcheck.gui.control import RunRegistry
+from ramcheck.judge import write_reports_jsonl
+from ramcheck.pack import load_pack
+from ramcheck.results import ModelReport
 
 
 class _FakeLauncher:
@@ -129,3 +139,73 @@ def test_overview_shows_compare_link_for_multi_variant(tmp_path):
     r = _client(tmp_path).get("/")
     assert r.status_code == 200
     assert f"/compare/{d.name}?axis=variant" in r.text
+
+
+# ── Review fixes (adversarial 3-perspective review) ───────────────────────────
+
+
+def test_model_axis_no_dead_end_variant_switch(tmp_path):
+    """§6 'Keine Sackgassen': a 2-model x 1-variant bundle must not offer a 'nach Variante'
+    switch that lands on a single-cell 'nichts zu vergleichen' page."""
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    d = tmp_path / "2026_eval_2m1v"
+    _write_compare_bundle(
+        d,
+        cells=[("alpha", "baseline"), ("beta", "baseline")],
+        dim_scores_by_cell={("alpha", "baseline"): full, ("beta", "baseline"): dict(full)},
+    )
+    r = _client(tmp_path).get(f"/compare/{d.name}?axis=model")
+    assert r.status_code == 200
+    assert "baseline" in r.text and "alpha" in r.text and "beta" in r.text
+    assert "?axis=variant" not in r.text  # only 1 variant -> no dead-end switch
+
+
+def test_model_axis_projection_label_not_doubled(tmp_path):
+    """§4: the projection header reads 'Modelle bei Variante: baseline', not '… Variante: Variante: …'."""
+    d = _two_model_bundle(tmp_path)
+    r = _client(tmp_path).get(f"/compare/{d.name}?axis=model")
+    assert r.status_code == 200
+    assert "Variante: Variante" not in r.text
+    stripped = r.text.replace("<strong>", "").replace("</strong>", "")
+    assert "Modelle bei Variante: baseline" in stripped
+
+
+def test_drilldown_surfaces_empty_answer_marker(tmp_path):
+    """§3 Phase-1 reuse: an empty/reasoning-only answer must be flagged in the drill-down."""
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    d = tmp_path / "2026_eval_empty"
+    d.mkdir(parents=True)
+    pk = load_pack(PACK)
+    (d / "bundle.json").write_text(
+        json.dumps(
+            {
+                "pack_id": pk.id,
+                "pack_path": PACK,
+                "models": [{"id": "m", "quant": "q"}],
+                "date": "2026-06-20",
+                "host": {"machine": "t"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rb = _resp("m", "baseline", prompt_id="A1", response_text="eine volle Antwort")
+    rn = _resp(
+        "m", "none", prompt_id="A1", response_text="", content_empty=True, reasoning_chars=120
+    )
+    (d / "responses.jsonl").write_text(
+        json.dumps(rb.as_dict()) + "\n" + json.dumps(rn.as_dict()) + "\n", encoding="utf-8"
+    )
+    write_reports_jsonl(
+        d / "reports.jsonl",
+        [ModelReport("m", "baseline", dict(full), {}), ModelReport("m", "none", dict(full), {})],
+    )
+    (d / "scores.csv").write_text("metric_type\nnone\n", encoding="utf-8")
+    vb = _verdict("m", "baseline", "A1", 5)
+    vn = _verdict("m", "none", "A1", 2)
+    (d / "judgements.jsonl").write_text(
+        json.dumps(vb.as_dict()) + "\n" + json.dumps(vn.as_dict()) + "\n", encoding="utf-8"
+    )
+    r = _client(tmp_path).get(f"/compare/{d.name}?axis=variant")
+    assert r.status_code == 200
+    assert "leere Antwort" in r.text
+    assert "nur Reasoning" in r.text

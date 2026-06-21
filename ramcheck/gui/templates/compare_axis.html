@@ -20,14 +20,14 @@
           <a href="/packs/packs/{{ detail.pack.id }}.yaml" style="margin-left:0.4rem">Kriterien →</a>{% endif %}
       </div>
       {% if detail.axis == "model" %}
-        <div class="muted text-xs" style="margin-top:0.25rem">Modelle bei {{ detail.projection_label }}: <strong>{{ detail.projection_label }}: {{ detail.projection }}</strong></div>
+        <div class="muted text-xs" style="margin-top:0.25rem">Modelle bei {{ detail.projection_label }}: <strong>{{ detail.projection }}</strong></div>
       {% endif %}
     </div>
     <div class="text-xs" style="text-align:right">
       {# axis switch (only when the other axis is also comparable) #}
       {% if detail.axis == "variant" and detail.projection_options|length > 1 %}
         <a class="btn btn-secondary" href="/compare/{{ detail.run_name }}?axis=model">nach Modell</a>
-      {% elif detail.axis == "model" %}
+      {% elif detail.axis == "model" and detail.projection_options|length > 1 %}
         <a class="btn btn-secondary" href="/compare/{{ detail.run_name }}?axis=variant">nach Variante</a>
       {% endif %}
       {# projection switch #}
@@ -43,7 +43,7 @@
 
 {% if detail.single %}
   <div class="card"><p class="muted">Nur ein {{ detail.axis_label }} im Bundle — nichts zu vergleichen.
-    {% if detail.axis == "model" %}<a href="/compare/{{ detail.run_name }}?axis=variant">Nach Variante vergleichen?</a>{% endif %}</p></div>
+    {% if detail.axis == "model" and detail.projection_options|length > 1 %}<a href="/compare/{{ detail.run_name }}?axis=variant">Nach Variante vergleichen?</a>{% endif %}</p></div>
 {% else %}
 
 {# ── ① Effizienz-Relation ─────────────────────────────────────────────── #}
@@ -105,7 +105,8 @@
     <div x-show="open" x-cloak style="padding:0.75rem; display:flex; gap:1rem; flex-wrap:wrap">
       {% for a in p.answers %}
       <div style="flex:1; min-width:220px">
-        <div class="muted text-xs" style="text-transform:uppercase; letter-spacing:0.05em">{{ a.label }}{% if a.score is not none %} · {{ a.score }}/5{% endif %}{% if a.red_flag %} <span class="badge nein text-xs">Red-Flag</span>{% endif %}</div>
+        <div class="muted text-xs" style="text-transform:uppercase; letter-spacing:0.05em">{{ a.label }}{% if a.score is not none %} · {{ a.score }}/5{% endif %}{% if a.unscored %} <span class="badge eval-only text-xs">unscored</span>{% endif %}{% if a.red_flag %} <span class="badge nein text-xs">Red-Flag</span>{% endif %}</div>
+        {% if a.content_empty %}<div class="muted text-xs" style="margin-top:0.25rem">(leere Antwort{% if a.reasoning_chars > 0 %} · nur Reasoning ({{ a.reasoning_chars }} Zeichen){% endif %})</div>{% endif %}
         <div style="background:var(--card-bg); border-radius:6px; padding:0.5rem 0.7rem; white-space:pre-wrap; font-size:0.82rem; margin-top:0.25rem">{{ a.response_text[:400] }}{% if a.response_text|length > 400 %}…{% endif %}</div>
         {% if a.rationale %}<div class="muted text-xs" style="margin-top:0.25rem">Judge: {{ a.rationale }}</div>{% endif %}
       </div>

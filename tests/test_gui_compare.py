@@ -435,3 +435,121 @@ def test_axis_model_projection_override_to_none():
     assert all(c.variant == "none" for c in detail.cells)
     alpha = next(c for c in detail.cells if c.label == "alpha")
     assert alpha.recommendation == "Nein"  # alpha/none has Q6=2 -> K.-o.
+
+
+# ── Review fixes (adversarial 3-perspective review) ───────────────────────────
+
+
+def test_winners_none_on_tie():
+    """A genuine tie must award no trophy (no silent first-cell-wins)."""
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_tie"
+    _write_compare_bundle(
+        d,
+        cells=[("m", "baseline"), ("m", "none")],
+        dim_scores_by_cell={("m", "baseline"): full, ("m", "none"): dict(full)},
+        perf_by_cell={
+            ("m", "baseline"): {
+                "decode_tps": 10.0,
+                "ttft_s": 0.1,
+                "e2e_s": 1.0,
+                "sys_used_mb": 8000.0,
+            },
+            ("m", "none"): {"decode_tps": 10.0, "ttft_s": 0.1, "e2e_s": 1.0, "sys_used_mb": 8000.0},
+        },
+    )
+    detail = compare.compare_detail(d, "variant")
+    assert detail.winners["pct"] is None
+    assert detail.winners["decode"] is None
+    assert detail.winners["ram"] is None
+    assert detail.winners["Q6"] is None
+
+
+def test_divergence_excludes_unscored_verdicts():
+    """V7: unscored verdicts must not count toward the per-prompt mean; all-unscored -> None."""
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_uns"
+    _write_compare_bundle(
+        d,
+        cells=[("m", "baseline"), ("m", "none")],
+        dim_scores_by_cell={("m", "baseline"): full, ("m", "none"): dict(full)},
+        verdicts_by_cell={
+            ("m", "baseline"): [
+                _verdict("m", "baseline", "A1", 5),
+                Verdict(
+                    model="m",
+                    variant="baseline",
+                    prompt_id="A1",
+                    repeat=1,
+                    category="A",
+                    score=0,
+                    red_flag=False,
+                    rationale="judge down",
+                    unscored=True,
+                ),
+            ],
+            ("m", "none"): [
+                Verdict(
+                    model="m",
+                    variant="none",
+                    prompt_id="A1",
+                    repeat=0,
+                    category="A",
+                    score=0,
+                    red_flag=False,
+                    rationale="judge down",
+                    unscored=True,
+                ),
+            ],
+        },
+    )
+    detail = compare.compare_detail(d, "variant")
+    a1 = next(p for p in detail.divergence if p.prompt_id == "A1")
+    assert a1.scores["baseline"] == 5.0  # unscored repeat-1 ignored
+    assert a1.scores["none"] is None  # all unscored -> None ("—")
+
+
+def test_compare_detail_bad_cell_degrades_only_that_group(monkeypatch):
+    """Spec §7: a corrupt group must degrade only that column, never collapse the page."""
+    d = _two_variant_bundle(pathlib.Path(tempfile.mkdtemp()))
+    real = compare._cell_metrics
+
+    def boom(label, model, variant, *a, **k):
+        if variant == "none":
+            raise ValueError("corrupt group")
+        return real(label, model, variant, *a, **k)
+
+    monkeypatch.setattr(compare, "_cell_metrics", boom)
+    detail = compare.compare_detail(d, "variant")
+    assert detail is not None
+    assert [c.label for c in detail.cells] == ["baseline"]  # bad 'none' dropped, page survives
+
+
+def test_mem_pressure_uses_ok_responses_only():
+    """Druck must use the same ok/non-cold population as Peak-RAM (scorecard convention)."""
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_press"
+    d.mkdir(parents=True)
+    pk = load_pack(PACK)
+    (d / "bundle.json").write_text(
+        json.dumps(
+            {
+                "pack_id": pk.id,
+                "pack_path": PACK,
+                "models": [{"id": "m", "quant": "q"}],
+                "date": "2026-06-20",
+                "host": {"machine": "t"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    cold = _resp("m", "baseline", is_cold_start=True, mem_pressure_max="critical", prompt_id="A1")
+    warm = _resp("m", "baseline", is_cold_start=False, mem_pressure_max="normal", prompt_id="A2")
+    (d / "responses.jsonl").write_text(
+        json.dumps(cold.as_dict()) + "\n" + json.dumps(warm.as_dict()) + "\n", encoding="utf-8"
+    )
+    write_reports_jsonl(d / "reports.jsonl", [ModelReport("m", "baseline", dict(full), {})])
+    (d / "scores.csv").write_text("metric_type\nnone\n", encoding="utf-8")
+    (d / "judgements.jsonl").write_text("", encoding="utf-8")
+    detail = compare.compare_detail(d, "variant")
+    assert detail.cells[0].mem_pressure_max == "normal"  # cold-start 'critical' excluded
