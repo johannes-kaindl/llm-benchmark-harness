@@ -45,7 +45,9 @@ def test_truncation_clears_stale_events(tmp_path):
     first = [je.dumps(je.judge_start_event(1.0, 5))]
     for i in range(4):
         first.append(
-            je.dumps(je.verdict_event(1.0 + i, i, "m", "baseline", "A1", i, "A", 5, False, False, ""))
+            je.dumps(
+                je.verdict_event(1.0 + i, i, "m", "baseline", "A1", i, "A", 5, False, False, "")
+            )
         )
     p.write_text("\n".join(first) + "\n", encoding="utf-8")
     stream = live.LiveStream(p, kind="judge")

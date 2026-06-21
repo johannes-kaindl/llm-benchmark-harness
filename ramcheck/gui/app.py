@@ -226,9 +226,7 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
         # so the registry adds --resume and reuses the dir instead of starting fresh.
         resume: Path | None = _confine(resume_dir) if resume_dir else None
         try:
-            h = registry.start_eval(
-                pack_path=pack_path, config_path=config_path, resume_dir=resume
-            )
+            h = registry.start_eval(pack_path=pack_path, config_path=config_path, resume_dir=resume)
         except RunInProgress as e:
             raise HTTPException(status_code=409, detail=str(e)) from None
         return {"run_dir": h.run_dir.name, "kind": h.kind}
