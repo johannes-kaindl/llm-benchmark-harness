@@ -507,7 +507,9 @@ def eval_cmd(
         False, "--emit-events", help="write events.jsonl without spawning the monitor (GUI)"
     ),
     models_json: str = typer.Option(
-        "", "--models-json", help="JSON list[ModelSpec]; replaces config.models for this run (GUI picker)"
+        "",
+        "--models-json",
+        help="JSON list[ModelSpec]; replaces config.models for this run (GUI picker)",
     ),
 ) -> None:
     """Run a use-case pack through the models: capture answers + perf, write the bundle."""
