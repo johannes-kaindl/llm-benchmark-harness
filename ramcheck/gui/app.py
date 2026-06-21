@@ -173,10 +173,29 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
             raise HTTPException(status_code=404)
         return candidate
 
+    def _confine_cwd(rel: str) -> str:
+        """Confine a cwd-rooted input (pack/config path): reject absolute or traversing
+        paths, mirroring the /packs guard. Returns the path unchanged when allowed."""
+        candidate = Path(rel)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise HTTPException(status_code=404)
+        return rel
+
     @app.post("/runs/eval")
-    def start_eval(pack_path: str = Form(...), config_path: str = Form(...)) -> Any:
+    def start_eval(
+        pack_path: str = Form(...),
+        config_path: str = Form(...),
+        resume_dir: str | None = Form(None),
+    ) -> Any:
+        pack_path = _confine_cwd(pack_path)
+        config_path = _confine_cwd(config_path)
+        # "Fortsetzen": confine the posted resume dir under runs_dir and pass it through
+        # so the registry adds --resume and reuses the dir instead of starting fresh.
+        resume: Path | None = _confine(resume_dir) if resume_dir else None
         try:
-            h = registry.start_eval(pack_path=pack_path, config_path=config_path)
+            h = registry.start_eval(
+                pack_path=pack_path, config_path=config_path, resume_dir=resume
+            )
         except RunInProgress as e:
             raise HTTPException(status_code=409, detail=str(e)) from None
         return {"run_dir": h.run_dir.name, "kind": h.kind}

@@ -46,6 +46,58 @@ def test_start_eval_calls_registry(tmp_path):
     assert r.json()["kind"] == "eval"
 
 
+def test_start_eval_passes_resume_dir(tmp_path):
+    """A posted resume_dir must reach start_eval as resume_dir=Path(...) (FUNCTIONAL)."""
+    resume = tmp_path / "2026-06-20_eval_ndassist"
+    resume.mkdir()
+    seen = {}
+
+    class _Reg(RunRegistry):
+        def start_eval(self, *, pack_path, config_path, resume_dir=None):
+            seen["resume_dir"] = resume_dir
+            return RunHandle("eval", resume_dir or (tmp_path / "x"), 1)
+
+    reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())
+    r = TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg)).post(
+        "/runs/eval",
+        data={
+            "pack_path": "packs/ndassist.yaml",
+            "config_path": "config.m5.yaml",
+            "resume_dir": resume.name,
+        },
+    )
+    assert r.status_code == 200
+    assert seen["resume_dir"] == resume.resolve()
+
+
+def test_start_eval_rejects_traversal_pack_path(tmp_path):
+    """An absolute or traversing pack_path must be rejected (SECURITY a)."""
+    client = _client(tmp_path)
+    r1 = client.post(
+        "/runs/eval",
+        data={"pack_path": "/etc/passwd", "config_path": "config.m5.yaml"},
+    )
+    assert r1.status_code in (404, 422)
+    r2 = client.post(
+        "/runs/eval",
+        data={"pack_path": "../../etc/passwd", "config_path": "config.m5.yaml"},
+    )
+    assert r2.status_code in (404, 422)
+
+
+def test_start_eval_rejects_resume_dir_traversal(tmp_path):
+    """A resume_dir escaping runs_dir must be rejected (SECURITY a / FUNCTIONAL)."""
+    r = _client(tmp_path).post(
+        "/runs/eval",
+        data={
+            "pack_path": "packs/ndassist.yaml",
+            "config_path": "config.m5.yaml",
+            "resume_dir": "../../etc",
+        },
+    )
+    assert r.status_code in (404, 422)
+
+
 def test_start_blocked_returns_conflict(tmp_path):
     """409 is returned when a run is already in progress."""
 
