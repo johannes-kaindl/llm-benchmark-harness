@@ -325,3 +325,52 @@ def test_divergence_sorted_by_delta():
     assert dp.scores["baseline"] == pytest.approx(5.0)
     assert dp.scores["none"] == pytest.approx(2.0)
     assert len(dp.answers) == 2
+
+
+def _verdict(model, variant, prompt_id, score, *, repeat=0, red_flag=False, rationale="r", category="A"):
+    return Verdict(model=model, variant=variant, prompt_id=prompt_id, repeat=repeat,
+                   category=category, score=score, red_flag=red_flag, rationale=rationale)
+
+
+def test_divergence_sorted_by_abs_delta_and_means_repeats():
+    d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_div2"
+    _write_compare_bundle(
+        d,
+        cells=[("m", "baseline"), ("m", "none")],
+        dim_scores_by_cell={
+            ("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+            ("m", "none"): {q: 3 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+        },
+        verdicts_by_cell={
+            ("m", "baseline"): [_verdict("m", "baseline", "A1", 5), _verdict("m", "baseline", "A2", 4),
+                                _verdict("m", "baseline", "A2", 2, repeat=1)],
+            ("m", "none"): [_verdict("m", "none", "A1", 2), _verdict("m", "none", "A2", 3),
+                            _verdict("m", "none", "A2", 3, repeat=1)],
+        },
+    )
+    detail = compare.compare_detail(d, "variant")
+    div = detail.divergence
+    assert div[0].prompt_id == "A1"          # |5-2| = 3 is the biggest gap, comes first
+    assert div[0].scores["baseline"] == 5.0
+    assert div[0].scores["none"] == 2.0
+    assert div[0].delta == 3.0
+    a2 = next(p for p in div if p.prompt_id == "A2")
+    assert a2.scores["baseline"] == 3.0      # mean(4,2) over repeats
+    assert a2.delta == 0.0
+    # answers carry the per-cell response_text + verdict
+    ans = {a.label: a for a in div[0].answers}
+    assert ans["baseline"].score == 5
+    assert ans["none"].score == 2
+
+
+def test_divergence_empty_when_unjudged():
+    d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_unj"
+    _write_compare_bundle(
+        d, cells=[("m", "baseline"), ("m", "none")],
+        dim_scores_by_cell={
+            ("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+            ("m", "none"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+        },
+    )
+    detail = compare.compare_detail(d, "variant")
+    assert detail.divergence == []
