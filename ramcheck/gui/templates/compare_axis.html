@@ -50,7 +50,7 @@
 <div class="card">
   <div class="card-title">① Effizienz-Relation — Qualität gegen Kosten</div>
   <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center">
-    <svg data-scatter data-points="{{ detail.scatter_points | tojson }}" width="340" height="220"
+    <svg data-scatter data-points='{{ detail.scatter_points | tojson }}' width="340" height="220"
          style="background:var(--bg); border-radius:8px"></svg>
     <div style="flex:1; min-width:220px">
       <p class="text-sm">{{ detail.relations_summary }}</p>
