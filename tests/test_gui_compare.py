@@ -249,6 +249,36 @@ def test_compare_detail_single_axis_value_marks_nothing_to_compare():
     assert len(detail.cells) == 1
 
 
+def test_relations_summary_states_numbers_and_quality_leader():
+    d = _two_variant_bundle(pathlib.Path(tempfile.mkdtemp()))
+    detail = compare.compare_detail(d, "variant")
+    s = detail.relations_summary
+    assert "baseline" in s and "none" in s
+    assert "80" in s and "40" in s            # the two quality %s
+    assert "Prozentpunkte" in s               # quality-leader clause
+    # descriptive only: no hard recommendation verb
+    assert "empfehl" not in s.lower()
+
+
+def test_winners_per_row():
+    d = _two_variant_bundle(pathlib.Path(tempfile.mkdtemp()))
+    detail = compare.compare_detail(d, "variant")
+    assert detail.winners["pct"] == "baseline"        # higher quality
+    assert detail.winners["decode"] == "none"         # 14 > 12 tok/s
+    assert detail.winners["ttft"] == "none"           # lower TTFT wins
+    assert detail.winners["ram"] == "none"            # lower peak RAM wins
+    assert detail.winners["Q6"] == "baseline"         # 4 > 2
+
+
+def test_scatter_points_only_rated_cells():
+    d = _two_variant_bundle(pathlib.Path(tempfile.mkdtemp()))
+    detail = compare.compare_detail(d, "variant")
+    pts = {p["label"]: p for p in detail.scatter_points}
+    assert pts["baseline"]["x"] == 12.0
+    assert round(pts["baseline"]["y"]) == 80
+    assert pts["baseline"]["r"] == 8200.0
+
+
 def test_divergence_sorted_by_delta():
     """_divergence returns per-prompt entries sorted descending by score delta."""
     d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_div"

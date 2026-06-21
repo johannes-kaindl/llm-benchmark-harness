@@ -245,9 +245,9 @@ def compare_detail(
         projection_label=proj_label,
         projection_options=proj_options,
         cells=cells,
-        relations_summary="",  # Task 4
-        winners={},  # Task 4
-        scatter_points=[],  # Task 4
+        relations_summary=_relations_summary(cells, axis_label),
+        winners=_winners(cells, list(pk.dimensions)),
+        scatter_points=_scatter_points(cells),
         divergence=_divergence(cells, responses, verdicts, pk),
         judged=judged,
         single=len(cells) <= 1,
@@ -312,6 +312,66 @@ def _first_answer(
         red_flag=(v.red_flag if v else False),
         unscored=(v.unscored if v else False),
     )
+
+
+def _relations_summary(cells: list[CompareCell], axis_label: str) -> str:
+    """Descriptive relation in words (names the numbers, no hard recommendation)."""
+    rated = [c for c in cells if c.pct is not None]
+    if len(rated) < 2:
+        return f"Nicht genug bewertete {axis_label}-Werte für eine Relation."
+
+    def clause(c: CompareCell) -> str:
+        speed = f"{c.decode_tps:.0f} tok/s" if c.decode_tps is not None else "Speed n. v."
+        ram = f"{c.peak_ram_mb / 1024:.1f} GB Peak-RAM" if c.peak_ram_mb is not None else "RAM n. v."
+        return f"{c.label}: {c.pct:.0f} % Qualität bei {speed} und {ram}"
+
+    body = "; ".join(clause(c) for c in rated)
+    best_q = max(rated, key=lambda c: c.pct)  # type: ignore[arg-type]
+    others = [c for c in rated if c.label != best_q.label]
+    bits: list[str] = []
+    if others:
+        nearest = max(others, key=lambda c: c.pct)  # type: ignore[arg-type]
+        bits.append(
+            f"{best_q.label} führt bei der Qualität "
+            f"(+{best_q.pct - nearest.pct:.0f} Prozentpunkte ggü. {nearest.label})"  # type: ignore[operator]
+        )
+    speed_cells = [c for c in rated if c.decode_tps is not None]
+    if speed_cells:
+        fastest = max(speed_cells, key=lambda c: c.decode_tps)  # type: ignore[arg-type]
+        if fastest.label == best_q.label:
+            bits.append(f"{best_q.label} ist zugleich am schnellsten")
+        else:
+            bits.append(f"{fastest.label} ist schneller ({fastest.decode_tps:.0f} tok/s)")
+    tail = (". ".join(bits) + ".") if bits else ""
+    return f"{body}. {tail}".strip()
+
+
+def _winners(cells: list[CompareCell], dimensions: list[Dimension]) -> dict[str, str | None]:
+    def best(getter: Any, higher: bool) -> str | None:
+        scored = [(getter(c), c.label) for c in cells if getter(c) is not None]
+        if not scored:
+            return None
+        return (max if higher else min)(scored, key=lambda t: t[0])[1]
+
+    w: dict[str, str | None] = {
+        "pct": best(lambda c: c.pct, True),
+        "decode": best(lambda c: c.decode_tps, True),
+        "ttft": best(lambda c: c.ttft_p50, False),
+        "e2e": best(lambda c: c.e2e_med, False),
+        "ram": best(lambda c: c.peak_ram_mb, False),
+        "cpu": best(lambda c: c.cpu_max, False),
+    }
+    for d in dimensions:
+        w[d.id] = best(lambda c, did=d.id: c.dim_scores.get(did), True)
+    return w
+
+
+def _scatter_points(cells: list[CompareCell]) -> list[dict[str, Any]]:
+    return [
+        {"label": c.label, "x": c.decode_tps, "y": c.pct, "r": c.peak_ram_mb}
+        for c in cells
+        if c.decode_tps is not None and c.pct is not None
+    ]
 
 
 def _divergence(
