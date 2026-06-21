@@ -1,4 +1,94 @@
-{% extends "base.html" %}{% block body %}
-<h1>{{ run_dir.name }}</h1>{% if summary %}<p>Status: {{ summary.status }}</p>
-{% if summary.recommendation %}<p>Urteil: {{ summary.recommendation }}</p>{% endif %}{% endif %}
+{% extends "base.html" %}
+{% block title_suffix %} · {{ run_dir.name }}{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">{{ run_dir.name }}</h1>
+  {% if summary %}
+    {% if summary.status == "running" %}
+      <span class="badge running">running</span>
+    {% elif summary.status == "crashed" %}
+      <span class="badge crashed">crashed</span>
+    {% elif summary.status == "eval-only" %}
+      <span class="badge eval-only">eval-only</span>
+    {% elif summary.status == "judged" %}
+      <span class="badge judged">judged</span>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if not summary %}
+<div class="card"><p class="muted">Kein Bundle in diesem Verzeichnis gefunden.</p></div>
+{% else %}
+
+<div class="card">
+  <div class="card-title">Bundle</div>
+  <table class="bundle-table">
+    <tr><th>Pack</th><td>{{ summary.pack_id }}</td></tr>
+    <tr><th>Modelle</th><td>{{ summary.models | join(", ") }}</td></tr>
+    <tr><th>Datum</th><td>{{ summary.date }}</td></tr>
+    <tr><th>Status</th><td>{{ summary.status }}</td></tr>
+    {% if summary.recommendation is not none %}
+    <tr><th>Urteil</th><td>
+      {% if summary.recommendation == "Ja" %}
+        <span class="badge ja">Ja</span>
+      {% elif summary.recommendation == "Mit Einschränkung" %}
+        <span class="badge einschr">Mit Einschränkung</span>
+      {% elif summary.recommendation == "Nein" %}
+        <span class="badge nein">Nein</span>
+      {% else %}
+        {{ summary.recommendation }}
+      {% endif %}
+    </td></tr>
+    {% endif %}
+    {% if summary.safety_passed is not none %}
+    <tr><th>Safety</th><td>
+      {% if summary.safety_passed %}
+        <span class="badge ja">bestanden</span>
+      {% else %}
+        <span class="badge nein">nicht bestanden</span>
+      {% endif %}
+    </td></tr>
+    {% endif %}
+  </table>
+</div>
+
+{% if master_rows %}
+<div class="card">
+  <div class="card-title">Scorecard</div>
+  {% for row in master_rows %}
+  <div style="margin-bottom:1rem">
+    <div class="flex items-center gap-2 mb-1">
+      <strong>{{ row.model }}</strong>
+      <span class="muted text-xs">/ {{ row.variant }}</span>
+      {% if row.recommendation == "Ja" %}
+        <span class="badge ja">Ja</span>
+      {% elif row.recommendation == "Mit Einschränkung" %}
+        <span class="badge einschr">Mit Einschr.</span>
+      {% elif row.recommendation == "Nein" %}
+        <span class="badge nein">Nein</span>
+      {% endif %}
+      <span class="text-xs muted">{{ "%.0f" | format(row.pct) }}%</span>
+      {% if row.safety_passed %}
+        <span class="badge ja" style="font-size:0.65rem">Safety OK</span>
+      {% else %}
+        <span class="badge nein" style="font-size:0.65rem">Safety FAIL</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title">Export</div>
+  <div class="flex gap-2">
+    {% for fname in ["scorecard.md", "scores.csv", "perf.csv", "report.md"] %}
+      {% if (run_dir / fname).exists() %}
+      <a href="/export/{{ run_dir.name }}/{{ fname }}" class="btn btn-secondary">{{ fname }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}
 {% endblock %}

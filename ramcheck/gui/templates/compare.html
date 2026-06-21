@@ -1,3 +1,56 @@
-{% extends "base.html" %}{% block body %}
-<h1>Vergleich</h1><table>{% for r in rows %}<tr><td>{{ r.model }}</td>
-<td>{{ r.quality_pct }}</td></tr>{% endfor %}</table>{% endblock %}
+{% extends "base.html" %}
+{% block title_suffix %} · Vergleich{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">Vergleich</h1>
+  <span class="muted text-sm">Alle bewerteten Läufe</span>
+</div>
+
+<div class="card">
+  <div class="card-title">Hardware × Qualität</div>
+  {% if rows %}
+  <table class="bundle-table">
+    <thead>
+      <tr>
+        <th>Chip</th>
+        <th>RAM</th>
+        <th>Maschine</th>
+        <th>Pack</th>
+        <th>Modell</th>
+        <th>Variante</th>
+        <th>Quant</th>
+        <th>Qualität %</th>
+        <th>TTFT P50</th>
+        <th>Decode Median</th>
+        <th>Peak RAM</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.chip }}</td>
+        <td>{{ r.ram_gb }}</td>
+        <td>{{ r.machine }}</td>
+        <td>{{ r.pack }}</td>
+        <td>{{ r.model }}</td>
+        <td>{{ r.variant }}</td>
+        <td>{{ r.quant }}</td>
+        <td>
+          {% if r.quality_pct is not none %}
+            <strong>{{ "%.0f" | format(r.quality_pct) }}%</strong>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td>{{ r.ttft_p50 }}</td>
+        <td>{{ r.decode_med }}</td>
+        <td>{{ r.peak_ram_gb }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Noch keine bewerteten Läufe vorhanden.</p>
+  {% endif %}
+</div>
+{% endblock %}

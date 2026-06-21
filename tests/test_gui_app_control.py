@@ -190,7 +190,7 @@ def test_live_stream_eval_sse(tmp_path):
     # The data must be valid JSON containing expected keys.
     for line in body.splitlines():
         if line.startswith("data: "):
-            payload = json.loads(line[len("data: "):])
+            payload = json.loads(line[len("data: ") :])
             assert "total" in payload
             break
 
@@ -215,7 +215,7 @@ def test_live_stream_judge_sse(tmp_path):
     assert "event: view" in body
     for line in body.splitlines():
         if line.startswith("data: "):
-            payload = json.loads(line[len("data: "):])
+            payload = json.loads(line[len("data: ") :])
             assert payload["total"] == 2
             break
 

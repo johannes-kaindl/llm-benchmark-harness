@@ -1,6 +1,96 @@
-{% extends "base.html" %}{% block body %}
-<h1>Übersicht</h1><table>{% for b in bundles %}
-<tr><td><a href="/result/{{ b.run_dir.name }}">{{ b.run_dir.name }}</a></td>
-<td>{{ b.pack_id }}</td><td>{{ b.status }}</td>
-<td>{% if b.recommendation %}{{ b.recommendation }}{% endif %}</td></tr>{% endfor %}</table>
+{% extends "base.html" %}
+{% block title_suffix %} · Übersicht{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">Übersicht</h1>
+  <a href="/config" class="btn btn-primary">+ Neuer Lauf</a>
+</div>
+
+{# running run card — shown when at least one bundle is running #}
+{% for b in bundles if b.status == "running" %}
+<div class="run-card"
+     hx-ext="sse" sse-connect="/live/{{ b.run_dir.name }}?kind=eval"
+     x-data="{ done: 0, total: 0, pct: 0 }"
+     sse-swap="view" hx-swap="none"
+     @sse:view.window="try { let d=JSON.parse($event.detail.data); done=d.done||0; total=d.total||0; pct=total?Math.round(done/total*100):0; } catch(e){}">
+  <div class="run-card-title">⏳ {{ b.run_dir.name }}</div>
+  <div class="run-card-progress">
+    <span class="text-xs" x-text="done + ' / ' + total + ' (' + pct + '%)'"></span>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" :style="'width:' + pct + '%'"></div>
+    </div>
+  </div>
+  <div class="run-card-stop">
+    <form method="post" action="/runs/stop" style="display:inline">
+      <input type="hidden" name="name" value="{{ b.run_dir.name }}">
+      <button type="submit" class="btn btn-danger">Stop</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{# bundle table #}
+<div class="card">
+  <div class="card-title">Läufe</div>
+  <table class="bundle-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Pack</th>
+        <th>Modelle</th>
+        <th>Datum</th>
+        <th>Status</th>
+        <th>Urteil</th>
+        <th>Aktionen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in bundles %}
+      <tr>
+        <td><a href="/result/{{ b.run_dir.name }}">{{ b.run_dir.name }}</a></td>
+        <td>{{ b.pack_id }}</td>
+        <td>{{ b.models | join(", ") }}</td>
+        <td>{{ b.date }}</td>
+        <td>
+          {% if b.status == "running" %}
+            <span class="badge running">running</span>
+          {% elif b.status == "crashed" %}
+            <span class="badge crashed">crashed</span>
+          {% elif b.status == "eval-only" %}
+            <span class="badge eval-only">eval-only</span>
+          {% elif b.status == "judged" %}
+            <span class="badge judged">judged</span>
+          {% else %}
+            <span class="badge">{{ b.status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if b.recommendation == "Ja" %}
+            <span class="badge ja">Ja</span>
+          {% elif b.recommendation == "Mit Einschränkung" %}
+            <span class="badge einschr">Mit Einschr.</span>
+          {% elif b.recommendation == "Nein" %}
+            <span class="badge nein">Nein</span>
+          {% elif b.recommendation %}
+            {{ b.recommendation }}
+          {% endif %}
+        </td>
+        <td>
+          <a href="/result/{{ b.run_dir.name }}" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.75rem">Ergebnis</a>
+          {% if b.status == "crashed" %}
+          <a href="/config?resume={{ b.run_dir.name }}" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.75rem">Fortsetzen</a>
+          {% endif %}
+          {% if b.status in ("eval-only", "judged") %}
+          <a href="/config?bundle={{ b.run_dir.name }}" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.75rem">Judge</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">
+        Noch keine Läufe — <a href="/config">Neuen Lauf starten</a>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}

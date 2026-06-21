@@ -34,7 +34,7 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
         items = bundles.discover(runs_dir)
-        return render("overview.html", request, bundles=items)
+        return render("overview.html", request, bundles=items, active="overview")
 
     @app.get("/packs/{pack_path:path}", response_class=HTMLResponse)
     def pack_explorer(request: Request, pack_path: str) -> HTMLResponse:
@@ -46,7 +46,7 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             pk = load_pack(pack_path)
         except (FileNotFoundError, OSError):
             raise HTTPException(status_code=404) from None
-        return render("pack.html", request, pack=pk)
+        return render("pack.html", request, pack=pk, active="pack")
 
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(request: Request, name: str) -> HTMLResponse:
@@ -55,13 +55,51 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
             raise HTTPException(status_code=404)
         summary = bundles.classify(rd)
-        return render("result.html", request, summary=summary, run_dir=rd)
+        # Compute master rows for judged bundles so the template can render them.
+        master_rows: list[dict[str, Any]] = []
+        if summary is not None and summary.status == "judged":
+            master_rows = _compute_master_rows(rd)
+        return render(
+            "result.html",
+            request,
+            summary=summary,
+            run_dir=rd,
+            master_rows=master_rows,
+            active="overview",
+        )
 
     @app.get("/compare", response_class=HTMLResponse)
     def compare(request: Request) -> HTMLResponse:
         rows = aggregate_mod.load_all_scores(runs_dir)
         agg = aggregate_mod.aggregate(rows) if rows else []
-        return render("compare.html", request, rows=agg)
+        return render("compare.html", request, rows=agg, active="compare")
+
+    @app.get("/config", response_class=HTMLResponse)
+    def config_get(
+        request: Request,
+        resume: str | None = None,
+        bundle: str | None = None,
+        conflict: bool = False,
+    ) -> HTMLResponse:
+        """Station 3: configuration + run-start form."""
+        packs_dir = Path("packs")
+        pack_files = sorted(str(p) for p in packs_dir.glob("*.yaml")) if packs_dir.exists() else []
+        config_files = sorted(str(p) for p in Path(".").glob("config*.yaml"))
+        judge_config_files = sorted(str(p) for p in Path(".").glob("judge*.yaml"))
+        eval_only = [b.run_dir.name for b in bundles.discover(runs_dir) if b.status == "eval-only"]
+        return render(
+            "config.html",
+            request,
+            packs=pack_files,
+            configs=config_files,
+            judge_configs=judge_config_files,
+            eval_only_bundles=eval_only,
+            resume=resume,
+            bundle=bundle,
+            conflict=conflict,
+            error=None,
+            active="config",
+        )
 
     @app.get("/export/{name}/{fname}")
     def export(name: str, fname: str) -> Any:
@@ -77,8 +115,38 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             raise HTTPException(status_code=404)
         return FileResponse(candidate)
 
-    _register_control_routes(app, runs_dir=runs_dir, registry=registry)  # Task 10
+    _register_control_routes(app, runs_dir=runs_dir, registry=registry)
     return app
+
+
+def _compute_master_rows(run_dir: Path) -> list[dict[str, Any]]:
+    """Recompute scorecard master rows for the result view."""
+    import json as _json
+
+    from ramcheck import scorecard as scorecard_mod
+    from ramcheck.judge import load_judgements_jsonl
+    from ramcheck.qualrun import load_responses_jsonl
+
+    bundle_path = run_dir / "bundle.json"
+    if not bundle_path.exists():
+        return []
+    try:
+        manifest: dict[str, Any] = _json.loads(bundle_path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return []
+    pack_path = manifest.get("pack_path")
+    if not pack_path or not Path(pack_path).exists():
+        return []
+    try:
+        pk = load_pack(pack_path)
+        responses = load_responses_jsonl(run_dir / "responses.jsonl")
+        verdicts = load_judgements_jsonl(run_dir / "judgements.jsonl")
+        from ramcheck.gui.bundles import _reports_from_scores
+
+        reports = _reports_from_scores(run_dir, pk)
+        return scorecard_mod.master_rows(pk, responses, verdicts, reports)
+    except Exception:
+        return []
 
 
 def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegistry) -> None:
@@ -148,6 +216,25 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
 
 
 def serve(*, runs_dir: Path, port: int = 0, open_browser: bool = True) -> None:  # pragma: no cover
-    """Entry point for `ramcheck gui`: build the app, bind, optionally open the browser.
-    (Fully implemented in Task 11.)"""
-    raise NotImplementedError("GUI server not yet implemented — coming in Task 11")
+    """Entry point for `ramcheck gui`: build the app, bind, optionally open the browser."""
+    import socket
+    import threading
+    import webbrowser
+
+    import uvicorn
+
+    from ramcheck.gui.control import RealProcessLauncher
+
+    registry = RunRegistry(runs_dir=runs_dir, launcher=RealProcessLauncher())
+    application = create_app(runs_dir=runs_dir, registry=registry)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", port))
+    bound_port = sock.getsockname()[1]
+    url = f"http://127.0.0.1:{bound_port}"
+    if open_browser:
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    config = uvicorn.Config(application, log_level="warning")
+    server = uvicorn.Server(config)
+    server.run(sockets=[sock])

@@ -1,4 +1,78 @@
-{% extends "base.html" %}{% block body %}
-<h1>{{ pack.title }}</h1><ul>{% for d in pack.dimensions %}
-<li>{{ d.id }} · {{ d.name }} · ×{{ d.weight }}</li>{% endfor %}</ul>
-<p>K.-o.: {{ pack.ko_rule.dimension }} ≤ {{ pack.ko_rule.threshold }}</p>{% endblock %}
+{% extends "base.html" %}
+{% block title_suffix %} · Pack {{ pack.id }}{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">{{ pack.title }}</h1>
+  <span class="muted text-sm">{{ pack.id }} · v{{ pack.version }}</span>
+</div>
+
+{% if pack.description %}
+<div class="card mb-4">
+  <p>{{ pack.description }}</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title">Dimensionen</div>
+  {% for d in pack.dimensions %}
+  <div class="dim-row">
+    <span class="dim-id{% if d.id == pack.ko_rule.dimension %} dim-ko{% endif %}">{{ d.id }}</span>
+    <span>{{ d.name }}</span>
+    <span class="dim-weight">×{{ d.weight }}</span>
+    {% if d.id == pack.ko_rule.dimension %}
+      <span class="badge nein" style="font-size:0.7rem">K.-o. ≤ {{ pack.ko_rule.threshold }}</span>
+    {% endif %}
+    {% if d.about %}
+      <span class="text-xs muted">— {{ d.about }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">Prompt-Varianten</div>
+  {% for pv in pack.prompt_variants %}
+  <div class="dim-row">
+    <span class="dim-id">{{ pv.id }}</span>
+    {% if pv.system_prompt %}
+      <span class="text-xs muted">{{ pv.system_prompt[:80] }}{% if pv.system_prompt|length > 80 %}…{% endif %}</span>
+    {% else %}
+      <span class="text-xs muted">(kein System-Prompt)</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">Prompts</div>
+  {% for cat in pack.categories %}
+  <div style="margin-bottom:0.75rem">
+    <div style="font-weight:600;padding:0.25rem 0;border-bottom:2px solid var(--border);margin-bottom:0.25rem">
+      {{ cat.id }} · {{ cat.name }}
+    </div>
+    <ul class="prompt-list">
+      {% for p in cat.prompts %}
+      <li class="prompt-item">
+        <div class="flex items-center gap-2">
+          <span class="prompt-id">{{ p.id }}</span>
+          <span>{{ p.title }}</span>
+          {% if p.safety_critical %}<span class="badge nein" style="font-size:0.65rem">sicherheitskritisch</span>{% endif %}
+          {% if p.format_strict %}<span class="badge eval-only" style="font-size:0.65rem">format-strikt</span>{% endif %}
+        </div>
+        {% if p.green_flags %}
+        <div class="mt-1">
+          {% for f in p.green_flags %}<span class="flag green">✓ {{ f }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if p.red_flags %}
+        <div class="mt-1">
+          {% for f in p.red_flags %}<span class="flag red">✗ {{ f }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title_suffix %} · Konfig + Start{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">Konfig + Start</h1>
+</div>
+
+{% if conflict %}
+<div class="card" style="border-color:var(--nein-bg);background:var(--nein-bg)">
+  <p style="color:var(--nein)">⚠ Ein Lauf läuft bereits. Stoppe ihn zuerst.</p>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="card" style="border-color:var(--nein-bg);background:var(--nein-bg)">
+  <p style="color:var(--nein)">Fehler: {{ error }}</p>
+</div>
+{% endif %}
+
+<!-- Eval starten -->
+<div class="card">
+  <div class="card-title">Eval starten</div>
+  <form method="post" action="/runs/eval">
+    {% if resume %}
+    <input type="hidden" name="resume_dir" value="{{ resume }}">
+    <div class="card-title" style="color:var(--einschr)">Fortsetzen: {{ resume }}</div>
+    {% endif %}
+    <div class="form-group">
+      <label class="form-label" for="pack_path">Pack</label>
+      <select class="form-select" id="pack_path" name="pack_path">
+        {% for p in packs %}
+        <option value="{{ p }}">{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="config_path">Config</label>
+      <select class="form-select" id="config_path" name="config_path">
+        {% for c in configs %}
+        <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">
+      {% if resume %}Fortsetzen{% else %}Eval starten{% endif %}
+    </button>
+  </form>
+</div>
+
+<!-- Judge starten -->
+<div class="card">
+  <div class="card-title">Judge starten</div>
+  <form method="post" action="/runs/judge">
+    <div class="form-group">
+      <label class="form-label" for="bundle">Bundle (eval-only)</label>
+      <select class="form-select" id="bundle" name="bundle">
+        {% if bundle %}
+        <option value="{{ bundle }}" selected>{{ bundle }}</option>
+        {% endif %}
+        {% for b in eval_only_bundles %}
+        <option value="{{ b }}"{% if b == bundle %} selected{% endif %}>{{ b }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="judge_config_path">Judge-Config</label>
+      <select class="form-select" id="judge_config_path" name="judge_config_path">
+        {% for j in judge_configs %}
+        <option value="{{ j }}">{{ j }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Judge starten</button>
+  </form>
+</div>
+{% endblock %}
