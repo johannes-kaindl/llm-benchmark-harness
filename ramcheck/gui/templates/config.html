@@ -34,6 +34,7 @@
         {% endfor %}
       </select>
     </div>
+    {% if resume %}
     <div class="form-group">
       <label class="form-label" for="config_path">Config</label>
       <select class="form-select" id="config_path" name="config_path">
@@ -42,9 +43,18 @@
         {% endfor %}
       </select>
     </div>
-    {% if not resume %}
+    {% else %}
     <div x-data='modelPicker({{ models_by_config | tojson }})'>
-      <div class="form-group" x-init="config = document.getElementById('config_path').value; syncFromConfig()">
+      <div class="form-group">
+        <label class="form-label" for="config_path">Config</label>
+        <select class="form-select" id="config_path" name="config_path"
+                x-model="config" @change="syncFromConfig()">
+          {% for c in configs %}
+          <option value="{{ c }}">{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
         <label class="form-label">Modelle</label>
         <template x-for="(m, i) in models" :key="i">
           <label style="display:block; font-size:0.9rem">

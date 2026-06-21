@@ -16,7 +16,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ramcheck import aggregate as aggregate_mod
 from ramcheck.config import models_from_json
-from ramcheck.gui import bundles, compare, configs as configs_mod
+from ramcheck.gui import bundles, compare
+from ramcheck.gui import configs as configs_mod
 from ramcheck.gui.control import RunRegistry
 from ramcheck.pack import load_pack
 
