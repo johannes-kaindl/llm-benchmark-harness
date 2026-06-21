@@ -158,6 +158,16 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   discovery and the `/export` allowlist**. Status + verdict are **derived/recomputed** per bundle
   (not in `bundle.json`). `serve()` binds 127.0.0.1 only; TrustedHost + Origin checks guard the
   state-changing POSTs against DNS-rebinding/CSRF.
+- **`reports.jsonl` is the `ModelReport` persistence** (one line per (model, variant): `dim_scores`
+  + `dim_rationales`), written by `judge` in BOTH paths at finalize (`_render_judge_scorecard`). It is
+  the **sole** source of per-dimension rationales (`scores.csv` has none); the GUI reads it first and
+  falls back to the lossy `scores.csv` reconstruction (then „Begründung nicht erfasst"). Master
+  dimensions are scored **holistically** (one judge call over all answers) — so traceability runs
+  through the judge's rationale **citing prompt_ids** (clickable in the result view), not through a
+  dimension→prompt structure (none exists). The evaluation method is explained in
+  `docs/explanation/design-decisions.md` and surfaced UI-retrievably via `templates/_method_explainer.html`.
+- **`resources.jsonl` ticks carry `cpu_pct`** (system CPU %, `None` for pre-cpu ticks) — additive,
+  does not touch `RAW_CSV_COLUMNS`. The result view plots RAM + CPU over the run.
 
 ## Memory
 
