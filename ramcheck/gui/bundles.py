@@ -21,6 +21,25 @@ class BundleSummary:
     date: str = ""
     recommendation: str | None = None  # only when judged
     safety_passed: bool | None = None
+    pack_rel: str = ""  # cwd-relative pack path for the /packs/<rel> link
+
+
+def _pack_rel(pack_path: str | None, pack_id: str) -> str:
+    """A cwd-relative pack path the /packs/{path} route accepts (absolute paths 404).
+
+    bundle.json may carry an absolute resolved pack_path (production) or a relative one
+    (older bundles/fixtures). Make it relative to cwd when it lives under cwd; otherwise
+    fall back to the conventional ``packs/<pack_id>.yaml`` so the link is never absolute.
+    """
+    if pack_path:
+        p = Path(pack_path)
+        if not p.is_absolute():
+            return pack_path
+        try:
+            return str(p.relative_to(Path.cwd()))
+        except ValueError:
+            pass
+    return f"packs/{pack_id}.yaml" if pack_id else ""
 
 
 def classify(run_dir: Path) -> BundleSummary | None:
@@ -57,12 +76,14 @@ def _manifest(run_dir: Path) -> dict[str, Any]:
 
 def _summary(run_dir: Path, status: str, sentinel: dict[str, Any] | None) -> BundleSummary:
     m = _manifest(run_dir)
+    pack_id = str(m.get("pack_id", sentinel.get("kind", "") if sentinel else ""))
     return BundleSummary(
         run_dir=run_dir,
         status=status,
-        pack_id=str(m.get("pack_id", sentinel.get("kind", "") if sentinel else "")),
+        pack_id=pack_id,
         models=[mm["id"] for mm in m.get("models", [])],
         date=str(m.get("date", "")),
+        pack_rel=_pack_rel(m.get("pack_path"), pack_id),
     )
 
 
@@ -156,18 +177,23 @@ def bundle_detail(run_dir: Path) -> dict[str, Any] | None:
     verdicts = load_judgements_jsonl(run_dir / "judgements.jsonl")
     reports = _load_reports(run_dir, pk)
     rows = scorecard.master_rows(pk, responses, verdicts, reports)
-    samples = load_samples_jsonl(run_dir / "resources.jsonl")
+    # A corrupt resources.jsonl must degrade only the sparkline, never the whole page.
+    try:
+        samples = load_samples_jsonl(run_dir / "resources.jsonl")
+    except Exception:
+        samples = []
     known_ids = {p.id for _, p in pk.all_prompts()}
     return {
         "run_dir": run_dir,
         "manifest": m,
+        "pack_rel": _pack_rel(m.get("pack_path"), pk.id),
         "pack": pk,
         "responses": responses,
         "verdicts": verdicts,
         "reports": reports,
         "master_rows": rows,
         "perf": scorecard._perf_summary(responses),  # ttft_p50, decode_med, …
-        "ko": _ko_branches(pk, verdicts, rows),  # which branch fired + its root
+        "ko": _ko_branches(pk, verdicts, rows, reports),  # which branch(es) fired + its root
         "cpu": [s.cpu_pct for s in samples],
         "ram": [s.sys_used_mb for s in samples],
         "cited_ids": _cited_prompt_ids(
@@ -187,20 +213,28 @@ def _cited_prompt_ids(reports: list[Any], known_ids: set[str]) -> dict[str, list
     out: dict[str, list[str]] = {}
     for rep in reports:
         for dim_id, text in getattr(rep, "dim_rationales", {}).items():
-            hits = [tok for tok in re.findall(r"[A-Za-z]\d+", text or "") if tok in known_ids]
+            hits = [tok for tok in re.findall(r"\b[A-Za-z]+\d+\b", text or "") if tok in known_ids]
             if hits:
                 out[f"{rep.model}|{rep.variant}|{dim_id}"] = hits
     return out
 
 
-def _ko_branches(pk: Any, verdicts: list[Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _ko_branches(
+    pk: Any, verdicts: list[Any], rows: list[dict[str, Any]], reports: list[Any]
+) -> list[dict[str, Any]]:
     """For each failed-KO group, which of the two roots fired (dimension-floor / red-flag-prompt).
+
+    The two roots are independent and can fire together; both flags are reported so the
+    view can render each sub-block on its own (a both-fired group no longer hides the
+    dimension-floor under the red-flag arm).
 
     Red-flag hits are computed per (model, variant) group — matching the scorecard math —
     so that a failure in one model's group never pollutes another's branch entry.
     """
     from ramcheck import scorecard
 
+    reports_by = {(rep.model, rep.variant): rep for rep in reports}
+    ko_dim = pk.ko_rule.dimension
     branches: list[dict[str, Any]] = []
     for r in rows:
         if r.get("safety_passed"):
@@ -209,13 +243,17 @@ def _ko_branches(pk: Any, verdicts: list[Any], rows: list[dict[str, Any]]) -> li
         gv = [v for v in verdicts if (v.model, v.variant) == (model, variant)]
         group_red_flagged = scorecard.red_flagged_prompts(gv)
         hit_prompts = [p for p in pk.ko_rule.red_flag_prompts if p in group_red_flagged]
+        rep = reports_by.get((model, variant))
+        dim_score = rep.dim_scores.get(ko_dim) if rep and rep.dim_scores else None
+        dimension_floor_fired = dim_score is not None and dim_score <= pk.ko_rule.threshold
         branches.append(
             {
                 "model": model,
                 "variant": variant,
-                "dimension": pk.ko_rule.dimension,
+                "dimension": ko_dim,
                 "threshold": pk.ko_rule.threshold,
                 "red_flag_prompts": hit_prompts,  # non-empty → red-flag branch fired
+                "dimension_floor_fired": dimension_floor_fired,  # dim ≤ threshold → floor fired
             }
         )
     return branches

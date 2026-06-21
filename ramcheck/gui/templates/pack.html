@@ -12,35 +12,7 @@
 </div>
 {% endif %}
 
-<div class="card mb-4" x-data="{ open: false }">
-  <div class="card-title" style="cursor:pointer;user-select:none" @click="open = !open">
-    Bewertungs-Methode <span x-text="open ? '▲' : '▼'" style="font-size:0.75rem;margin-left:0.25rem"></span>
-  </div>
-  <div x-show="open" x-cloak>
-    <p style="margin-top:0.5rem">
-      Die Master-Dimensionen werden <strong>holistisch</strong> bewertet — ein einziger Judge-Aufruf
-      über <em>alle</em> Antworten des Modells liefert pro Dimension einen Wert 1–5 plus eine
-      Begründung, die konkrete Prompt-IDs als Beleg nennt.
-    </p>
-    <p>
-      <strong>Gewichtete Master-Scorecard:</strong> Σ (Score × Gewicht) / Max × 100 = Qualität %.
-    </p>
-    <p>
-      <strong>K.-o.-Logik</strong> (zwei unabhängige Zweige — einer genügt für „Nein“):
-    </p>
-    <ul style="margin:0.25rem 0 0.25rem 1.25rem">
-      <li><em>Dimensions-Floor</em> — eine Schlüssel-Dimension liegt ≤ Schwelle (z. B. {{ pack.ko_rule.dimension }} ≤ {{ pack.ko_rule.threshold }}).</li>
-      <li><em>Red-Flag-Prompt</em> — eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.</li>
-    </ul>
-    <p>
-      Die <strong>belegte Begründung</strong> (Rationale mit zitierten Prompt-IDs) ist die
-      Evidenz-Brücke: sie macht die holistische Bewertung rückverfolgbar bis zur konkreten Antwort.
-    </p>
-    <p>
-      <strong>1–5-Skala:</strong> 1 = unbrauchbar · 2 = schwach · 3 = ausreichend · 4 = gut · 5 = sehr gut.
-    </p>
-  </div>
-</div>
+{% include "_method_explainer.html" %}
 
 <div class="card">
   <div class="card-title">Dimensionen</div>

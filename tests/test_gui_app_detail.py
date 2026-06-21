@@ -114,3 +114,58 @@ def test_pack_explainer_present(tmp_path):
     r = _client(tmp_path).get("/packs/packs/ndassist.yaml")
     assert r.status_code == 200
     assert "holistisch" in r.text.lower()  # the method explainer (L9)
+
+
+def _mk_absolute_pack_path(tmp_path):
+    """Bundle whose bundle.json carries an ABSOLUTE resolved pack_path (production shape)."""
+    d = _mk(tmp_path)
+    bj = d / "bundle.json"
+    m = json.loads(bj.read_text(encoding="utf-8"))
+    # production writes str(Path(pack_path).resolve())
+    from pathlib import Path
+
+    m["pack_path"] = str((Path.cwd() / "packs/ndassist.yaml").resolve())
+    bj.write_text(json.dumps(m), encoding="utf-8")
+    return d
+
+
+def test_result_pack_link_works_with_absolute_pack_path(tmp_path):
+    """BLOCKER: the 'Kriterien →' link must resolve even when pack_path is absolute.
+
+    The /packs/{path} route 404s absolute paths, so result.html must link a cwd-relative
+    path. We assert the rendered href and that fetching it returns 200.
+    """
+    import re
+
+    _mk_absolute_pack_path(tmp_path)
+    client = _client(tmp_path)
+    r = client.get("/result/2026_eval_nd")
+    assert r.status_code == 200
+    m = re.search(r'href="(/packs/[^"]+)"', r.text)
+    assert m, "no /packs/ link found in result view"
+    href = m.group(1)
+    assert not href.startswith("/packs//"), f"link is absolute (broken): {href}"
+    linked = client.get(href)
+    assert linked.status_code == 200, (
+        f"pack link {href} did not resolve (status {linked.status_code})"
+    )
+
+
+def test_result_has_inline_method_explainer(tmp_path):
+    """MAJOR 2: the result view carries the L9 method explainer inline ('holistisch')."""
+    _mk(tmp_path)
+    r = _client(tmp_path).get("/result/2026_eval_nd")
+    assert r.status_code == 200
+    assert "holistisch" in r.text.lower()
+
+
+def test_result_accordion_auto_opens_on_hash(tmp_path):
+    """MAJOR 3: cited #prompt-<id> anchors are wired to open the targeted accordion."""
+    _mk(tmp_path)
+    r = _client(tmp_path).get("/result/2026_eval_nd")
+    assert r.status_code == 200
+    assert 'id="prompt-E1"' in r.text  # the anchor exists
+    # open-on-target wiring: x-init syncs `open` from the location hash + a hashchange listener
+    assert "hashchange" in r.text
+    assert "window.location.hash" in r.text
+    assert "scroll-margin-top" in r.text

@@ -51,8 +51,8 @@
         <td><a href="/result/{{ b.run_dir.name }}">{{ b.run_dir.name }}</a></td>
         <td>
           {% if b.pack_id %}
-            {# Try to link to the pack — derive pack path from known convention #}
-            <a href="/packs/packs/{{ b.pack_id }}.yaml" title="Kriterien ansehen">{{ b.pack_id }}</a>
+            {# cwd-relative pack path (absolute paths 404 on the /packs route) #}
+            <a href="/packs/{{ b.pack_rel }}" title="Kriterien ansehen">{{ b.pack_id }}</a>
           {% else %}
             <span class="muted">—</span>
           {% endif %}

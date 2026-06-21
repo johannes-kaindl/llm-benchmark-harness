@@ -41,7 +41,7 @@
         {% if detail and detail.pack %}
           <strong>{{ detail.pack.title }}</strong>
           — {{ detail.pack.description if detail.pack.description else detail.pack.id }}
-          <a href="/packs/{{ detail.manifest.get('pack_path', '') }}" style="margin-left:0.5rem">Kriterien →</a>
+          <a href="/packs/{{ detail.pack_rel }}" style="margin-left:0.5rem">Kriterien →</a>
         {% else %}
           {{ summary.pack_id }}
         {% endif %}
@@ -77,6 +77,11 @@
   </div>
 </div>
 
+{# ── Bewertungs-Methode (L9, shared partial) ──────────────────────────────── #}
+{% if detail and detail.pack %}
+  {% with pack = detail.pack %}{% include "_method_explainer.html" %}{% endwith %}
+{% endif %}
+
 {# ── K.-o.-Box ─────────────────────────────────────────────────────────────── #}
 {% if detail and detail.ko %}
 <div class="card" style="border-color:var(--nein); background:var(--nein-bg, #fee2e2)">
@@ -86,6 +91,8 @@
       <div class="text-sm" style="margin-bottom:0.25rem">
         <strong>{{ branch.model }}</strong> / {{ branch.variant }}
       </div>
+      {# Both roots are independent: a group can trip both. Render each sub-block on its
+         own so a both-fired group never hides the dimension-floor under the red-flag arm. #}
       {% if branch.red_flag_prompts %}
         {# Red-flag-branch fired #}
         <div class="text-sm">
@@ -99,7 +106,8 @@
           {% endfor %}
           springen.
         </div>
-      {% else %}
+      {% endif %}
+      {% if branch.dimension_floor_fired %}
         {# Dimension-floor branch fired — show the holistic rationale #}
         <div class="text-sm">
           Dimensions-Floor: <strong>{{ branch.dimension }}</strong> ≤ {{ branch.threshold }}
@@ -241,7 +249,17 @@
           {% set _ = ns2.verdicts.append(v) %}
         {% endfor %}
 
-        <div id="prompt-{{ prompt.id }}" x-data="{ open: false }" style="margin-bottom:0.5rem; border:1px solid var(--border); border-radius:8px; overflow:hidden">
+        <div
+          id="prompt-{{ prompt.id }}"
+          x-data="{ open: false }"
+          x-init="
+            const sel = '#prompt-{{ prompt.id }}';
+            const sync = () => { if (window.location.hash === sel) { open = true; $el.scrollIntoView(); } };
+            sync();
+            window.addEventListener('hashchange', sync);
+          "
+          style="margin-bottom:0.5rem; border:1px solid var(--border); border-radius:8px; overflow:hidden; scroll-margin-top:4rem"
+        >
           {# Collapsed header #}
           <div
             class="flex items-center gap-2"
