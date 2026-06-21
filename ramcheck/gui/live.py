@@ -26,7 +26,13 @@ class LiveStream:
         self._events: list[dict[str, Any]] = []
 
     def _ingest(self) -> None:
+        prev_offset = self._offset
         lines, self._offset = tail.read_new(self.events_path, self._offset)
+        if self._offset < prev_offset:
+            # Truncation/rotation (e.g. a fresh judge --web run rewrote the file):
+            # tail reset the byte offset, so drop the stale events before appending
+            # the freshly-read ones — otherwise the old (larger) total sticks.
+            self._events.clear()
         for ln in lines:
             parsed = self.view_mod.parse_line(ln)
             if parsed is not None:
