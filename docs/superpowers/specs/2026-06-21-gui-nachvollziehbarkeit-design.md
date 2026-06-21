@@ -26,6 +26,7 @@ Phase 1 baut das **Fundament dieser Schleife**: *sehen & nachvollziehen*. „Nei
 | **L6** | **Fundament bleibt; Phase 1 überarbeitet die Read-/Präsentationsschicht.** | Die in Ink. 6 adversarial gehärtete Architektur ist solide; geändert wird, was unbrauchbar war. |
 | **L7** | **Steuerung & Vergleich bleiben funktional, werden NICHT in Phase 1 brauchbar gemacht.** | YAGNI; gehören zur „Bedienung" (Phase 2). |
 | **L8** | **Dimensions-Nachvollziehbarkeit via holistische Begründung mit prompt_id-Belegen — nicht via (nicht-existenter) Dimension→Aufgabe-Struktur.** Der Judge nennt in jeder Dimensions-Begründung 1–2 prompt_ids als Beleg; die UI macht diese Zitate klickbar. | Master-Dimensionen sind holistisch (`score_dimensions` = ein Call über alle Antworten, `judge.py:121`); der Pack trägt keine Dimension→Prompt-Kante (nur `ko_rule.dimension`/`red_flag_prompts`). Eine erfundene Zuordnung („alle Antworten" / „Kategorie") wäre Schlagwort-ohne-Kontext eine Ebene tiefer. Die **Begründung selbst** ist die ehrliche Evidenz-Brücke. |
+| **L9** | **Die Bewertungs-*Methode* ist im UI abrufbar erklärt UND dauerhaft dokumentiert** — nicht nur die Daten, sondern *wie* bewertet wird: holistische Dimensionen · gewichtete Master-Scorecard (Σ Score×Gewicht / Max) · die zwei K.-o.-Zweige · die belegte Begründung als Evidenz-Brücke · die 1–5-Scale. Als abrufbares Erklär-Element in der Kriterien-/Ergebnis-Ansicht **und** in `docs/explanation/`. Eine Quelle, zwei Orte. | Johannes' #1-Anforderung ist „was nach welchen Kriterien **wie** getestet wird" — das *Wie* ist die Methode. Ohne sie bleiben die Zahlen Schlagwörter; sie ist so wichtig für Nachvollziehbarkeit, dass sie reproduzierbar (Doku) **und** im Werkzeug selbst (UI) verfügbar sein muss. |
 
 ## 3 · Die drei Ansichten
 
@@ -47,6 +48,8 @@ Der Drill-down eines Laufs (Modell·Variante·Hardware·Seed), lückenlos von ob
 ### 3.2 Kriterien-Ansicht „was prüft dieser Test" — `/packs/{pack}`
 
 Der Pack als selbsterklärende Referenz: scharfe Aufgaben-Beschreibung; **1–5-Scale-Legende**; gewichtete Dimensionen (`id · name · ×Gewicht · about`); K.-o.-Regel prominent (Dimension + Schwelle + `red_flag_prompts`); System-Prompt-Varianten mit vollem Text; pro Kategorie die Prompts (Text · `tests` · Green/Red-Flags · `safety_critical`/`format_strict`/`repeats`). Jede Aufgabe rückverlinkt zu ihren Antworten in den Läufen.
+
+**Bewertungs-Methode erklärt (abrufbar, L9).** Ein erklärendes Element (Panel/aufklappbar, in Kriterien- und Ergebnis-Ansicht erreichbar) macht die *Mechanik* verständlich — nicht nur was, sondern **wie** bewertet wird: dass die Master-Dimensionen **holistisch über alle Antworten** bewertet werden (nicht pro Prompt), wie die **gewichtete Master-Scorecard** rechnet (Σ Score×Gewicht / Max = %), wie die **K.-o.-Logik** mit ihren zwei Zweigen (Dimensions-Floor *oder* Red-Flag-Prompt) ein „Nein" erzwingt, und wie die **belegte Begründung** (klickbare prompt_id-Zitate) die holistische Bewertung rückverfolgbar macht. Der Text ist **dieselbe Quelle** wie der `docs/explanation/`-Abschnitt (kein Drift).
 
 ### 3.3 Übersicht — `/` (bedeutungstragender Einstieg)
 
@@ -139,6 +142,7 @@ Konsistent mit dem Repo (I/O dependency-injected, pure Logik unit-getestet, mypy
 | `ramcheck/gui/app.py` | Read-Routen liefern reiche Strukturen + Verlinkungs-Anker |
 | `ramcheck/gui/templates/{result,pack,overview}.html` | komplett überarbeitet (Drill-down · Kriterien-Referenz · bedeutungstragende Übersicht) |
 | `ramcheck/gui/static/` | leichtes RAM/CPU-Verlaufs-Chart (Inline-SVG/Canvas) |
+| `docs/explanation/design-decisions.md` | **neu** — Abschnitt „Bewertungs-Methode": holistische Dimensionen, belegte Begründung als Nachvollziehbarkeits-Brücke, zwei K.-o.-Zweige, gewichtete Master-Scorecard (Quelle für das abrufbare UI-Erklär-Element, L9) |
 | `tests/` | neue + **geänderte** Tests je §9 (inkl. `test_judge.py` Schema-Hebung) |
 | `AGENTS.md` | `reports.jsonl` (ModelReport-Persistenz, beide Judge-Pfade) + `cpu_pct` im Sampler dokumentieren |
 

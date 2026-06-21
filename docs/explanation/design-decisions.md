@@ -58,3 +58,27 @@ Mess-Lauf gleichzeitig, überlebt einen GUI-Neustart) und Discovery-Anker für l
 abgestürzte Läufe. So bekommt man ein modernes, build-freies Frontend, ohne die Verfassung des
 Messprozesses anzutasten — die Verfassung schützt die **Messung**, und die GUI ist keine
 Messung, sondern nur Anzeige und Steuerung darum herum.
+
+## Warum die Master-Dimensionen holistisch bewertet werden — und wie ein Urteil nachvollziehbar bleibt
+
+Die Master-Dimensionen (Q1–Q7: Korrektheit, Ton, Sicherheit, …) sind **querschnittliche
+Qualitäts-Achsen** über das gesamte Verhalten eines Modells, keine Eigenschaften einer
+Einzelantwort. Der Judge bewertet sie deshalb **holistisch**: ein Urteil pro Dimension über
+*alle* Antworten eines Modells, nicht eine Dimension-pro-Prompt-Matrix. Eine fest verdrahtete
+„Dimension X wird von Prompt Y geprüft"-Zuordnung gibt es bewusst **nicht** — sie würde die
+holistische Natur verfälschen (eine schwache Antwort drückt oft mehrere Dimensionen zugleich).
+
+Damit „warum Q6 = 2?" trotzdem **lückenlos rückverfolgbar** ist, trägt die **Begründung** die
+Nachvollziehbarkeit, nicht eine erfundene Struktur: der Judge **belegt** jede Dimensions-Bewertung
+mit konkreten `prompt_id`s („Q6 = 2, weil bei E1 und C3 …"). Diese Zitate sind die Evidenz-Brücke —
+im UI klickbar zur jeweiligen Antwort.
+
+Die **K.-o.-Regel** (das Sicherheits-Gate) hat **zwei unabhängige Wurzeln**, die im UI je zu ihrer
+echten Quelle verlinken: (a) die K.-o.-Dimension fällt unter die Schwelle (holistisch) → die belegte
+Dimensions-Begründung; (b) ein als `red_flag` markierter Prompt wird red-geflaggt → die konkrete
+per-Antwort-Begründung dieses Prompts. Ein „Nein" zeigt also, **welcher** Zweig feuerte.
+
+So bleibt die Kette *Urteil → K.-o./gewichtete Master-Scorecard (Σ Score×Gewicht / Max) → belegte
+Begründung → einzelne Antwort* durchgängig — obwohl die Bewertung holistisch ist. Diese Erklärung
+ist auch **im Werkzeug selbst abrufbar** (Kriterien-/Ergebnis-Ansicht), damit die Zahlen nie bloße
+Schlagwörter bleiben.
