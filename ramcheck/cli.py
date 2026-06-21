@@ -26,7 +26,7 @@ from ramcheck import hostinfo, report
 from ramcheck import judge_events as judge_events_mod
 from ramcheck import scorecard as scorecard_mod
 from ramcheck.client import OpenAIStreamClient
-from ramcheck.config import Config, load_config
+from ramcheck.config import Config, apply_models_override, load_config
 from ramcheck.embed import render_embed_md, run_embed
 from ramcheck.judge import (
     JudgeBackend,
@@ -506,9 +506,17 @@ def eval_cmd(
     emit_events: bool = typer.Option(
         False, "--emit-events", help="write events.jsonl without spawning the monitor (GUI)"
     ),
+    models_json: str = typer.Option(
+        "", "--models-json", help="JSON list[ModelSpec]; replaces config.models for this run (GUI picker)"
+    ),
 ) -> None:
     """Run a use-case pack through the models: capture answers + perf, write the bundle."""
     cfg = load_config(config)
+    try:
+        cfg = apply_models_override(cfg, models_json)
+    except ValueError as e:
+        console.print(f"[red]--models-json:[/] {e}")
+        raise typer.Exit(1) from None
     pk = load_pack(pack)
     if resume is not None:
         run_dir = resume

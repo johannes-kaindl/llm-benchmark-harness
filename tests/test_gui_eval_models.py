@@ -42,3 +42,14 @@ def test_start_eval_omits_models_json_when_none(tmp_path):
     reg = control.RunRegistry(runs_dir=tmp_path, launcher=rec)
     reg.start_eval(pack_path="p", config_path="c")
     assert "--models-json" not in rec.calls[0]
+
+
+from typer.testing import CliRunner
+
+from ramcheck.cli import app as cli_app
+
+
+def test_eval_cmd_exposes_models_json_option():
+    res = CliRunner().invoke(cli_app, ["eval", "--help"])
+    assert res.exit_code == 0
+    assert "--models-json" in res.output
