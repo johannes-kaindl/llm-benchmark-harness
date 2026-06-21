@@ -52,10 +52,10 @@
   </table>
 </div>
 
-{% if master_rows %}
+{% if detail and detail.master_rows %}
 <div class="card">
   <div class="card-title">Scorecard</div>
-  {% for row in master_rows %}
+  {% for row in detail.master_rows %}
   <div style="margin-bottom:1rem">
     <div class="flex items-center gap-2 mb-1">
       <strong>{{ row.model }}</strong>
@@ -74,8 +74,23 @@
         <span class="badge nein" style="font-size:0.65rem">Safety FAIL</span>
       {% endif %}
     </div>
+    {% if detail.reports %}
+      {% for rep in detail.reports if rep.model == row.model and rep.variant == row.variant %}
+        {% for dim in detail.pack.dimensions %}
+          {% if rep.dim_rationales and dim.id in rep.dim_rationales and rep.dim_rationales[dim.id] %}
+          <div class="text-xs muted" style="margin-left:1rem">
+            <strong>{{ dim.id }}:</strong> {{ rep.dim_rationales[dim.id] }}
+          </div>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    {% endif %}
   </div>
   {% endfor %}
+</div>
+{% elif detail and not detail.reports %}
+<div class="card">
+  <p class="muted">Noch nicht bewertet — <code>ramcheck judge</code> ausführen.</p>
 </div>
 {% endif %}
 

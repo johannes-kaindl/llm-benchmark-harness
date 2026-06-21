@@ -169,7 +169,9 @@ def bundle_detail(run_dir: Path) -> dict[str, Any] | None:
         "ko": _ko_branches(pk, verdicts, rows),  # which branch fired + its root
         "cpu": [s.cpu_pct for s in samples],
         "ram": [s.sys_used_mb for s in samples],
-        "cited_ids": _cited_prompt_ids(reports, known_ids),  # {"model|variant|dim_id": [prompt_id,...]}
+        "cited_ids": _cited_prompt_ids(
+            reports, known_ids
+        ),  # {"model|variant|dim_id": [prompt_id,...]}
     }
 
 

@@ -83,26 +83,16 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(request: Request, name: str) -> HTMLResponse:
-        # Confine name to a direct child of runs_dir (no traversal).
         rd = (runs_dir / name).resolve()
         if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
             raise HTTPException(status_code=404)
-        # Defensive: a corrupt bundle must show an error row, never 500 the page.
         try:
+            detail = bundles.bundle_detail(rd)
             summary = bundles.classify(rd)
         except Exception:
-            summary = bundles.BundleSummary(run_dir=rd, status="error")
-        # Compute master rows for judged bundles so the template can render them.
-        master_rows: list[dict[str, Any]] = []
-        if summary is not None and summary.status == "judged":
-            master_rows = _compute_master_rows(rd)
+            detail, summary = None, bundles.BundleSummary(run_dir=rd, status="error")
         return render(
-            "result.html",
-            request,
-            summary=summary,
-            run_dir=rd,
-            master_rows=master_rows,
-            active="overview",
+            "result.html", request, detail=detail, summary=summary, run_dir=rd, active="overview"
         )
 
     @app.get("/compare", response_class=HTMLResponse)
@@ -154,36 +144,6 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
     _register_control_routes(app, runs_dir=runs_dir, registry=registry)
     return app
-
-
-def _compute_master_rows(run_dir: Path) -> list[dict[str, Any]]:
-    """Recompute scorecard master rows for the result view."""
-    import json as _json
-
-    from ramcheck import scorecard as scorecard_mod
-    from ramcheck.judge import load_judgements_jsonl
-    from ramcheck.qualrun import load_responses_jsonl
-
-    bundle_path = run_dir / "bundle.json"
-    if not bundle_path.exists():
-        return []
-    try:
-        manifest: dict[str, Any] = _json.loads(bundle_path.read_text(encoding="utf-8"))
-    except (ValueError, OSError):
-        return []
-    pack_path = manifest.get("pack_path")
-    if not pack_path or not Path(pack_path).exists():
-        return []
-    try:
-        pk = load_pack(pack_path)
-        responses = load_responses_jsonl(run_dir / "responses.jsonl")
-        verdicts = load_judgements_jsonl(run_dir / "judgements.jsonl")
-        from ramcheck.gui.bundles import _reports_from_scores
-
-        reports = _reports_from_scores(run_dir, pk)
-        return scorecard_mod.master_rows(pk, responses, verdicts, reports)
-    except Exception:
-        return []
 
 
 def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegistry) -> None:
