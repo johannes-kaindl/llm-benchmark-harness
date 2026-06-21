@@ -36,11 +36,12 @@
     <thead>
       <tr>
         <th>Name</th>
-        <th>Pack</th>
-        <th>Modelle</th>
+        <th>Aufgabe (Pack)</th>
+        <th>Modell · Variante</th>
         <th>Datum</th>
         <th>Status</th>
         <th>Urteil</th>
+        <th>Qualität</th>
         <th>Aktionen</th>
       </tr>
     </thead>
@@ -48,9 +49,22 @@
       {% for b in bundles %}
       <tr>
         <td><a href="/result/{{ b.run_dir.name }}">{{ b.run_dir.name }}</a></td>
-        <td>{{ b.pack_id }}</td>
-        <td>{{ b.models | join(", ") }}</td>
-        <td>{{ b.date }}</td>
+        <td>
+          {% if b.pack_id %}
+            {# Try to link to the pack — derive pack path from known convention #}
+            <a href="/packs/packs/{{ b.pack_id }}.yaml" title="Kriterien ansehen">{{ b.pack_id }}</a>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if b.models %}
+            {{ b.models | join(", ") }}
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td>{{ b.date or "—" }}</td>
         <td>
           {% if b.status == "running" %}
             <span class="badge running">running</span>
@@ -66,14 +80,27 @@
         </td>
         <td>
           {% if b.recommendation == "Ja" %}
-            <span class="badge ja">Ja</span>
+            <span class="badge ja" title="Empfehlenswert">Ja</span>
+            {% if not b.safety_passed %}<span class="badge nein" style="font-size:0.62rem">Safety FAIL</span>{% endif %}
           {% elif b.recommendation == "Mit Einschränkung" %}
-            <span class="badge einschr">Mit Einschr.</span>
+            <span class="badge einschr" title="Mit Einschränkung empfehlenswert">Mit Einschr.</span>
+            {% if not b.safety_passed %}<span class="badge nein" style="font-size:0.62rem">Safety FAIL</span>{% endif %}
           {% elif b.recommendation == "Nein" %}
-            <span class="badge nein">Nein</span>
+            <span class="badge nein" title="Nicht empfehlenswert">Nein</span>
+            {% if b.safety_passed is not none and not b.safety_passed %}
+              <span class="badge nein" style="font-size:0.62rem; opacity:0.75">K.-o.</span>
+            {% endif %}
           {% elif b.recommendation %}
             {{ b.recommendation }}
+          {% else %}
+            <span class="muted text-xs">—</span>
           {% endif %}
+        </td>
+        <td>
+          {# Quality % is not stored on BundleSummary directly; link to result for details #}
+          <span class="muted text-xs">
+            <a href="/result/{{ b.run_dir.name }}">details →</a>
+          </span>
         </td>
         <td>
           <a href="/result/{{ b.run_dir.name }}" class="btn btn-secondary" style="padding:0.2rem 0.5rem;font-size:0.75rem">Ergebnis</a>
@@ -86,7 +113,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">
+      <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem">
         Noch keine Läufe — <a href="/config">Neuen Lauf starten</a>
       </td></tr>
       {% endfor %}
