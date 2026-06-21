@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from ramcheck.config import ModelSpec
+
 SENTINEL_NAME = "run.json"
 
 
@@ -185,6 +187,7 @@ class RunRegistry:
         pack_path: str,
         config_path: str,
         resume_dir: Path | None = None,
+        models: list[ModelSpec] | None = None,
     ) -> RunHandle:
         # Hold the lock across guard+reserve+sentinel+spawn so no window opens between
         # the guard and the on-disk lock being written (TOCTOU).
@@ -203,6 +206,8 @@ class RunRegistry:
             ]
             if resume_dir is not None:
                 argv += ["--resume", str(resume_dir)]
+            if models:
+                argv += ["--models-json", json.dumps([m.model_dump() for m in models])]
             # Write the sentinel (state='running') BEFORE spawn so the on-disk lock
             # exists before any window opens; patch the real pid in post-spawn.
             write_sentinel(
