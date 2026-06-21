@@ -374,3 +374,43 @@ def test_divergence_empty_when_unjudged():
     )
     detail = compare.compare_detail(d, "variant")
     assert detail.divergence == []
+
+
+def _two_model_bundle(tmp_dir):
+    """Synthetic 2-model × 2-variant bundle (no real bundle covers axis=model)."""
+    d = pathlib.Path(tmp_dir) / "2026_eval_2x2"
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    _write_compare_bundle(
+        d,
+        cells=[("alpha", "baseline"), ("alpha", "none"), ("beta", "baseline"), ("beta", "none")],
+        dim_scores_by_cell={
+            ("alpha", "baseline"): full, ("alpha", "none"): {**full, "Q6": 2},
+            ("beta", "baseline"): {q: 5 for q in full}, ("beta", "none"): full,
+        },
+        perf_by_cell={
+            ("alpha", "baseline"): {"decode_tps": 10.0}, ("alpha", "none"): {"decode_tps": 11.0},
+            ("beta", "baseline"): {"decode_tps": 20.0}, ("beta", "none"): {"decode_tps": 21.0},
+        },
+    )
+    return d
+
+
+def test_axis_model_projects_baseline_by_default():
+    d = _two_model_bundle(tempfile.mkdtemp())
+    detail = compare.compare_detail(d, "model")     # default projection -> baseline
+    assert detail.axis == "model"
+    assert detail.projection == "baseline"
+    assert detail.projection_label == "Variante"
+    assert [c.label for c in detail.cells] == ["alpha", "beta"]
+    # the projected cells are the baseline variants of each model
+    assert all(c.variant == "baseline" for c in detail.cells)
+    assert detail.projection_options == ["baseline", "none"]  # switchable
+
+
+def test_axis_model_projection_override_to_none():
+    d = _two_model_bundle(tempfile.mkdtemp())
+    detail = compare.compare_detail(d, "model", projection="none")
+    assert detail.projection == "none"
+    assert all(c.variant == "none" for c in detail.cells)
+    alpha = next(c for c in detail.cells if c.label == "alpha")
+    assert alpha.recommendation == "Nein"          # alpha/none has Q6=2 -> K.-o.
