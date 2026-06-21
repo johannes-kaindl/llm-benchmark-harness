@@ -254,8 +254,8 @@ def test_relations_summary_states_numbers_and_quality_leader():
     detail = compare.compare_detail(d, "variant")
     s = detail.relations_summary
     assert "baseline" in s and "none" in s
-    assert "80" in s and "40" in s            # the two quality %s
-    assert "Prozentpunkte" in s               # quality-leader clause
+    assert "80" in s and "40" in s  # the two quality %s
+    assert "Prozentpunkte" in s  # quality-leader clause
     # descriptive only: no hard recommendation verb
     assert "empfehl" not in s.lower()
 
@@ -263,11 +263,11 @@ def test_relations_summary_states_numbers_and_quality_leader():
 def test_winners_per_row():
     d = _two_variant_bundle(pathlib.Path(tempfile.mkdtemp()))
     detail = compare.compare_detail(d, "variant")
-    assert detail.winners["pct"] == "baseline"        # higher quality
-    assert detail.winners["decode"] == "none"         # 14 > 12 tok/s
-    assert detail.winners["ttft"] == "none"           # lower TTFT wins
-    assert detail.winners["ram"] == "none"            # lower peak RAM wins
-    assert detail.winners["Q6"] == "baseline"         # 4 > 2
+    assert detail.winners["pct"] == "baseline"  # higher quality
+    assert detail.winners["decode"] == "none"  # 14 > 12 tok/s
+    assert detail.winners["ttft"] == "none"  # lower TTFT wins
+    assert detail.winners["ram"] == "none"  # lower peak RAM wins
+    assert detail.winners["Q6"] == "baseline"  # 4 > 2
 
 
 def test_scatter_points_only_rated_cells():
@@ -327,9 +327,19 @@ def test_divergence_sorted_by_delta():
     assert len(dp.answers) == 2
 
 
-def _verdict(model, variant, prompt_id, score, *, repeat=0, red_flag=False, rationale="r", category="A"):
-    return Verdict(model=model, variant=variant, prompt_id=prompt_id, repeat=repeat,
-                   category=category, score=score, red_flag=red_flag, rationale=rationale)
+def _verdict(
+    model, variant, prompt_id, score, *, repeat=0, red_flag=False, rationale="r", category="A"
+):
+    return Verdict(
+        model=model,
+        variant=variant,
+        prompt_id=prompt_id,
+        repeat=repeat,
+        category=category,
+        score=score,
+        red_flag=red_flag,
+        rationale=rationale,
+    )
 
 
 def test_divergence_sorted_by_abs_delta_and_means_repeats():
@@ -342,20 +352,26 @@ def test_divergence_sorted_by_abs_delta_and_means_repeats():
             ("m", "none"): {q: 3 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
         },
         verdicts_by_cell={
-            ("m", "baseline"): [_verdict("m", "baseline", "A1", 5), _verdict("m", "baseline", "A2", 4),
-                                _verdict("m", "baseline", "A2", 2, repeat=1)],
-            ("m", "none"): [_verdict("m", "none", "A1", 2), _verdict("m", "none", "A2", 3),
-                            _verdict("m", "none", "A2", 3, repeat=1)],
+            ("m", "baseline"): [
+                _verdict("m", "baseline", "A1", 5),
+                _verdict("m", "baseline", "A2", 4),
+                _verdict("m", "baseline", "A2", 2, repeat=1),
+            ],
+            ("m", "none"): [
+                _verdict("m", "none", "A1", 2),
+                _verdict("m", "none", "A2", 3),
+                _verdict("m", "none", "A2", 3, repeat=1),
+            ],
         },
     )
     detail = compare.compare_detail(d, "variant")
     div = detail.divergence
-    assert div[0].prompt_id == "A1"          # |5-2| = 3 is the biggest gap, comes first
+    assert div[0].prompt_id == "A1"  # |5-2| = 3 is the biggest gap, comes first
     assert div[0].scores["baseline"] == 5.0
     assert div[0].scores["none"] == 2.0
     assert div[0].delta == 3.0
     a2 = next(p for p in div if p.prompt_id == "A2")
-    assert a2.scores["baseline"] == 3.0      # mean(4,2) over repeats
+    assert a2.scores["baseline"] == 3.0  # mean(4,2) over repeats
     assert a2.delta == 0.0
     # answers carry the per-cell response_text + verdict
     ans = {a.label: a for a in div[0].answers}
@@ -366,7 +382,8 @@ def test_divergence_sorted_by_abs_delta_and_means_repeats():
 def test_divergence_empty_when_unjudged():
     d = pathlib.Path(tempfile.mkdtemp()) / "2026_eval_unj"
     _write_compare_bundle(
-        d, cells=[("m", "baseline"), ("m", "none")],
+        d,
+        cells=[("m", "baseline"), ("m", "none")],
         dim_scores_by_cell={
             ("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
             ("m", "none"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
@@ -384,12 +401,16 @@ def _two_model_bundle(tmp_dir):
         d,
         cells=[("alpha", "baseline"), ("alpha", "none"), ("beta", "baseline"), ("beta", "none")],
         dim_scores_by_cell={
-            ("alpha", "baseline"): full, ("alpha", "none"): {**full, "Q6": 2},
-            ("beta", "baseline"): {q: 5 for q in full}, ("beta", "none"): full,
+            ("alpha", "baseline"): full,
+            ("alpha", "none"): {**full, "Q6": 2},
+            ("beta", "baseline"): {q: 5 for q in full},
+            ("beta", "none"): full,
         },
         perf_by_cell={
-            ("alpha", "baseline"): {"decode_tps": 10.0}, ("alpha", "none"): {"decode_tps": 11.0},
-            ("beta", "baseline"): {"decode_tps": 20.0}, ("beta", "none"): {"decode_tps": 21.0},
+            ("alpha", "baseline"): {"decode_tps": 10.0},
+            ("alpha", "none"): {"decode_tps": 11.0},
+            ("beta", "baseline"): {"decode_tps": 20.0},
+            ("beta", "none"): {"decode_tps": 21.0},
         },
     )
     return d
@@ -397,7 +418,7 @@ def _two_model_bundle(tmp_dir):
 
 def test_axis_model_projects_baseline_by_default():
     d = _two_model_bundle(tempfile.mkdtemp())
-    detail = compare.compare_detail(d, "model")     # default projection -> baseline
+    detail = compare.compare_detail(d, "model")  # default projection -> baseline
     assert detail.axis == "model"
     assert detail.projection == "baseline"
     assert detail.projection_label == "Variante"
@@ -413,4 +434,4 @@ def test_axis_model_projection_override_to_none():
     assert detail.projection == "none"
     assert all(c.variant == "none" for c in detail.cells)
     alpha = next(c for c in detail.cells if c.label == "alpha")
-    assert alpha.recommendation == "Nein"          # alpha/none has Q6=2 -> K.-o.
+    assert alpha.recommendation == "Nein"  # alpha/none has Q6=2 -> K.-o.

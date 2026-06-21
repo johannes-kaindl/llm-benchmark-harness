@@ -322,7 +322,9 @@ def _relations_summary(cells: list[CompareCell], axis_label: str) -> str:
 
     def clause(c: CompareCell) -> str:
         speed = f"{c.decode_tps:.0f} tok/s" if c.decode_tps is not None else "Speed n. v."
-        ram = f"{c.peak_ram_mb / 1024:.1f} GB Peak-RAM" if c.peak_ram_mb is not None else "RAM n. v."
+        ram = (
+            f"{c.peak_ram_mb / 1024:.1f} GB Peak-RAM" if c.peak_ram_mb is not None else "RAM n. v."
+        )
         return f"{c.label}: {c.pct:.0f} % Qualität bei {speed} und {ram}"
 
     body = "; ".join(clause(c) for c in rated)
