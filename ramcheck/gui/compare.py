@@ -326,18 +326,18 @@ def _relations_summary(cells: list[CompareCell], axis_label: str) -> str:
         return f"{c.label}: {c.pct:.0f} % Qualität bei {speed} und {ram}"
 
     body = "; ".join(clause(c) for c in rated)
-    best_q = max(rated, key=lambda c: c.pct)  # type: ignore[arg-type]
+    best_q = max(rated, key=lambda c: c.pct or 0.0)
     others = [c for c in rated if c.label != best_q.label]
     bits: list[str] = []
     if others:
-        nearest = max(others, key=lambda c: c.pct)  # type: ignore[arg-type]
+        nearest = max(others, key=lambda c: c.pct or 0.0)
         bits.append(
             f"{best_q.label} führt bei der Qualität "
             f"(+{best_q.pct - nearest.pct:.0f} Prozentpunkte ggü. {nearest.label})"  # type: ignore[operator]
         )
     speed_cells = [c for c in rated if c.decode_tps is not None]
     if speed_cells:
-        fastest = max(speed_cells, key=lambda c: c.decode_tps)  # type: ignore[arg-type]
+        fastest = max(speed_cells, key=lambda c: c.decode_tps or 0.0)
         if fastest.label == best_q.label:
             bits.append(f"{best_q.label} ist zugleich am schnellsten")
         else:
