@@ -34,6 +34,7 @@ from ramcheck.judge import (
     judge_bundle,
     load_judge_config,
     load_judgements_jsonl,
+    write_reports_jsonl,
 )
 from ramcheck.models import RunRecord
 from ramcheck.pack import Pack, load_pack
@@ -601,6 +602,7 @@ def _render_judge_scorecard(
             writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
             writer.writeheader()
             writer.writerows(rows)
+    write_reports_jsonl(bundle / "reports.jsonl", reports)
 
 
 @app.command()

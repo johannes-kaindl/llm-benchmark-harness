@@ -295,6 +295,30 @@ def load_judgements_jsonl(path: str | Path) -> list[Verdict]:
     return out
 
 
+def write_reports_jsonl(path: str | Path, reports: list[ModelReport]) -> None:
+    """One clean batch write of the holistic master reports (scores + rationales)."""
+    with Path(path).open("w", encoding="utf-8") as fh:
+        for r in reports:
+            fh.write(json.dumps(r.as_dict(), ensure_ascii=False) + "\n")
+
+
+def load_reports_jsonl(path: str | Path) -> list[ModelReport]:
+    """Read reports.jsonl into ModelReports, tolerant of a half-written final line."""
+    out: list[ModelReport] = []
+    p = Path(path)
+    if not p.exists():
+        return out
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(ModelReport(**json.loads(line)))
+        except Exception:
+            continue
+    return out
+
+
 # --- real backend + config ---------------------------------------------------
 
 
