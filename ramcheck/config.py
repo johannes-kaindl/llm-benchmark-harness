@@ -8,10 +8,11 @@ fail before a single request is sent.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 # Built-in default output budget per scenario (tokens). Overridable via config.max_tokens.
 DEFAULT_MAX_TOKENS: dict[str, int] = {
@@ -119,3 +120,26 @@ def load_config(path: str | Path) -> Config:
     if not isinstance(raw, dict):
         raise ValueError(f"config {path} did not parse to a mapping")
     return Config.model_validate(raw)
+
+
+def models_from_json(s: str) -> list[ModelSpec]:
+    """Parse a JSON array of model specs (GUI picker). Raises ValueError on bad JSON,
+    a non-array, an empty array, or a spec missing required fields."""
+    try:
+        data = json.loads(s)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"invalid models JSON: {e}") from e
+    if not isinstance(data, list) or not data:
+        raise ValueError("models_json must be a non-empty JSON array")
+    try:
+        return [ModelSpec(**m) for m in data]
+    except (ValidationError, TypeError) as e:
+        raise ValueError(f"invalid model spec: {e}") from e
+
+
+def apply_models_override(cfg: Config, models_json: str) -> Config:
+    """Return cfg with its models replaced by ``models_json`` (the GUI picker selection).
+    An empty/blank string means 'no override' and returns cfg unchanged (resume / CLI default)."""
+    if not models_json.strip():
+        return cfg
+    return cfg.model_copy(update={"models": models_from_json(models_json)})
