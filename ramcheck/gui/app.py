@@ -80,7 +80,58 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
 
 def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegistry) -> None:
-    """No-op stub; replaced by Task 10."""
+    """Station 3 (control) + Station 4 (live SSE): POST endpoints drive the registry;
+    GET /live/{name} streams the folded view as Server-Sent Events."""
+    import json as _json
+
+    from fastapi import Form
+    from fastapi.responses import StreamingResponse
+
+    from ramcheck.gui import live as live_mod
+    from ramcheck.gui.control import RunInProgress
+
+    @app.post("/runs/eval")
+    def start_eval(pack_path: str = Form(...), config_path: str = Form(...)) -> Any:
+        try:
+            h = registry.start_eval(pack_path=pack_path, config_path=config_path)
+        except RunInProgress as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
+        return {"run_dir": h.run_dir.name, "kind": h.kind}
+
+    @app.post("/runs/judge")
+    def start_judge(bundle: str = Form(...), judge_config_path: str = Form(...)) -> Any:
+        try:
+            h = registry.start_judge(bundle=runs_dir / bundle, judge_config_path=judge_config_path)
+        except RunInProgress as e:
+            raise HTTPException(status_code=409, detail=str(e)) from None
+        return {"run_dir": h.run_dir.name, "kind": h.kind}
+
+    @app.post("/runs/stop")
+    def stop_run(name: str = Form(...)) -> Any:
+        from ramcheck.gui.control import RunHandle, read_sentinel
+
+        s = read_sentinel(runs_dir / name)
+        if s is None:
+            raise HTTPException(status_code=404)
+        registry.stop(RunHandle(str(s["kind"]), runs_dir / name, int(s["pid"])))
+        return {"stopped": name}
+
+    @app.get("/live/{name}")
+    def live_stream(name: str, kind: str = "eval") -> StreamingResponse:
+        fname = "events.jsonl" if kind == "eval" else "judge_events.jsonl"
+        stream = live_mod.LiveStream(runs_dir / name / fname, kind=kind)
+
+        def gen() -> Any:
+            import time as _t
+
+            for _ in range(100000):
+                view = stream.snapshot()
+                yield f"data: {_json.dumps(view)}\n\n"
+                if view.get("finished"):
+                    break
+                _t.sleep(0.25)
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
 
 
 def serve(*, runs_dir: Path, port: int = 0, open_browser: bool = True) -> None:  # pragma: no cover
