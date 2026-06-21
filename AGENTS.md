@@ -168,6 +168,15 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   `docs/explanation/design-decisions.md` and surfaced UI-retrievably via `templates/_method_explainer.html`.
 - **`resources.jsonl` ticks carry `cpu_pct`** (system CPU %, `None` for pre-cpu ticks) — additive,
   does not touch `RAW_CSV_COLUMNS`. The result view plots RAM + CPU over the run.
+- **Zwei Vergleichs-Ebenen, klar getrennt:** `/compare` (Station 6) ist das **Cross-Run-Aggregat**
+  über *alle* Bundles (`aggregate.load_all_scores` → Tabelle Hardware×Qualität). `/compare/{bundle}`
+  ist der **Innerhalb-Bundle-Achsen-Vergleich** (Ink. 8): eine kontrollierte Ansicht entlang `model`
+  oder `variant` *innerhalb eines* Bundles — Effizienz-Scatter (x=Decode, y=Qualität, r=Peak-RAM
+  `sys_used_mb`), Kopf-an-Kopf (`master_rows`⨝`reports`-Join; `master_rows` trägt kein `dim_scores`),
+  per-Aufgabe-Drill-down (per-Prompt `Verdict.score`-Δ, V7 — orthogonal zur holistischen %).
+  CPU wird GUI-seitig aus `resources.jsonl`-Fenstern berechnet (`compare._cpu_for_window`); da
+  `cpu_pct` erst mit Ink. 7 kam und kein Bundle seither neu lief, ist CPU heute überall **„n. v."**
+  (ein first-class getesteter Zustand). Pure Logik in `ramcheck/gui/compare.py`.
 
 ## Memory
 

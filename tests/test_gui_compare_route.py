@@ -116,7 +116,9 @@ def test_result_no_compare_link_when_single(tmp_path):
     _write_compare_bundle(
         d,
         cells=[("m", "baseline")],
-        dim_scores_by_cell={("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}},
+        dim_scores_by_cell={
+            ("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+        },
     )
     r = _client(tmp_path).get(f"/result/{d.name}")
     assert "↔ Vergleichen" not in r.text

@@ -67,10 +67,10 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
         items = bundles.discover(runs_dir)
-        compare_links = {
-            b.run_dir.name: compare.axis_options_for_dir(b.run_dir) for b in items
-        }
-        return render("overview.html", request, bundles=items, compare_links=compare_links, active="overview")
+        compare_links = {b.run_dir.name: compare.axis_options_for_dir(b.run_dir) for b in items}
+        return render(
+            "overview.html", request, bundles=items, compare_links=compare_links, active="overview"
+        )
 
     @app.get("/packs/{pack_path:path}", response_class=HTMLResponse)
     def pack_explorer(request: Request, pack_path: str) -> HTMLResponse:
@@ -95,11 +95,18 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         except Exception:
             detail, summary = None, bundles.BundleSummary(run_dir=rd, status="error")
         compare_opts = (
-            compare.axis_options(detail["responses"]) if detail and detail.get("responses") else None
+            compare.axis_options(detail["responses"])
+            if detail and detail.get("responses")
+            else None
         )
         return render(
-            "result.html", request, detail=detail, summary=summary, run_dir=rd,
-            compare_opts=compare_opts, active="overview",
+            "result.html",
+            request,
+            detail=detail,
+            summary=summary,
+            run_dir=rd,
+            compare_opts=compare_opts,
+            active="overview",
         )
 
     @app.get("/compare", response_class=HTMLResponse)
