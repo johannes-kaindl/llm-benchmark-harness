@@ -250,6 +250,16 @@ class RunRegistry:
         state = s.get("state") if s else None
         if state in {"stopped", "failed"}:
             return str(state)
+        # pid is dead and state is still 'running'. Distinguish a clean finish from a
+        # crash (e.g. kill -9): a finalized run leaves bundle.json/responses.jsonl;
+        # without either, the run never finalized → it failed (mirrors bundles.classify,
+        # which reports 'crashed' for the same on-disk shape).
+        finalized = (handle.run_dir / "bundle.json").exists() or (
+            handle.run_dir / "responses.jsonl"
+        ).exists()
+        if not finalized:
+            mark_sentinel(handle.run_dir, "failed")
+            return "failed"
         mark_sentinel(handle.run_dir, "finished")
         return "finished"
 

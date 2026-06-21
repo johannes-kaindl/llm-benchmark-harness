@@ -62,12 +62,24 @@ def test_stale_sentinel_is_reclaimed(tmp_path):
     assert h2.run_dir != h.run_dir
 
 
-def test_poll_maps_exit(tmp_path):
+def test_poll_running_then_failed_when_never_finalized(tmp_path):
+    """A dead pid with no bundle.json/responses.jsonl is a crash → 'failed', not 'finished'."""
     reg = _reg(tmp_path)
     h = reg.start_eval(pack_path="p", config_path="c")
     assert reg.poll(h) == "running"
+    reg.launcher._alive = False  # kill -9: process gone, nothing finalized
+    assert reg.poll(h) == "failed"
+    assert control.read_sentinel(h.run_dir)["state"] == "failed"
+
+
+def test_poll_finished_when_finalized(tmp_path):
+    """A dead pid with a finalized run (responses.jsonl present) → 'finished'."""
+    reg = _reg(tmp_path)
+    h = reg.start_eval(pack_path="p", config_path="c")
+    (h.run_dir / "responses.jsonl").write_text("", encoding="utf-8")
     reg.launcher._alive = False
-    assert reg.poll(h) in {"finished", "failed"}
+    assert reg.poll(h) == "finished"
+    assert control.read_sentinel(h.run_dir)["state"] == "finished"
 
 
 def test_stop_terminates_and_marks(tmp_path):
