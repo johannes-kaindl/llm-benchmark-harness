@@ -35,7 +35,7 @@ def test_start_eval_calls_registry(tmp_path):
     """Happy path: eval start returns 200 with run_dir and kind."""
 
     class _Reg(RunRegistry):
-        def start_eval(self, *, pack_path, config_path, resume_dir=None):
+        def start_eval(self, *, pack_path, config_path, resume_dir=None, models=None):
             return RunHandle("eval", tmp_path / "x", 1)
 
     reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())
@@ -53,7 +53,7 @@ def test_start_eval_passes_resume_dir(tmp_path):
     seen = {}
 
     class _Reg(RunRegistry):
-        def start_eval(self, *, pack_path, config_path, resume_dir=None):
+        def start_eval(self, *, pack_path, config_path, resume_dir=None, models=None):
             seen["resume_dir"] = resume_dir
             return RunHandle("eval", resume_dir or (tmp_path / "x"), 1)
 
@@ -310,7 +310,7 @@ def test_post_local_origin_allowed(tmp_path):
     """A POST whose Origin matches the local server is allowed."""
 
     class _Reg(RunRegistry):
-        def start_eval(self, *, pack_path, config_path, resume_dir=None):
+        def start_eval(self, *, pack_path, config_path, resume_dir=None, models=None):
             return RunHandle("eval", tmp_path / "x", 1)
 
     reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())

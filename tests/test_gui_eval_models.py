@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import json
 
+from fastapi.testclient import TestClient
+from typer.testing import CliRunner
+
+from ramcheck.cli import app as cli_app
 from ramcheck.config import ModelSpec
+from ramcheck.gui import app as gui_app
 from ramcheck.gui import control
 
 
@@ -44,20 +49,10 @@ def test_start_eval_omits_models_json_when_none(tmp_path):
     assert "--models-json" not in rec.calls[0]
 
 
-from typer.testing import CliRunner
-
-from ramcheck.cli import app as cli_app
-
-
 def test_eval_cmd_exposes_models_json_option():
     res = CliRunner().invoke(cli_app, ["eval", "--help"])
     assert res.exit_code == 0
     assert "--models-json" in res.output
-
-
-from fastapi.testclient import TestClient
-
-from ramcheck.gui import app as gui_app
 
 
 def _client_and_launcher(tmp_path):
