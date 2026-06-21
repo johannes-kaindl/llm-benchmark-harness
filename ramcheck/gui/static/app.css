@@ -376,6 +376,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* ── utility ──────────────────────────────────────────────────────────────── */
+[x-cloak] { display: none; }
 .muted { color: var(--muted); }
 .mt-1  { margin-top: 0.25rem; }
 .mt-2  { margin-top: 0.5rem; }
