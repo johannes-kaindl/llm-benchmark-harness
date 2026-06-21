@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block body %}
+<h1>Übersicht</h1><table>{% for b in bundles %}
+<tr><td><a href="/result/{{ b.run_dir.name }}">{{ b.run_dir.name }}</a></td>
+<td>{{ b.pack_id }}</td><td>{{ b.status }}</td>
+<td>{% if b.recommendation %}{{ b.recommendation }}{% endif %}</td></tr>{% endfor %}</table>
+{% endblock %}

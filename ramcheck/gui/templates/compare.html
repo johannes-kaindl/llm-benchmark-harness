@@ -1,0 +1,3 @@
+{% extends "base.html" %}{% block body %}
+<h1>Vergleich</h1><table>{% for r in rows %}<tr><td>{{ r.model }}</td>
+<td>{{ r.quality_pct }}</td></tr>{% endfor %}</table>{% endblock %}

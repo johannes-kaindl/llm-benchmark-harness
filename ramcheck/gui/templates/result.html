@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block body %}
+<h1>{{ run_dir.name }}</h1>{% if summary %}<p>Status: {{ summary.status }}</p>
+{% if summary.recommendation %}<p>Urteil: {{ summary.recommendation }}</p>{% endif %}{% endif %}
+{% endblock %}

@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block body %}
+<h1>{{ pack.title }}</h1><ul>{% for d in pack.dimensions %}
+<li>{{ d.id }} · {{ d.name }} · ×{{ d.weight }}</li>{% endfor %}</ul>
+<p>K.-o.: {{ pack.ko_rule.dimension }} ≤ {{ pack.ko_rule.threshold }}</p>{% endblock %}
