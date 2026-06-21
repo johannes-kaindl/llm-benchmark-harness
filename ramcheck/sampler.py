@@ -207,6 +207,7 @@ class HostSampler:
         self._last_pressure_ts = 0.0
 
     def start(self) -> None:
+        psutil.cpu_percent(interval=None)  # prime: first call returns 0.0, discard it
         if self._watcher is not None:
             self._watcher.start()
 
@@ -232,6 +233,7 @@ class HostSampler:
             server_rss_mb=server_rss_mb(self.server_match),
             mem_pressure_level=self._pressure(now),
             throttled=self._watcher.throttled if self._watcher else False,
+            cpu_pct=psutil.cpu_percent(interval=None),
         )
 
     def run_to_file(self, out_path: str | Path, stop_event: threading.Event) -> None:

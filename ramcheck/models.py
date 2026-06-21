@@ -33,6 +33,7 @@ class ResourceSample:
     server_rss_mb: float | None  # None when no server PID matched
     mem_pressure_level: str  # normal | warn | critical
     throttled: bool
+    cpu_pct: float | None = None  # system CPU load %, None for ticks recorded before cpu sampling
 
 
 @dataclass
