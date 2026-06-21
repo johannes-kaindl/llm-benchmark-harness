@@ -54,7 +54,11 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         rd = (runs_dir / name).resolve()
         if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
             raise HTTPException(status_code=404)
-        summary = bundles.classify(rd)
+        # Defensive: a corrupt bundle must show an error row, never 500 the page.
+        try:
+            summary = bundles.classify(rd)
+        except Exception:
+            summary = bundles.BundleSummary(run_dir=rd, status="error")
         # Compute master rows for judged bundles so the template can render them.
         master_rows: list[dict[str, Any]] = []
         if summary is not None and summary.status == "judged":

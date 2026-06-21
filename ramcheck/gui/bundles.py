@@ -113,8 +113,17 @@ def _reports_from_scores(run_dir: Path, pk: Any) -> list[Any]:
         for row in csv.DictReader(fh):
             if row.get("metric_type") != "dimension":
                 continue
+            # A judge that omitted a master dimension writes score='' — skip it
+            # rather than crashing the whole overview (yields a valid partial report).
+            raw = (row.get("score") or "").strip()
+            if not raw:
+                continue
+            try:
+                val = int(float(raw))
+            except (TypeError, ValueError):
+                continue
             key = (row["model"], row["variant"])
-            by.setdefault(key, {})[row["metric"]] = int(float(row["score"]))
+            by.setdefault(key, {})[row["metric"]] = val
     return [ModelReport(m, v, dims, {}) for (m, v), dims in by.items()]
 
 
@@ -125,7 +134,13 @@ def discover(runs_dir: Path) -> list[BundleSummary]:
     for child in sorted(runs_dir.iterdir(), reverse=True):
         if not child.is_dir():
             continue
-        s = classify(child)
+        # Defensive: one corrupt bundle must never 500 the whole overview. A failed
+        # classify is shown as an error row, not propagated up to the route.
+        try:
+            s = classify(child)
+        except Exception:
+            out.append(BundleSummary(run_dir=child, status="error"))
+            continue
         if s is not None:
             out.append(s)
     return out
