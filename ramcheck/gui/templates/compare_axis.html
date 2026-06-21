@@ -1,0 +1,123 @@
+{# ramcheck/gui/templates/compare_axis.html #}
+{% extends "base.html" %}
+{% block title_suffix %} · Vergleich{% endblock %}
+{% block body %}
+<script defer src="/static/scatter.js"></script>
+
+{% if not detail %}
+  <div class="card"><div class="card-title">Vergleich</div>
+    <p class="muted">Kein vergleichbares Bundle gefunden (Pack fehlt oder nicht ladbar).</p>
+    <a href="/">← Übersicht</a>
+  </div>
+{% else %}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem">
+    <div>
+      <div style="font-size:1.1rem; font-weight:700">↔ Vergleich nach {{ detail.axis_label }}</div>
+      <div class="muted text-sm" style="margin-top:0.25rem">
+        {{ detail.run_name }}
+        {% if detail.pack %}· <strong>{{ detail.pack.title }}</strong>
+          <a href="/packs/packs/{{ detail.pack.id }}.yaml" style="margin-left:0.4rem">Kriterien →</a>{% endif %}
+      </div>
+      {% if detail.axis == "model" %}
+        <div class="muted text-xs" style="margin-top:0.25rem">Modelle bei {{ detail.projection_label }}: <strong>{{ detail.projection_label }}: {{ detail.projection }}</strong></div>
+      {% endif %}
+    </div>
+    <div class="text-xs" style="text-align:right">
+      {# axis switch (only when the other axis is also comparable) #}
+      {% if detail.axis == "variant" and detail.projection_options|length > 1 %}
+        <a class="btn btn-secondary" href="/compare/{{ detail.run_name }}?axis=model">nach Modell</a>
+      {% elif detail.axis == "model" %}
+        <a class="btn btn-secondary" href="/compare/{{ detail.run_name }}?axis=variant">nach Variante</a>
+      {% endif %}
+      {# projection switch #}
+      {% for opt in detail.projection_options %}
+        <a class="btn btn-secondary" style="margin-left:0.25rem"
+           href="/compare/{{ detail.run_name }}?axis={{ detail.axis }}{% if detail.axis == 'model' %}&variant={{ opt }}{% else %}&model={{ opt }}{% endif %}">{{ detail.projection_label }}: {{ opt }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{% if detail.pack %}{% with pack=detail.pack %}{% include "_method_explainer.html" %}{% endwith %}{% endif %}
+
+{% if detail.single %}
+  <div class="card"><p class="muted">Nur ein {{ detail.axis_label }} im Bundle — nichts zu vergleichen.
+    {% if detail.axis == "model" %}<a href="/compare/{{ detail.run_name }}?axis=variant">Nach Variante vergleichen?</a>{% endif %}</p></div>
+{% else %}
+
+{# ── ① Effizienz-Relation ─────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-title">① Effizienz-Relation — Qualität gegen Kosten</div>
+  <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center">
+    <svg data-scatter data-points="{{ detail.scatter_points | tojson }}" width="340" height="220"
+         style="background:var(--bg); border-radius:8px"></svg>
+    <div style="flex:1; min-width:220px">
+      <p class="text-sm">{{ detail.relations_summary }}</p>
+      <p class="muted text-xs">Punktgröße = Peak-RAM (System, <code>sys_used_mb</code>).</p>
+    </div>
+  </div>
+</div>
+
+{# ── ② Kopf-an-Kopf ──────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-title">② Kopf-an-Kopf</div>
+  <table class="bundle-table">
+    <thead><tr><th></th>{% for c in detail.cells %}<th>{{ c.label }}{% if detail.axis == "model" %}<div class="muted text-xs">Variante: {{ c.variant }}</div>{% endif %}</th>{% endfor %}</tr></thead>
+    <tbody>
+      <tr><td>Urteil</td>{% for c in detail.cells %}<td>
+        {% if c.recommendation == "Ja" %}<span class="badge ja">✓ Ja</span>
+        {% elif c.recommendation == "Mit Einschränkung" %}<span class="badge einschr">~ Einschr.</span>
+        {% elif c.recommendation == "Nein" %}<span class="badge nein">✗ Nein</span>
+        {% else %}<span class="muted text-xs">noch nicht bewertet</span>{% endif %}
+        {% if c.safety_passed is false %}<span class="badge nein text-xs">K.-o.</span>{% endif %}
+      </td>{% endfor %}</tr>
+      <tr><td>Qualität</td>{% for c in detail.cells %}<td>{% if c.pct is not none %}{{ "%.0f"|format(c.pct) }} %{% if detail.winners.pct == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      {% for d in detail.dimensions %}
+      <tr><td class="muted text-xs">{{ d.id }} {{ d.name }} ×{{ d.weight }}</td>{% for c in detail.cells %}<td>
+        {% set s = c.dim_scores.get(d.id) %}{{ s if s is not none else "—" }}{% if detail.winners.get(d.id) == c.label %} 🏆{% endif %}
+        {% if d.id == detail.pack.ko_rule.dimension and s is not none and s <= detail.pack.ko_rule.threshold %}<span class="badge nein text-xs">K.-o.</span>{% endif %}
+      </td>{% endfor %}</tr>
+      {% endfor %}
+      <tr><td>Decode</td>{% for c in detail.cells %}<td>{% if c.decode_tps is not none %}{{ "%.0f"|format(c.decode_tps) }} tok/s{% if detail.winners.decode == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>TTFT P50</td>{% for c in detail.cells %}<td>{% if c.ttft_p50 is not none %}{{ "%.2f"|format(c.ttft_p50) }} s{% if detail.winners.ttft == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>e2e Median</td>{% for c in detail.cells %}<td>{% if c.e2e_med is not none %}{{ "%.2f"|format(c.e2e_med) }} s{% if detail.winners.e2e == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>Peak-RAM</td>{% for c in detail.cells %}<td>{% if c.peak_ram_mb is not none %}{{ "%.1f"|format(c.peak_ram_mb / 1024) }} GB{% if detail.winners.ram == c.label %} 🏆{% endif %}<div class="muted text-xs">Druck: {{ c.mem_pressure_max }}</div>{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>CPU Ø/Max</td>{% for c in detail.cells %}<td>{% if c.cpu_max is not none %}{{ "%.0f"|format(c.cpu_avg) }} / {{ "%.0f"|format(c.cpu_max) }} %{% if detail.winners.cpu == c.label %} 🏆{% endif %}{% else %}<span class="muted">n. v.</span>{% endif %}</td>{% endfor %}</tr>
+    </tbody>
+  </table>
+</div>
+
+{# ── ③ Per-Aufgabe-Drill-down (V7) ───────────────────────────────────── #}
+{% if detail.divergence %}
+<div class="card">
+  <div class="card-title">③ Wo gehen sie bei einzelnen Aufgaben auseinander</div>
+  <p class="muted text-xs">Per-Prompt-Δ der Judge-Scores (1–5) — eine <em>per-Aufgabe</em>-Sicht, orthogonal zur holistischen Qualitäts-%, nicht deren Herleitung.</p>
+  {% for p in detail.divergence %}
+  <div x-data="{ open: false }" style="border:1px solid var(--border); border-radius:8px; margin-bottom:0.4rem; overflow:hidden">
+    <div class="flex items-center gap-2" style="padding:0.5rem 0.75rem; cursor:pointer; background:var(--bg)" @click="open = !open">
+      <span class="prompt-id">{{ p.prompt_id }}</span>
+      <span class="text-sm" style="flex:1">{{ p.title }}</span>
+      <span class="text-xs muted">Δ {{ "%.1f"|format(p.delta) }}</span>
+      {% for c in detail.cells %}<span class="text-xs">{{ c.label }}: {% set sc = p.scores.get(c.label) %}{{ "%.1f"|format(sc) if sc is not none else "—" }}</span>{% endfor %}
+      <span class="muted text-xs" x-text="open ? '▲' : '▼'"></span>
+    </div>
+    <div x-show="open" x-cloak style="padding:0.75rem; display:flex; gap:1rem; flex-wrap:wrap">
+      {% for a in p.answers %}
+      <div style="flex:1; min-width:220px">
+        <div class="muted text-xs" style="text-transform:uppercase; letter-spacing:0.05em">{{ a.label }}{% if a.score is not none %} · {{ a.score }}/5{% endif %}{% if a.red_flag %} <span class="badge nein text-xs">Red-Flag</span>{% endif %}</div>
+        <div style="background:var(--card-bg); border-radius:6px; padding:0.5rem 0.7rem; white-space:pre-wrap; font-size:0.82rem; margin-top:0.25rem">{{ a.response_text[:400] }}{% if a.response_text|length > 400 %}…{% endif %}</div>
+        {% if a.rationale %}<div class="muted text-xs" style="margin-top:0.25rem">Judge: {{ a.rationale }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endif %}{# /single #}
+
+<div class="card"><a href="/result/{{ detail.run_name }}">← Ergebnis-Detail</a> · <a href="/compare">Cross-Run-Aggregat (Station 6)</a></div>
+{% endif %}{# /detail #}
+{% endblock %}

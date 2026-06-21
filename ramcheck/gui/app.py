@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ramcheck import aggregate as aggregate_mod
-from ramcheck.gui import bundles
+from ramcheck.gui import bundles, compare
 from ramcheck.gui.control import RunRegistry
 from ramcheck.pack import load_pack
 
@@ -96,10 +96,30 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         )
 
     @app.get("/compare", response_class=HTMLResponse)
-    def compare(request: Request) -> HTMLResponse:
+    def compare_cross(request: Request) -> HTMLResponse:
         rows = aggregate_mod.load_all_scores(runs_dir)
         agg = aggregate_mod.aggregate(rows) if rows else []
         return render("compare.html", request, rows=agg, active="compare")
+
+    @app.get("/compare/{name}", response_class=HTMLResponse)
+    def compare_axis(
+        request: Request,
+        name: str,
+        axis: str | None = None,
+        variant: str | None = None,
+        model: str | None = None,
+    ) -> HTMLResponse:
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
+            raise HTTPException(status_code=404)
+        if axis is not None and axis not in ("model", "variant"):
+            raise HTTPException(status_code=422)
+        projection = variant or model  # generated links only ever set the axis-relevant one
+        try:
+            detail = compare.compare_detail(rd, axis, projection=projection)
+        except Exception:
+            detail = None
+        return render("compare_axis.html", request, detail=detail, run_dir=rd, active="overview")
 
     @app.get("/config", response_class=HTMLResponse)
     def config_get(
