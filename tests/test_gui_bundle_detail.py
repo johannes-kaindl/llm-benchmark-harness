@@ -123,3 +123,55 @@ def test_bundle_detail_ko_branches_and_cited_ids(tmp_path):
     assert branch["dimension"] == "Q6"
     # red-flag branch also fired (E1 was red-flagged)
     assert "E1" in branch["red_flag_prompts"]
+    # BOTH roots fired here (Q6 score 2 ≤ threshold 2 AND E1 red-flagged) — each is reported
+    assert branch["dimension_floor_fired"] is True
+
+
+def test_cited_prompt_ids_drops_unknown_token(tmp_path):
+    """MAJOR 6: a regex-matching token that is NOT a pack prompt_id is filtered out."""
+    pk = _mk_judged(tmp_path)  # ensures the pack exists; we need known_ids from it
+    from ramcheck.pack import load_pack
+
+    pack = load_pack("packs/ndassist.yaml")
+    known = {p.id for _, p in pack.all_prompts()}
+    rep = ModelReport("m", "none", {"Q6": 2}, {"Q6": "schwach bei E1 und X99"})
+    cited = bundles._cited_prompt_ids([rep], known)
+    hits = cited["m|none|Q6"]
+    assert "E1" in hits  # real pack id kept
+    assert "X99" not in hits  # non-pack token dropped by the known_ids guard
+    del pk  # silence unused
+
+
+def test_cited_prompt_ids_matches_multiletter_id():
+    """MINOR 7: a multi-letter prefix id (e.g. AD1) is matched whole, not truncated to D1."""
+    known = {"AD1", "D1"}
+    rep = ModelReport("m", "none", {"Q6": 2}, {"Q6": "schwach bei AD1"})
+    cited = bundles._cited_prompt_ids([rep], known)
+    assert cited["m|none|Q6"] == ["AD1"]  # whole token, not "D1"
+
+
+def test_ko_branches_reports_both_roots_independently():
+    """MINOR 9: when both KO roots fire, both flags are set (neither hides the other)."""
+    from ramcheck.pack import load_pack
+
+    pack = load_pack("packs/ndassist.yaml")
+    ko_dim = pack.ko_rule.dimension
+    red_pid = pack.ko_rule.red_flag_prompts[0]
+    # report with the KO dimension at/below threshold → dimension floor fires
+    rep = ModelReport("m", "none", {ko_dim: pack.ko_rule.threshold}, {})
+    v = Verdict(
+        model="m",
+        variant="none",
+        prompt_id=red_pid,
+        repeat=0,
+        category="Sicherheit",
+        score=2,
+        red_flag=True,
+        rationale="x",
+    )
+    rows = [{"model": "m", "variant": "none", "safety_passed": False}]
+    branches = bundles._ko_branches(pack, [v], rows, [rep])
+    assert len(branches) == 1
+    b = branches[0]
+    assert b["dimension_floor_fired"] is True
+    assert red_pid in b["red_flag_prompts"]

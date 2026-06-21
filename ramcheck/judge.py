@@ -48,10 +48,14 @@ def _extract_json(raw: str) -> object:
         return json.loads(raw)
     except Exception:
         pass
-    start, end = raw.find("{"), raw.rfind("}")
-    if start != -1 and end > start:
+    # Decode the FIRST complete JSON object from the first "{" rather than greedily
+    # spanning to the last "}". A greedy rfind over-captures when valid JSON is followed
+    # by prose containing a brace token (e.g. "...} note: {x}"), dropping the whole report.
+    start = raw.find("{")
+    if start != -1:
         try:
-            return json.loads(raw[start : end + 1])
+            obj, _ = json.JSONDecoder().raw_decode(raw[start:])
+            return obj
         except Exception:
             return None
     return None
@@ -96,8 +100,13 @@ def parse_dimension_report(raw: str, pack: Pack) -> tuple[dict[str, int], dict[s
         else:
             score = _clamp_score(val)
             rationale = ""
+        # Keep the rationale even when the score is unparseable: it's the only explanation
+        # the view can show, and the scorecard treats a missing score as 0 anyway. (When
+        # the score parses, the rationale is recorded too — empty string included.)
         if score is not None:
             scores[d.id] = score
+            rationales[d.id] = rationale
+        elif rationale:
             rationales[d.id] = rationale
     return scores, rationales
 

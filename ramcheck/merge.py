@@ -30,8 +30,12 @@ def load_samples_jsonl(path: str | Path) -> list[ResourceSample]:
         line = line.strip()
         if not line:
             continue
-        d = json.loads(line)
-        samples.append(ResourceSample(**d))
+        # Tolerant of a half-written final line (crashed/resumed bundle) — a truncated
+        # tail must degrade only the sparkline, never collapse the result page.
+        try:
+            samples.append(ResourceSample(**json.loads(line)))
+        except Exception:
+            continue
     return samples
 
 

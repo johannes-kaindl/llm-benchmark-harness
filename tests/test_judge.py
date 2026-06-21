@@ -228,3 +228,23 @@ def test_parse_dimension_report_tolerates_bare_int(_pack):
     scores, rationales = parse_dimension_report('{"Q1": 4}', _pack)
     assert scores == {"Q1": 4}
     assert rationales["Q1"] == ""
+
+
+def test_parse_dimension_report_trailing_prose_with_brace(_pack):
+    """MINOR 8: valid JSON followed by prose containing a brace token still parses.
+
+    A greedy rfind('}') over-captures here and drops the whole report; raw_decode of the
+    first complete object survives.
+    """
+    raw = '{"Q1": {"score": 4, "rationale": "ok bei A1"}} Anmerkung: {note} folgt.'
+    scores, rationales = parse_dimension_report(raw, _pack)
+    assert scores == {"Q1": 4}
+    assert "A1" in rationales["Q1"]
+
+
+def test_parse_dimension_report_keeps_rationale_when_score_unparseable(_pack):
+    """NIT 10: an unparseable score must not also drop the rationale (the only explanation)."""
+    raw = '{"Q1": {"score": "n/a", "rationale": "schwach bei A1"}}'
+    scores, rationales = parse_dimension_report(raw, _pack)
+    assert "Q1" not in scores  # score guard still drops the unparseable number
+    assert rationales["Q1"] == "schwach bei A1"  # but the rationale survives
