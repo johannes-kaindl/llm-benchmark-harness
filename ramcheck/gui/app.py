@@ -12,6 +12,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ramcheck import aggregate as aggregate_mod
 from ramcheck.gui import bundles
@@ -21,9 +22,41 @@ from ramcheck.pack import load_pack
 _PKG = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PKG / "templates"))
 
+# Hosts allowed by the DNS-rebinding guard. The GUI binds to 127.0.0.1 and is
+# single-user; "testserver" is the host the Starlette TestClient uses.
+_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "*.localhost", "testserver"]
+# Hostnames considered "the local server" for the CSRF Origin/Referer check.
+_LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "testserver"}
+
+
+def _is_local_origin(value: str) -> bool:
+    """True iff an Origin/Referer URL points at the local server (hostname only)."""
+    from urllib.parse import urlsplit
+
+    host = urlsplit(value).hostname or ""
+    return host in _LOCAL_HOSTNAMES or host.endswith(".localhost")
+
 
 def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     app = FastAPI(title="ramcheck", docs_url=None, redoc_url=None)
+    # DNS-rebinding defense: only localhost/127.0.0.1 Host headers are accepted.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
+
+    @app.middleware("http")
+    async def _csrf_origin_guard(request: Request, call_next: Any) -> Any:
+        # CSRF defense: a state-changing request carrying an Origin/Referer that is not
+        # the local server is rejected. Lightweight — same-origin form posts (and the
+        # TestClient, which sends neither header) are unaffected.
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            origin = request.headers.get("origin")
+            referer = request.headers.get("referer")
+            probe = origin or referer
+            if probe is not None and not _is_local_origin(probe):
+                from starlette.responses import PlainTextResponse
+
+                return PlainTextResponse("cross-origin request rejected", status_code=403)
+        return await call_next(request)
+
     static_dir = _PKG / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

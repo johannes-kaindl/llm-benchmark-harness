@@ -278,6 +278,50 @@ def test_live_stream_rejects_traversal(tmp_path):
     assert r.status_code == 404
 
 
+# ---------------------------------------------------------------------------
+# CSRF / DNS-rebinding defense (SECURITY b)
+# ---------------------------------------------------------------------------
+
+
+def test_foreign_host_rejected(tmp_path):
+    """TrustedHostMiddleware rejects a foreign Host header (DNS-rebinding)."""
+    r = _client(tmp_path).get("/", headers={"host": "evil.example.com"})
+    assert r.status_code == 400
+
+
+def test_localhost_host_allowed(tmp_path):
+    """localhost / 127.0.0.1 Host headers are allowed for the single-user UX."""
+    c = _client(tmp_path)
+    assert c.get("/", headers={"host": "127.0.0.1:8000"}).status_code == 200
+    assert c.get("/", headers={"host": "localhost:8000"}).status_code == 200
+
+
+def test_post_foreign_origin_rejected(tmp_path):
+    """A state-changing POST with a cross-site Origin is rejected (CSRF)."""
+    r = _client(tmp_path).post(
+        "/runs/eval",
+        data={"pack_path": "packs/ndassist.yaml", "config_path": "config.m5.yaml"},
+        headers={"origin": "http://evil.example.com"},
+    )
+    assert r.status_code == 403
+
+
+def test_post_local_origin_allowed(tmp_path):
+    """A POST whose Origin matches the local server is allowed."""
+
+    class _Reg(RunRegistry):
+        def start_eval(self, *, pack_path, config_path, resume_dir=None):
+            return RunHandle("eval", tmp_path / "x", 1)
+
+    reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())
+    r = TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg)).post(
+        "/runs/eval",
+        data={"pack_path": "packs/ndassist.yaml", "config_path": "config.m5.yaml"},
+        headers={"origin": "http://localhost:8000"},
+    )
+    assert r.status_code == 200
+
+
 def _dead_pid():
     """A pid that is (almost certainly) not alive."""
     import os
