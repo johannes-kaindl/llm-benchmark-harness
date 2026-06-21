@@ -1,6 +1,9 @@
+import pytest
+
 from ramcheck.judge import (
     judge_bundle,
     judge_responses,
+    parse_dimension_report,
     parse_dimension_scores,
     parse_verdict,
     score_dimensions,
@@ -9,7 +12,7 @@ from ramcheck.judge import (
 from ramcheck.pack import Pack
 
 
-def _pack():
+def _make_pack() -> Pack:
     return Pack.model_validate(
         {
             "id": "demo",
@@ -43,6 +46,11 @@ def _pack():
             ],
         }
     )
+
+
+@pytest.fixture()
+def _pack() -> Pack:
+    return _make_pack()
 
 
 def _resp(prompt_id, category, text="some answer", content_empty=False):
@@ -117,13 +125,16 @@ def test_parse_verdict_unparseable_returns_none():
 
 
 def test_parse_dimension_scores_extracts_present_dims_clamped():
-    pack = _pack()
-    dims = parse_dimension_scores('{"Q1": 4, "Q6": 9}', pack)
+    pack = _make_pack()
+    dims = parse_dimension_scores(
+        '{"Q1": {"score": 4, "rationale": "x"}, "Q6": {"score": 9, "rationale": "E1 schwach"}}',
+        pack,
+    )
     assert dims == {"Q1": 4, "Q6": 5}  # Q6 clamped to 5
 
 
 def test_score_response_calls_backend_and_builds_verdict():
-    pack = _pack()
+    pack = _make_pack()
     backend = FakeBackend('{"score": 4, "red_flag": false, "rationale": "ok"}')
     _, prompt = pack.all_prompts()[0]  # A1
     v = score_response(backend, _resp("A1", "A"), prompt, pack)
@@ -133,7 +144,7 @@ def test_score_response_calls_backend_and_builds_verdict():
 
 
 def test_score_response_empty_content_autoscored_without_backend():
-    pack = _pack()
+    pack = _make_pack()
     backend = FakeBackend('{"score": 5, "red_flag": false, "rationale": "x"}')
     # E1 is safety_critical → empty content is a red flag, scored 1, no backend call
     e1 = pack.categories[1].prompts[0]
@@ -145,7 +156,7 @@ def test_score_response_empty_content_autoscored_without_backend():
 
 
 def test_judge_responses_one_verdict_per_response():
-    pack = _pack()
+    pack = _make_pack()
     backend = FakeBackend('{"score": 3, "red_flag": false, "rationale": "ok"}')
     responses = [_resp("A1", "A"), _resp("E1", "E")]
     verdicts = judge_responses(backend, responses, pack)
@@ -154,15 +165,18 @@ def test_judge_responses_one_verdict_per_response():
 
 
 def test_score_dimensions_parses_master_report():
-    pack = _pack()
-    backend = FakeBackend('{"Q1": 4, "Q6": 3}')
+    pack = _make_pack()
+    backend = FakeBackend(
+        '{"Q1": {"score": 4, "rationale": "x"}, "Q6": {"score": 3, "rationale": "E1 schwach"}}'
+    )
     report = score_dimensions(backend, pack, model="m", variant="none", verdicts=[])
     assert report.dim_scores == {"Q1": 4, "Q6": 3}
     assert report.model == "m"
+    assert report.dim_rationales["Q6"]
 
 
 def test_judge_responses_skips_skip_keys_and_calls_on_verdict():
-    pack = _pack()
+    pack = _make_pack()
     backend = FakeBackend('{"score": 3, "red_flag": false, "rationale": "ok"}')
     responses = [_resp("A1", "A"), _resp("E1", "E")]
     recorded = []
@@ -175,7 +189,7 @@ def test_judge_responses_skips_skip_keys_and_calls_on_verdict():
 def test_judge_bundle_resume_merges_prior_and_judges_only_new():
     from ramcheck.results import Verdict
 
-    pack = _pack()
+    pack = _make_pack()
     backend = FakeBackend('{"score": 3, "red_flag": false, "rationale": "ok"}')
     responses = [_resp("A1", "A"), _resp("E1", "E")]
     prior = [Verdict("m", "none", "A1", 0, "A", 4, False, "prior")]
@@ -200,3 +214,17 @@ def test_load_judgements_jsonl_tolerates_bad_last_line(tmp_path):
     out = load_judgements_jsonl(p)
     assert len(out) == 1
     assert out[0].prompt_id == "A1"
+
+
+def test_parse_dimension_report_nested_scores_and_rationales(_pack):
+    raw = '{"Q1": {"score": 4, "rationale": "solide bei A1, A2"}, "Q6": {"score": 2, "rationale": "unsicher bei E1"}}'
+    scores, rationales = parse_dimension_report(raw, _pack)
+    assert scores == {"Q1": 4, "Q6": 2}
+    assert "E1" in rationales["Q6"]
+
+
+def test_parse_dimension_report_tolerates_bare_int(_pack):
+    # judge drift: a bare int at the dim key still parses, rationale defaults to ""
+    scores, rationales = parse_dimension_report('{"Q1": 4}', _pack)
+    assert scores == {"Q1": 4}
+    assert rationales["Q1"] == ""

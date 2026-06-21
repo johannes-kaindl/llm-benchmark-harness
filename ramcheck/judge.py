@@ -75,18 +75,36 @@ def parse_verdict(raw: str) -> tuple[int | None, bool, str]:
     return score, red, rationale
 
 
-def parse_dimension_scores(raw: str, pack: Pack) -> dict[str, int]:
-    """Extract {dim_id: 1..5} for the pack's dimensions that the judge returned."""
+def parse_dimension_report(raw: str, pack: Pack) -> tuple[dict[str, int], dict[str, str]]:
+    """Extract ({dim_id: 1..5}, {dim_id: rationale}) from the nested judge JSON.
+
+    Tolerant of judge drift: a bare int at the dim key still yields the score
+    (rationale defaults to ''); a nested {"score", "rationale"} object yields both.
+    """
     obj = _extract_json(raw)
-    out: dict[str, int] = {}
+    scores: dict[str, int] = {}
+    rationales: dict[str, str] = {}
     if not isinstance(obj, dict):
-        return out
+        return scores, rationales
     for d in pack.dimensions:
-        if d.id in obj:
-            score = _clamp_score(obj[d.id])
-            if score is not None:
-                out[d.id] = score
-    return out
+        if d.id not in obj:
+            continue
+        val = obj[d.id]
+        if isinstance(val, dict):
+            score = _clamp_score(val.get("score"))
+            rationale = str(val.get("rationale", ""))
+        else:
+            score = _clamp_score(val)
+            rationale = ""
+        if score is not None:
+            scores[d.id] = score
+            rationales[d.id] = rationale
+    return scores, rationales
+
+
+def parse_dimension_scores(raw: str, pack: Pack) -> dict[str, int]:
+    """Back-compat: scores only (delegates to parse_dimension_report)."""
+    return parse_dimension_report(raw, pack)[0]
 
 
 # --- prompt construction -----------------------------------------------------
@@ -128,11 +146,14 @@ def _build_dimension_prompt(pack: Pack, verdicts: list[Verdict]) -> tuple[str, s
         )
         or "  (keine Einzelbewertungen)"
     )
-    keys = ", ".join(f'"{d.id}": <1-5>' for d in pack.dimensions)
+    keys = ", ".join(
+        f'"{d.id}": {{"score": <1-5>, "rationale": "<1 Satz>"}}' for d in pack.dimensions
+    )
     system = (
-        "Du bist ein strenger, fairer Bewerter. Vergib pro Querschnitts-Dimension "
-        "einen holistischen Wert 1-5 über alle Antworten dieses Modells. Antworte "
-        f"ausschließlich mit einem JSON-Objekt {{{keys}}}. Kein weiterer Text."
+        "Du bist ein strenger, fairer Bewerter. Vergib pro Querschnitts-Dimension einen "
+        "holistischen Wert 1-5 über alle Antworten dieses Modells UND eine kurze Begründung, "
+        "die mindestens 1-2 konkrete prompt_ids als Beleg nennt (z. B. 'schwach bei E1, C3'). "
+        f"Antworte ausschließlich mit einem JSON-Objekt {{{keys}}}. Kein weiterer Text."
     )
     user = (
         f"Dimensionen:\n{dims}\n\nEinzel-Evidenz (Prompt: Score):\n{evidence}\n\nGib das JSON aus."
@@ -220,8 +241,8 @@ def score_dimensions(
     backend: JudgeBackend, pack: Pack, *, model: str, variant: str, verdicts: list[Verdict]
 ) -> ModelReport:
     system, user = _build_dimension_prompt(pack, verdicts)
-    dims = parse_dimension_scores(backend.judge(system=system, user=user), pack)
-    return ModelReport(model=model, variant=variant, dim_scores=dims, dim_rationales={})
+    scores, rationales = parse_dimension_report(backend.judge(system=system, user=user), pack)
+    return ModelReport(model=model, variant=variant, dim_scores=scores, dim_rationales=rationales)
 
 
 def judge_bundle(
