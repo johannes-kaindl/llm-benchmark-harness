@@ -97,7 +97,11 @@ def _mk(tmp_path):
     return d
 
 
-def test_result_renders_rationale_and_ko(tmp_path):
+def test_result_renders_scorecard_and_rationale(tmp_path):
+    """Scorecard block and dim-rationale text appear in the rendered result HTML.
+
+    The KO-branch data layer is covered by test_gui_bundle_detail.py::test_bundle_detail_ko_branches_and_cited_ids.
+    """
     _mk(tmp_path)
     r = _client(tmp_path).get("/result/2026_eval_nd")
     assert r.status_code == 200

@@ -166,6 +166,7 @@ def bundle_detail(run_dir: Path) -> dict[str, Any] | None:
         "verdicts": verdicts,
         "reports": reports,
         "master_rows": rows,
+        "perf": scorecard._perf_summary(responses),  # ttft_p50, decode_med, …
         "ko": _ko_branches(pk, verdicts, rows),  # which branch fired + its root
         "cpu": [s.cpu_pct for s in samples],
         "ram": [s.sys_used_mb for s in samples],

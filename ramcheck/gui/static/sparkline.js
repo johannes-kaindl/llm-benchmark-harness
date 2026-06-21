@@ -56,7 +56,6 @@
     var H = parseFloat(svg.getAttribute("height") || "40");
     var PAD = 3;
 
-    var maxLen = Math.max(ramRaw.length, cpuRaw.length, 1);
     var xs = ramRaw.length > 0
       ? ramRaw.map(function (_, i) { return PAD + (i / (ramRaw.length - 1 || 1)) * (W - 2 * PAD); })
       : [PAD, W - PAD];
@@ -74,7 +73,6 @@
     // RAM line (blue)
     var ramPath = polylinePath(xs, ramYs);
     if (ramPath) {
-      var ramEl = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
       var polyEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
       polyEl.setAttribute("d", ramPath);
       polyEl.setAttribute("fill", "none");

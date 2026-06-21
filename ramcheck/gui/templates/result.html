@@ -355,14 +355,20 @@
           <div class="muted text-xs" style="text-transform:uppercase; margin-bottom:0.25rem">Geschwindigkeit</div>
           <div class="text-sm">
             TTFT P50: <strong>
-              {% set ttfts = [] %}
-              {% for r in ok_responses if not r.is_cold_start %}
-                {% set _ = ttfts.append(r.ttft_s) %}
-              {% endfor %}
-              {{ "%.2f"|format(ttfts | sort | list | first) if ttfts else "—" }}s
+              {% if detail.perf and detail.perf.ttft_p50 is number %}
+                {{ "%.2f"|format(detail.perf.ttft_p50) }}s
+              {% else %}
+                —
+              {% endif %}
             </strong>
           </div>
-          <div class="text-sm muted">Decode: —</div>
+          <div class="text-sm muted">Decode: <strong>
+            {% if detail.perf and detail.perf.decode_med is number %}
+              {{ "%.0f"|format(detail.perf.decode_med) }} tok/s
+            {% else %}
+              —
+            {% endif %}
+          </strong></div>
         </div>
       {% endif %}
     {% endif %}
