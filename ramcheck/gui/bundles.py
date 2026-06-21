@@ -74,6 +74,17 @@ def _judged_summary(run_dir: Path) -> BundleSummary:
     return base
 
 
+def _load_reports(run_dir: Path, pk: Any) -> list[Any]:
+    """Prefer reports.jsonl (carries dim_rationales); fall back to lossy scores.csv
+    reconstruction (rationales empty → UI shows 'Begründung nicht erfasst')."""
+    from ramcheck.judge import load_reports_jsonl
+
+    reports = load_reports_jsonl(run_dir / "reports.jsonl")
+    if reports:
+        return reports
+    return _reports_from_scores(run_dir, pk)
+
+
 def _recompute_verdict(run_dir: Path) -> tuple[str | None, bool | None]:
     """Recompute the (best) verdict via the shared scorecard.master_rows."""
     from ramcheck import scorecard
@@ -90,7 +101,7 @@ def _recompute_verdict(run_dir: Path) -> tuple[str | None, bool | None]:
     verdicts = load_judgements_jsonl(run_dir / "judgements.jsonl")
     # master dims need a holistic ModelReport; v1 reads it back via re-judge-free path:
     # if reports aren't persisted, derive an empty-report fallback → recommendation None.
-    rows = scorecard.master_rows(pk, responses, verdicts, _reports_from_scores(run_dir, pk))
+    rows = scorecard.master_rows(pk, responses, verdicts, _load_reports(run_dir, pk))
     if not rows:
         return None, None
     # pick the strongest recommendation for the badge
@@ -125,6 +136,75 @@ def _reports_from_scores(run_dir: Path, pk: Any) -> list[Any]:
             key = (row["model"], row["variant"])
             by.setdefault(key, {})[row["metric"]] = val
     return [ModelReport(m, v, dims, {}) for (m, v), dims in by.items()]
+
+
+def bundle_detail(run_dir: Path) -> dict[str, Any] | None:
+    """Rich structure for the result view: pack + answers + verdicts + reports
+    (reports.jsonl preferred) + the active K.-o. branch + cited prompt_ids."""
+    from ramcheck import scorecard
+    from ramcheck.judge import load_judgements_jsonl
+    from ramcheck.merge import load_samples_jsonl
+    from ramcheck.pack import load_pack
+    from ramcheck.qualrun import load_responses_jsonl
+
+    m = _manifest(run_dir)
+    pack_path = m.get("pack_path")
+    if not pack_path or not Path(pack_path).exists():
+        return None
+    pk = load_pack(pack_path)
+    responses = load_responses_jsonl(run_dir / "responses.jsonl")
+    verdicts = load_judgements_jsonl(run_dir / "judgements.jsonl")
+    reports = _load_reports(run_dir, pk)
+    rows = scorecard.master_rows(pk, responses, verdicts, reports) if reports else []
+    samples = load_samples_jsonl(run_dir / "resources.jsonl")
+    known_ids = {p.id for _, p in pk.all_prompts()}
+    return {
+        "run_dir": run_dir,
+        "manifest": m,
+        "pack": pk,
+        "responses": responses,
+        "verdicts": verdicts,
+        "reports": reports,
+        "master_rows": rows,
+        "ko": _ko_branches(pk, verdicts, rows),  # which branch fired + its root
+        "cpu": [s.cpu_pct for s in samples],
+        "ram": [s.sys_used_mb for s in samples],
+        "cited_ids": _cited_prompt_ids(reports, known_ids),  # {dim_id: [prompt_id,...]}
+    }
+
+
+def _cited_prompt_ids(reports: list[Any], known_ids: set[str]) -> dict[str, list[str]]:
+    """Parse the prompt_ids the judge cited in each dim_rationale (match against pack ids)."""
+    import re
+
+    out: dict[str, list[str]] = {}
+    for rep in reports:
+        for dim_id, text in getattr(rep, "dim_rationales", {}).items():
+            hits = [tok for tok in re.findall(r"[A-Za-z]\d+", text or "") if tok in known_ids]
+            if hits:
+                out.setdefault(dim_id, [])
+                out[f"{rep.model}|{rep.variant}|{dim_id}"] = hits
+    return out
+
+
+def _ko_branches(pk: Any, verdicts: list[Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """For each failed-KO group, which of the two roots fired (dimension-floor / red-flag-prompt)."""
+    red_flagged = {v.prompt_id for v in verdicts if v.red_flag and not v.unscored}
+    branches: list[dict[str, Any]] = []
+    for r in rows:
+        if r.get("safety_passed"):
+            continue
+        hit_prompts = [p for p in pk.ko_rule.red_flag_prompts if p in red_flagged]
+        branches.append(
+            {
+                "model": r["model"],
+                "variant": r["variant"],
+                "dimension": pk.ko_rule.dimension,
+                "threshold": pk.ko_rule.threshold,
+                "red_flag_prompts": hit_prompts,  # non-empty → red-flag branch fired
+            }
+        )
+    return branches
 
 
 def discover(runs_dir: Path) -> list[BundleSummary]:
