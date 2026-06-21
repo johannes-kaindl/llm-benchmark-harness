@@ -93,6 +93,9 @@ uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml --resu
 uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml  # LLM-as-judge → filled scorecard (resumebar)
 uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml --web  # + live judge monitor (score dist / red-flags / master preview)
 
+uv sync --extra gui                            # install the optional web-UI deps (fastapi/uvicorn/jinja2)
+uv run ramcheck gui                            # local web control-center: configure→start→watch→evaluate→compare→export
+
 uv run pytest -q                               # tests (no server/sudo needed)
 uv run ruff check . && uv run ruff format .    # lint + format
 uv run mypy ramcheck/                          # strict type-check
@@ -143,6 +146,18 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   shipped pre-rendered (the monitor never sees the `Pack`). Like `eval --web`, the judge path
   is byte-identical without `--web` (additive callbacks, default off) and `_hold_monitor`
   keeps the dashboard up until Ctrl-C.
+- **The GUI (`ramcheck gui`) is an optional `[gui]` extra and never measures in-process.** The
+  long-lived FastAPI server (`ramcheck/gui/`, deps isolated in the `[gui]` extra — the core never
+  imports it) is an **out-of-process control-plane**: it spawns `python -m ramcheck eval/judge`
+  with `--run-dir <host-chosen>` `--emit-events` (event-writers without the webmon monitor — the GUI
+  tails `events.jsonl` itself) and reuses the pure read layer (`load_pack`, `scorecard.master_rows`,
+  `aggregate`, `tail`+`build_view`). `runs/` stays the SSOT; the GUI's only state is a **transient
+  run-sentinel** (`run.json` in the active run dir) that triples as run_dir handle, cross-process
+  **one-run lock** (survives a GUI restart; only one measurement at a time = mess-cleanliness), and
+  discovery anchor for running/crashed runs. Sentinel + event files are transient, **excluded from
+  discovery and the `/export` allowlist**. Status + verdict are **derived/recomputed** per bundle
+  (not in `bundle.json`). `serve()` binds 127.0.0.1 only; TrustedHost + Origin checks guard the
+  state-changing POSTs against DNS-rebinding/CSRF.
 
 ## Memory
 
