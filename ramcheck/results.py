@@ -52,6 +52,7 @@ class EvalResponse:
     t_start: float
     t_end: float
     reasoning_chars: int = 0  # length of "thinking" output (0 if none / non-reasoning model)
+    reasoning_text: str = ""  # the "thinking" text — persisted ONLY when content_empty (else "")
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
