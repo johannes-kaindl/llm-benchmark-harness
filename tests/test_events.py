@@ -74,3 +74,23 @@ def test_run_view_as_dict_is_json_safe():
     )
     json.dumps(v.as_dict())  # must not raise
     assert v.as_dict()["cells"][0]["key"] == ["m", "v", "p1", 0]
+
+
+def test_build_view_folds_preflight():
+    from ramcheck.events import build_view, preflight_event
+
+    ev_pf = preflight_event(
+        1.0,
+        [
+            {
+                "model": "gemma",
+                "status": "reasoning_only",
+                "text_chars": 0,
+                "reasoning_chars": 1400,
+                "detail": "nur Reasoning",
+            },
+            {"model": "qwen", "status": "ok", "text_chars": 12, "reasoning_chars": 0, "detail": ""},
+        ],
+    )
+    view = build_view([ev_pf])
+    assert view.as_dict()["preflight"] == ev_pf["results"]

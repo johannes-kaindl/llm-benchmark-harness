@@ -17,6 +17,7 @@ RUN_START = "run_start"
 CELL_START = "cell_start"
 CELL_DONE = "cell_done"
 RUN_DONE = "run_done"
+PREFLIGHT = "preflight"
 
 TAILS_RESOURCES = True
 
@@ -35,6 +36,7 @@ INDEX_HTML = """<!doctype html>
 </style></head>
 <body>
 <h1>ramcheck — live eval monitor</h1>
+<div id="pf" style="display:none;background:#5a3a1a;color:#fc9;padding:.4rem .7rem;border-radius:6px;margin:.4rem 0"></div>
 <div class="bar"><div id="barfill"></div></div>
 <div class="grid">
  <div class="card"><div class="muted">Fortschritt</div><div class="num"><span id="done">0</span>/<span id="total">0</span></div></div>
@@ -53,6 +55,10 @@ es.addEventListener('view',e=>{let v;try{v=JSON.parse(e.data)}catch(_){return}
  done.textContent=v.done; total.textContent=v.total; ok.textContent=v.ok; failed.textContent=v.failed;
  eta.textContent=v.finished?'fertig':fmtEta(v.eta_s);
  barfill.style.width=(v.total?100*v.done/v.total:0)+'%';
+ const pf=(v.preflight||[]).filter(p=>p.status!=='ok');
+ let pfEl=document.getElementById('pf');
+ if(pf.length){pfEl.innerHTML='⚠ Pre-Flight: '+pf.map(p=>p.model+' ('+p.status+')').join(', ');pfEl.style.display='block';}
+ else if(pfEl){pfEl.style.display='none';}
  rows.innerHTML=v.cells.slice().reverse().map(c=>{
   const st=c.status==='done'?(c.ok?'<span class="ok">✓</span>':'<span class="fail">✗</span>'):'<span class="muted">…</span>';
   const tt=c.ttft_s!=null?c.ttft_s.toFixed(2)+'s':''; const dc=c.decode_tps!=null?c.decode_tps.toFixed(1):'';
@@ -125,6 +131,10 @@ def run_done_event(ts: float, total: int, ok: int) -> dict[str, object]:
     return {"ts": ts, "type": RUN_DONE, "total": total, "ok": ok}
 
 
+def preflight_event(ts: float, results: list[dict[str, object]]) -> dict[str, object]:
+    return {"ts": ts, "type": PREFLIGHT, "results": results}
+
+
 def dumps(event: dict[str, object]) -> str:
     return json.dumps(event, ensure_ascii=False)
 
@@ -190,6 +200,7 @@ class RunView:
     cells: list[CellView] = field(default_factory=list)
     eta_s: float | None = None
     finished: bool = False
+    preflight: list[dict[str, object]] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -201,6 +212,7 @@ class RunView:
             "finished": self.finished,
             "running": [c.as_dict() for c in self.running],
             "cells": [c.as_dict() for c in self.cells],
+            "preflight": self.preflight,
         }
 
 
@@ -225,6 +237,7 @@ def build_view(events: Iterable[dict[str, object]]) -> RunView:
     so a cell that re-ran across a crash+resume counts once."""
     total = 0
     finished = False
+    preflight: list[dict[str, object]] = []
     by_key: dict[CellKey, CellView] = {}
     order: list[CellKey] = []
     for e in events:
@@ -233,6 +246,10 @@ def build_view(events: Iterable[dict[str, object]]) -> RunView:
             total = max(total, _as_int(e.get("total", 0)))
         elif t == RUN_DONE:
             finished = True
+        elif t == PREFLIGHT:
+            r = e.get("results")
+            if isinstance(r, list):
+                preflight = r
         elif t == CELL_START:
             k = _key(e)
             if k not in by_key:
@@ -281,4 +298,5 @@ def build_view(events: Iterable[dict[str, object]]) -> RunView:
         cells=cells,
         eta_s=eta_s,
         finished=finished,
+        preflight=preflight,
     )
