@@ -128,14 +128,16 @@ def run_eval(
                     client,
                     messages=_messages(cell.variant, cell.prompt),
                     model=cell.model.id,
-                    max_tokens=cell.prompt.max_tokens,
+                    max_tokens=cell.prompt.max_tokens + cell.model.reasoning_headroom_tokens,
                     temperature=pack.sampling.temperature,
                     seed=pack.sampling.seed,
                     counter=counter_for(cell.model.id),
+                    extra_body=cell.model.extra_body or None,
                 )
                 prefill, decode = derive_rates(outcome)
                 is_cold = not cold_seen
                 cold_seen = True
+                content_empty = outcome.ok and not outcome.text.strip()
                 resp = EvalResponse(
                     pack_id=pack.id,
                     pack_version=pack.version,
@@ -149,7 +151,7 @@ def run_eval(
                     prompt_id=cell.prompt.id,
                     repeat=cell.repeat,
                     response_text=outcome.text,
-                    content_empty=outcome.ok and not outcome.text.strip(),
+                    content_empty=content_empty,
                     ttft_s=outcome.ttft_s,
                     decode_tps=decode,
                     prefill_tps=prefill,
@@ -168,6 +170,7 @@ def run_eval(
                     t_start=outcome.t_start,
                     t_end=outcome.t_end,
                     reasoning_chars=len(outcome.reasoning_text),
+                    reasoning_text=outcome.reasoning_text if content_empty else "",
                 )
                 # Persist immediately so an interruption keeps every finished answer.
                 fh.write(json.dumps(resp.as_dict(), ensure_ascii=False) + "\n")

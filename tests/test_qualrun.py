@@ -222,3 +222,58 @@ def test_load_responses_jsonl_tolerates_bad_last_line(tmp_path):
         fh.write('{"truncated": ')  # a half-written final line (crash mid-write)
     out = load_responses_jsonl(p)
     assert len(out) == 6  # 6 good lines load; the partial line is skipped
+
+
+class CapturingClient:
+    engine = "fake"
+    engine_version = "0"
+
+    def __init__(self):
+        self.seen = []
+
+    def stream(self, *, messages, model, max_tokens, temperature, seed, extra_body=None):
+        self.seen.append({"max_tokens": max_tokens, "extra_body": extra_body})
+        # reasoning-only: no delta_text, but reasoning present
+        from ramcheck.runner import StreamEvent
+
+        yield StreamEvent(reasoning_text="denke nach…")
+        yield StreamEvent(prompt_tokens=10, completion_tokens=5)
+
+
+def _config_with(model_dict):
+    return Config.model_validate(
+        {
+            "endpoint": {"base_url": "http://localhost:11434/v1"},
+            "machine": "M-test",
+            "models": [model_dict],
+        }
+    )
+
+
+def test_run_eval_adds_reasoning_headroom_to_budget(tmp_path):
+    client = CapturingClient()
+    cfg = _config_with(
+        {"id": "m1", "reasoning_headroom_tokens": 1000, "extra_body": {"enable_thinking": False}}
+    )
+    run_eval(cfg, _pack(), client, run_dir=tmp_path, sampler=NoopSampler())
+    # pack prompts default max_tokens=400; effective = 400 + 1000
+    assert all(s["max_tokens"] == 1400 for s in client.seen)
+    assert all(s["extra_body"] == {"enable_thinking": False} for s in client.seen)
+
+
+def test_run_eval_persists_reasoning_text_only_when_empty(tmp_path):
+    client = CapturingClient()  # reasoning-only → content_empty
+    responses = run_eval(
+        _config_with({"id": "m1"}), _pack(), client, run_dir=tmp_path, sampler=NoopSampler()
+    )
+    assert all(r.content_empty for r in responses)
+    assert all(r.reasoning_text == "denke nach…" for r in responses)
+    # and a content answer must NOT carry reasoning_text
+    responses2 = run_eval(
+        _config_with({"id": "m2"}),
+        _pack(),
+        FakeClient(text="hi"),
+        run_dir=tmp_path / "b",
+        sampler=NoopSampler(),
+    )
+    assert all(r.reasoning_text == "" for r in responses2)
