@@ -23,6 +23,9 @@ from ramcheck.pack import load_pack
 
 _PKG = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PKG / "templates"))
+# Preserve insertion order in tojson (models_by_config is ordered by order_configs; Jinja2's
+# default sort_keys=True would re-sort alphabetically and defeat the embed-last ordering).
+_templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 
 # Hosts allowed by the DNS-rebinding guard. The GUI binds to 127.0.0.1 and is
 # single-user; "testserver" is the host the Starlette TestClient uses.
@@ -147,7 +150,9 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         """Station 3: configuration + run-start form."""
         packs_dir = Path("packs")
         pack_files = sorted(str(p) for p in packs_dir.glob("*.yaml")) if packs_dir.exists() else []
-        config_files = sorted(str(p) for p in Path(".").glob("config*.yaml"))
+        config_files = configs_mod.order_configs(
+            [str(p) for p in Path(".").glob("config*.yaml")]
+        )
         judge_config_files = sorted(str(p) for p in Path(".").glob("judge*.yaml"))
         eval_only = [b.run_dir.name for b in bundles.discover(runs_dir) if b.status == "eval-only"]
         return render(
@@ -164,6 +169,15 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             error=None,
             active="config",
         )
+
+    @app.get("/endpoint-models")
+    def endpoint_models(config: str) -> dict[str, Any]:
+        """Models the selected config's endpoint advertises (/v1/models). Never 500s —
+        a dead endpoint returns {"models": [], "error": "..."}."""
+        candidate = Path(config)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise HTTPException(status_code=404)
+        return configs_mod.discover_endpoint_models(config)
 
     @app.get("/export/{name}/{fname}")
     def export(name: str, fname: str) -> Any:
