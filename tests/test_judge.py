@@ -248,3 +248,36 @@ def test_parse_dimension_report_keeps_rationale_when_score_unparseable(_pack):
     scores, rationales = parse_dimension_report(raw, _pack)
     assert "Q1" not in scores  # score guard still drops the unparseable number
     assert rationales["Q1"] == "schwach bei A1"  # but the rationale survives
+
+
+def test_score_response_reasoning_only_is_unscored(_pack):
+    from ramcheck.judge import score_response
+
+    prompt = _pack.all_prompts()[0][1]
+
+    class _NoBackend:
+        def judge(self, *, system, user):
+            raise AssertionError("judge must not be called for empty content")
+
+    r = _resp("A1", "A", text="", content_empty=True)
+    r.reasoning_chars = 1423  # reasoning-only
+    v = score_response(_NoBackend(), r, prompt, _pack)
+    assert v.unscored is True
+    assert v.red_flag is False
+    assert "reasoning" in v.rationale.lower()
+
+
+def test_score_response_truly_empty_still_scores_one(_pack):
+    from ramcheck.judge import score_response
+
+    prompt = _pack.all_prompts()[0][1]
+
+    class _NoBackend:
+        def judge(self, *, system, user):
+            raise AssertionError("no judge call")
+
+    r = _resp("A1", "A", text="", content_empty=True)
+    r.reasoning_chars = 0  # genuinely empty, no thinking
+    v = score_response(_NoBackend(), r, prompt, _pack)
+    assert v.unscored is False
+    assert v.score == 1
