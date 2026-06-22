@@ -144,4 +144,4 @@ def test_scorecard_surfaces_reasoning_only_count():
         )
 
     counts = reasoning_only_counts([_r("A1", True, 1200), _r("A2", False, 0)])
-    assert counts[("m", "none")] == 1
+    assert counts == {("m", "none"): 1}  # the non-empty A2 response is NOT counted

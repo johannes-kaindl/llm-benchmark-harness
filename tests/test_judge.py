@@ -264,6 +264,7 @@ def test_score_response_reasoning_only_is_unscored(_pack):
     v = score_response(_NoBackend(), r, prompt, _pack)
     assert v.unscored is True
     assert v.red_flag is False
+    assert v.score == 0  # unscored → score is the inert 0, never a false 1/5
     assert "reasoning" in v.rationale.lower()
 
 
