@@ -70,14 +70,12 @@ def discover_endpoint_models(
             from ramcheck.client import OpenAIStreamClient
 
             cfg = load_config(config_path)
-            client = OpenAIStreamClient(
-                cfg.endpoint.base_url, cfg.endpoint.api_key, timeout=3.0
-            )
+            client = OpenAIStreamClient(cfg.endpoint.base_url, cfg.endpoint.api_key, timeout=3.0)
             return client.list_models()
 
     try:
         models = lister()
-    except Exception as e:  # noqa: BLE001 — any failure degrades to an error message
+    except Exception as e:  # any failure degrades to an error message
         return {"models": [], "error": f"Endpoint nicht erreichbar: {e}"}
     # de-dupe, preserve order
     seen: set[str] = set()
