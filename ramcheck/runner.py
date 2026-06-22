@@ -52,6 +52,7 @@ class StreamClient(Protocol):
         max_tokens: int,
         temperature: float,
         seed: int,
+        extra_body: dict[str, object] | None = None,
     ) -> Iterator[StreamEvent]: ...
 
 
@@ -92,6 +93,7 @@ def stream_once(
     max_tokens: int,
     temperature: float,
     seed: int,
+    extra_body: dict[str, object] | None = None,
     counter: prompts_mod.TokenCounter | None = None,
     clock: Callable[[], float] = time.perf_counter,
     wall: Callable[[], float] = time.time,
@@ -119,6 +121,7 @@ def stream_once(
             max_tokens=max_tokens,
             temperature=temperature,
             seed=seed,
+            **({"extra_body": extra_body} if extra_body else {}),
         ):
             if ev.delta_text:
                 if ttft is None:

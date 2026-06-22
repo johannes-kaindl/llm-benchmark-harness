@@ -54,9 +54,13 @@ class OpenAIStreamClient:
         max_tokens: int,
         temperature: float,
         seed: int,
+        extra_body: dict[str, object] | None = None,
     ) -> Iterator[StreamEvent]:
         # Our engine-agnostic message dicts don't match the SDK's TypedDict overloads;
         # the server-side schema is what actually validates them.
+        # Forward extra_body ONLY when set — an unconditional extra_body=None would not hurt the
+        # SDK but keeps the call clean and the spy-tested contract honest.
+        extra = {"extra_body": extra_body} if extra_body else {}
         stream = self._client.chat.completions.create(  # type: ignore[call-overload]
             model=model,
             messages=messages,
@@ -65,6 +69,7 @@ class OpenAIStreamClient:
             seed=seed,
             stream=True,
             stream_options={"include_usage": True},
+            **extra,
         )
         for chunk in stream:
             choices = getattr(chunk, "choices", None) or []

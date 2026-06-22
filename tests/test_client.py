@@ -39,3 +39,46 @@ def test_client_supports_reasoning_field_alias(monkeypatch):
     monkeypatch.setattr(client._client.chat.completions, "create", lambda **kw: [chunk])
     evs = list(client.stream(messages=[], model="m", max_tokens=1, temperature=0.0, seed=0))
     assert any(e.reasoning_text == "hmm" for e in evs)
+
+
+def test_stream_forwards_extra_body_only_when_set(monkeypatch):
+    from ramcheck.client import OpenAIStreamClient
+
+    captured = {}
+
+    class _FakeCreate:
+        def __call__(self, **kwargs):
+            captured.update(kwargs)
+            return iter([])  # empty stream
+
+    class _FakeOpenAI:
+        def __init__(self, **_):
+            self.chat = type("C", (), {"completions": type("X", (), {"create": _FakeCreate()})()})()
+            self.models = None
+
+    monkeypatch.setattr("openai.OpenAI", _FakeOpenAI)
+    c = OpenAIStreamClient("http://x/v1")
+
+    list(
+        c.stream(
+            messages=[{"role": "user", "content": "hi"}],
+            model="m",
+            max_tokens=10,
+            temperature=0.0,
+            seed=42,
+        )
+    )
+    assert "extra_body" not in captured  # not set → not forwarded (no SDK default override)
+
+    captured.clear()
+    list(
+        c.stream(
+            messages=[{"role": "user", "content": "hi"}],
+            model="m",
+            max_tokens=10,
+            temperature=0.0,
+            seed=42,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        )
+    )
+    assert captured["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}

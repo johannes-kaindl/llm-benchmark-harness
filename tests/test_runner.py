@@ -197,3 +197,29 @@ def test_iter_cells_uses_scenario_default_max_tokens():
     cfg = _cfg(["bodydouble"])
     cells = iter_cells(cfg)
     assert cells[0].max_tokens == 150  # DEFAULT_MAX_TOKENS["bodydouble"]
+
+
+def test_stream_once_forwards_extra_body():
+    from ramcheck.runner import StreamEvent, stream_once
+
+    seen = {}
+
+    class _Spy:
+        engine = "fake"
+        engine_version = "0"
+
+        def stream(self, **kwargs):
+            seen.update(kwargs)
+            yield StreamEvent(delta_text="ok")
+            yield StreamEvent(prompt_tokens=1, completion_tokens=1)
+
+    stream_once(
+        _Spy(),
+        messages=[{"role": "user", "content": "x"}],
+        model="m",
+        max_tokens=5,
+        temperature=0.0,
+        seed=42,
+        extra_body={"foo": "bar"},
+    )
+    assert seen["extra_body"] == {"foo": "bar"}
