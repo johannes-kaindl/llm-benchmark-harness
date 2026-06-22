@@ -23,12 +23,17 @@ class OpenAIStreamClient:
         *,
         engine: str = "openai-compat",
         engine_version: str = "unknown",
+        timeout: float | None = None,
     ) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(base_url=base_url, api_key=api_key)
+        self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
         self.engine = engine
         self.engine_version = engine_version
+
+    def list_models(self) -> list[str]:
+        """Model ids the endpoint advertises at /v1/models (for the GUI picker dropdown)."""
+        return [m.id for m in self._client.models.list().data]
 
     def stream(
         self,
