@@ -145,7 +145,9 @@ def test_run_eval_resume_skips_done_cells(tmp_path):
 
 def test_run_eval_appends_incrementally_so_a_crash_keeps_done_work(tmp_path):
     cfg, pack = _config(), _pack()
-    client = CrashAfterClient(crash_on=2)
+    # crash_on=3: call 1 = preflight smoke (not matrix), calls 2+3 = first two matrix cells
+    # (written to disk), call 4 crashes before the 3rd matrix cell is written.
+    client = CrashAfterClient(crash_on=3)
     with pytest.raises(_Crash):
         run_eval(cfg, pack, client, run_dir=tmp_path, sampler=NoopSampler())
     lines = (tmp_path / "responses.jsonl").read_text(encoding="utf-8").strip().splitlines()
@@ -154,9 +156,10 @@ def test_run_eval_appends_incrementally_so_a_crash_keeps_done_work(tmp_path):
 
 def test_run_eval_resume_after_crash_completes_the_rest(tmp_path):
     cfg, pack = _config(), _pack()
+    # crash_on=3: 2 matrix cells done before crash (call 1 = preflight, calls 2+3 = matrix)
     with pytest.raises(_Crash):
-        run_eval(cfg, pack, CrashAfterClient(crash_on=2), run_dir=tmp_path, sampler=NoopSampler())
-    # resume with a healthy client → only the remaining 4 cells run
+        run_eval(cfg, pack, CrashAfterClient(crash_on=3), run_dir=tmp_path, sampler=NoopSampler())
+    # resume with a healthy client → only the remaining 4 cells run (resume skips preflight)
     client = CountingClient()
     responses = run_eval(cfg, pack, client, run_dir=tmp_path, sampler=NoopSampler(), resume=True)
     assert client.calls == 4
@@ -277,3 +280,56 @@ def test_run_eval_persists_reasoning_text_only_when_empty(tmp_path):
         sampler=NoopSampler(),
     )
     assert all(r.reasoning_text == "" for r in responses2)
+
+
+def test_run_eval_runs_preflight_and_calls_callback(tmp_path):
+    seen = {}
+
+    def on_pf(results):
+        seen["results"] = results
+
+    run_eval(
+        _config_with({"id": "m1"}),
+        _pack(),
+        FakeClient(text="hi"),
+        run_dir=tmp_path,
+        sampler=NoopSampler(),
+        on_preflight=on_pf,
+    )
+    assert "results" in seen
+    assert seen["results"][0].status == "ok"
+
+
+def test_run_eval_strict_preflight_aborts_on_reasoning_only(tmp_path):
+    client = CapturingClient()  # reasoning-only
+    with pytest.raises(RuntimeError, match="Pre-Flight"):
+        run_eval(
+            _config_with({"id": "m1"}),
+            _pack(),
+            client,
+            run_dir=tmp_path,
+            sampler=NoopSampler(),
+            strict_preflight=True,
+        )
+
+
+def test_run_eval_resume_skips_preflight(tmp_path):
+    # seed a done bundle first
+    run_eval(
+        _config_with({"id": "m1"}),
+        _pack(),
+        FakeClient(text="hi"),
+        run_dir=tmp_path,
+        sampler=NoopSampler(),
+    )
+    called = {"n": 0}
+    run_eval(
+        _config_with({"id": "m1"}),
+        _pack(),
+        FakeClient(text="hi"),
+        run_dir=tmp_path,
+        sampler=NoopSampler(),
+        resume=True,
+        on_preflight=lambda r: called.__setitem__("n", called["n"] + 1),
+    )
+    assert called["n"] == 0

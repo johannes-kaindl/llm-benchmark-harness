@@ -25,6 +25,7 @@ from ramcheck import prompts as prompts_mod
 from ramcheck.config import Config, ModelSpec
 from ramcheck.models import RAW_CSV_COLUMNS
 from ramcheck.pack import Category, Pack, PackPrompt, PromptVariant
+from ramcheck.preflight import PreflightResult, preflight_models
 from ramcheck.results import EvalResponse
 from ramcheck.runner import Sampler, StreamClient, derive_rates, resolve_engine, stream_once
 
@@ -79,6 +80,8 @@ def run_eval(
     on_run_start: Callable[[int], None] | None = None,
     on_cell_start: Callable[[int, EvalCell], None] | None = None,
     on_cell_done: Callable[[int, EvalResponse], None] | None = None,
+    on_preflight: Callable[[list[PreflightResult]], None] | None = None,
+    strict_preflight: bool = False,
 ) -> list[EvalResponse]:
     """Drive the eval matrix; append answers incrementally; resume skips done cells."""
     from ramcheck.runner import _SamplerProcess
@@ -109,6 +112,20 @@ def run_eval(
         return counters[model_id]
 
     cells = iter_eval_cells(config, pack)
+    if not resume:
+        max_prompt_budget = max((p.max_tokens for _, p in pack.all_prompts()), default=0)
+
+        def _budget_for(m: ModelSpec) -> int:
+            return max_prompt_budget + m.reasoning_headroom_tokens
+
+        pf = preflight_models(client, config.models, budget_for=_budget_for)
+        if on_preflight is not None:
+            on_preflight(pf)
+        bad = [r for r in pf if r.status != "ok"]
+        if strict_preflight and bad:
+            raise RuntimeError(
+                "Pre-Flight: " + "; ".join(f"{r.model} → {r.status} ({r.detail})" for r in bad)
+            )
     if on_run_start is not None:
         on_run_start(len(cells))
     sampler.start()
