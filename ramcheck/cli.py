@@ -38,6 +38,7 @@ from ramcheck.judge import (
 )
 from ramcheck.models import RunRecord
 from ramcheck.pack import Pack, load_pack
+from ramcheck.preflight import PreflightResult
 from ramcheck.qualrun import EvalCell, load_responses_jsonl, run_eval
 from ramcheck.report import load_raw_csv
 from ramcheck.results import EvalResponse, ModelReport, Verdict
@@ -249,6 +250,7 @@ def _eval_event_writers(
     Callable[[int], None],
     Callable[[int, EvalCell], None],
     Callable[[int, EvalResponse], None],
+    Callable[[list[PreflightResult]], None],
     Callable[[list[EvalResponse]], None],
 ]:
     """Closures that translate run_eval's callbacks into events.jsonl lines.
@@ -297,6 +299,9 @@ def _eval_event_writers(
             )
         )
 
+    def on_preflight(results: list[PreflightResult]) -> None:
+        _w(events_mod.preflight_event(time.time(), [r.as_dict() for r in results]))
+
     def run_done(responses: list[EvalResponse]) -> None:
         try:
             _w(
@@ -307,7 +312,7 @@ def _eval_event_writers(
         finally:
             fh.close()  # close even if the final write fails (e.g. disk full)
 
-    return on_run_start, on_cell_start, on_cell_done, run_done
+    return on_run_start, on_cell_start, on_cell_done, on_preflight, run_done
 
 
 def _judge_event_writers(
@@ -511,6 +516,11 @@ def eval_cmd(
         "--models-json",
         help="JSON list[ModelSpec]; replaces config.models for this run (GUI picker)",
     ),
+    strict_preflight: bool = typer.Option(
+        False,
+        "--strict-preflight",
+        help="abort before the matrix if a model emits no visible content",
+    ),
 ) -> None:
     """Run a use-case pack through the models: capture answers + perf, write the bundle."""
     cfg = load_config(config)
@@ -535,9 +545,25 @@ def eval_cmd(
         console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
 
     client = _make_client(cfg)
+
+    def _print_preflight(results: list[PreflightResult]) -> None:
+        bad = [r for r in results if r.status != "ok"]
+        for r in bad:
+            console.print(f"[yellow]⚠ Pre-Flight[/] {r.model}: {r.status} — {r.detail}")
+        if not bad:
+            console.print("[green]✓ Pre-Flight[/] alle Modelle liefern sichtbaren Content")
+
     emit = web or emit_events
     if not emit:
-        responses = run_eval(cfg, pk, client, run_dir=run_dir, resume=resume is not None)
+        responses = run_eval(
+            cfg,
+            pk,
+            client,
+            run_dir=run_dir,
+            resume=resume is not None,
+            on_preflight=_print_preflight,
+            strict_preflight=strict_preflight,
+        )
         _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
         return
 
@@ -547,9 +573,14 @@ def eval_cmd(
     )
     with monitor_cm as (monitor, url):
         # --web keeps append (resume semantics); GUI --emit-events truncates (fresh stream).
-        on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(
+        on_run_start, on_cell_start, on_cell_done, on_preflight_evt, run_done = _eval_event_writers(
             run_dir / "events.jsonl", append=web
         )
+
+        def _on_preflight(results: list[PreflightResult]) -> None:
+            _print_preflight(results)
+            on_preflight_evt(results)
+
         responses = []
         try:
             responses = run_eval(
@@ -561,6 +592,8 @@ def eval_cmd(
                 on_run_start=on_run_start,
                 on_cell_start=on_cell_start,
                 on_cell_done=on_cell_done,
+                on_preflight=_on_preflight,
+                strict_preflight=strict_preflight,
             )
         finally:
             run_done(responses)

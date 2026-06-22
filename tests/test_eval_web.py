@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 
 from ramcheck import events as ev
@@ -33,7 +34,7 @@ def _resp():
 
 def test_eval_event_writers_emit_well_formed_events(tmp_path):
     path = tmp_path / "events.jsonl"
-    on_run_start, on_cell_start, on_cell_done, run_done = _eval_event_writers(path)
+    on_run_start, on_cell_start, on_cell_done, _on_preflight, run_done = _eval_event_writers(path)
     on_run_start(3)
     on_cell_start(0, _cell())
     on_cell_done(0, _resp())
@@ -67,6 +68,17 @@ def _run_rec(**kw):
     )
     base.update(kw)
     return SimpleNamespace(**base)
+
+
+def test_eval_event_writers_emits_preflight(tmp_path):
+    from ramcheck.preflight import PreflightResult
+
+    ep = tmp_path / "events.jsonl"
+    _, _, _, on_preflight, run_done = _eval_event_writers(ep, append=False)
+    on_preflight([PreflightResult("gemma", "reasoning_only", 0, 1400, "nur Reasoning")])
+    run_done([])
+    types = [json.loads(line)["type"] for line in ep.read_text().splitlines()]
+    assert "preflight" in types
 
 
 def test_run_event_writers_emit_well_formed_events(tmp_path):

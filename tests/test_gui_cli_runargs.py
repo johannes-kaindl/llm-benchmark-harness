@@ -40,7 +40,7 @@ def test_eval_event_writers_truncate_mode_overwrites(tmp_path):
     """append=False truncates so each spawn starts a fresh stream (no stale run_done)."""
     path = tmp_path / "events.jsonl"
     path.write_text('{"type":"run_done","ts":1,"total":9,"ok":9}\n', encoding="utf-8")
-    on_run_start, _, _, _run_done = _eval_event_writers(path, append=False)
+    on_run_start, _, _, _, _run_done = _eval_event_writers(path, append=False)
     on_run_start(2)
     text = path.read_text(encoding="utf-8")
     assert "run_done" not in text  # old line gone
@@ -65,6 +65,8 @@ def test_eval_emit_events_writes_events_without_monitor(tmp_path, monkeypatch):
         on_run_start=None,
         on_cell_start=None,
         on_cell_done=None,
+        on_preflight=None,
+        strict_preflight=False,
     ):
         if on_run_start:
             on_run_start(1)
