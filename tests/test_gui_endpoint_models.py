@@ -60,10 +60,10 @@ def test_config_default_is_not_embed(tmp_path):
 
 def test_config_page_has_endpoint_dropdown(tmp_path):
     body = _client(tmp_path).get("/config").text
-    assert "endpointPick" in body          # dropdown bound to component state
+    assert "endpointPick" in body  # dropdown bound to component state
     assert "fetchEndpointModels" not in body  # JS lives in model_picker.js, not inline
-    assert "Vom Endpoint" in body          # section label
-    assert "Hinzufügen" in body            # add button
+    assert "Vom Endpoint" in body  # section label
+    assert "Hinzufügen" in body  # add button
 
 
 def test_config_page_endpoint_dropdown_hidden_on_resume(tmp_path):
