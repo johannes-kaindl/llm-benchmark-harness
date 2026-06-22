@@ -28,7 +28,9 @@ def _client(tmp_path):
 
 def test_endpoint_models_route_success(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        configs_mod, "discover_endpoint_models", lambda config: {"models": ["x", "y"], "error": None}
+        configs_mod,
+        "discover_endpoint_models",
+        lambda config: {"models": ["x", "y"], "error": None},
     )
     r = _client(tmp_path).get("/endpoint-models?config=config.m5.yaml")
     assert r.status_code == 200

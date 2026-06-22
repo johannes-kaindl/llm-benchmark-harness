@@ -150,9 +150,7 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         """Station 3: configuration + run-start form."""
         packs_dir = Path("packs")
         pack_files = sorted(str(p) for p in packs_dir.glob("*.yaml")) if packs_dir.exists() else []
-        config_files = configs_mod.order_configs(
-            [str(p) for p in Path(".").glob("config*.yaml")]
-        )
+        config_files = configs_mod.order_configs([str(p) for p in Path(".").glob("config*.yaml")])
         judge_config_files = sorted(str(p) for p in Path(".").glob("judge*.yaml"))
         eval_only = [b.run_dir.name for b in bundles.discover(runs_dir) if b.status == "eval-only"]
         return render(
