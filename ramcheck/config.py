@@ -35,6 +35,10 @@ class ModelSpec(BaseModel):
     id: str
     quant: str = ""
     max_tokens_default: int = 400
+    reasoning_headroom_tokens: int = 0  # extra TOTAL budget for THIS model so a thinker still
+    # reaches visible content; the *visible* answer budget stays pack.prompt.max_tokens (fair compare)
+    extra_body: dict[str, object] = Field(default_factory=dict)  # passed verbatim to the OpenAI
+    # call (e.g. disable thinking) — engine-agnostic; the harness never branches on engine here
 
 
 class EmbedSpec(BaseModel):

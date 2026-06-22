@@ -70,3 +70,22 @@ def test_example_configs_parse():
     for name in ["config.example.yaml", "config.m1.yaml", "config.m5.yaml"]:
         cfg = load_config(root / name)
         assert cfg.machine
+
+
+def test_modelspec_thinking_defaults_are_neutral():
+    from ramcheck.config import ModelSpec
+
+    m = ModelSpec(id="x")
+    assert m.reasoning_headroom_tokens == 0
+    assert m.extra_body == {}
+
+
+def test_modelspec_thinking_fields_roundtrip_through_models_json():
+    from ramcheck.config import models_from_json
+
+    specs = models_from_json(
+        '[{"id": "gemma", "reasoning_headroom_tokens": 2000,'
+        ' "extra_body": {"chat_template_kwargs": {"enable_thinking": false}}}]'
+    )
+    assert specs[0].reasoning_headroom_tokens == 2000
+    assert specs[0].extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
