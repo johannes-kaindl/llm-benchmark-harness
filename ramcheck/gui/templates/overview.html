@@ -1,18 +1,17 @@
 {% extends "base.html" %}
 {% block title_suffix %} · Übersicht{% endblock %}
 {% block body %}
+{# NOT deferred: registers the Alpine component before the (deferred) Alpine starts (see model_picker.js). #}
+<script src="/static/live_progress.js"></script>
 <div class="page-header">
   <h1 class="page-title">Übersicht</h1>
   <a href="/config" class="btn btn-primary">+ Neuer Lauf</a>
 </div>
 
-{# running run card — shown when at least one bundle is running #}
+{# running run card — shown when at least one bundle is running. Native EventSource (the htmx
+   SSE extension isn't bundled), see live_progress.js. #}
 {% for b in bundles if b.status == "running" %}
-<div class="run-card"
-     hx-ext="sse" sse-connect="/live/{{ b.run_dir.name }}?kind=eval"
-     x-data="{ done: 0, total: 0, pct: 0 }"
-     sse-swap="view" hx-swap="none"
-     @sse:view.window="try { let d=JSON.parse($event.detail.data); done=d.done||0; total=d.total||0; pct=total?Math.round(done/total*100):0; } catch(e){}">
+<div class="run-card" x-data="liveProgress('{{ b.run_dir.name }}', 'eval')" x-init="start()">
   <div class="run-card-title">⏳ {{ b.run_dir.name }}</div>
   <div class="run-card-progress">
     <span class="text-xs" x-text="done + ' / ' + total + ' (' + pct + '%)'"></span>
