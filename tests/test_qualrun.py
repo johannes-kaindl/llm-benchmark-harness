@@ -302,7 +302,7 @@ def test_run_eval_runs_preflight_and_calls_callback(tmp_path):
 
 def test_run_eval_strict_preflight_aborts_on_reasoning_only(tmp_path):
     client = CapturingClient()  # reasoning-only
-    with pytest.raises(RuntimeError, match="Pre-Flight"):
+    with pytest.raises(RuntimeError, match=r"Pre-Flight.*m1.*reasoning_only"):
         run_eval(
             _config_with({"id": "m1"}),
             _pack(),
