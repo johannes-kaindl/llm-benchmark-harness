@@ -5,9 +5,11 @@
 "use strict";
 
 document.addEventListener("alpine:init", () => {
-  Alpine.data("modelPicker", (byConfig) => ({
+  Alpine.data("modelPicker", (byConfig, configs) => ({
     byConfig: byConfig,
-    config: Object.keys(byConfig)[0] || "",
+    // Default to the first ORDERED config (configs is order_configs()-sorted, embed/vlm last).
+    // Don't rely on byConfig key order — that would depend on JSON preserving insertion order.
+    config: (configs && configs[0]) || Object.keys(byConfig)[0] || "",
     models: [],
     adhoc: [],
     _nextK: 0, // monotonic key so x-for rows stay stable across removals
@@ -15,6 +17,7 @@ document.addEventListener("alpine:init", () => {
     endpointError: "",
     endpointLoading: false,
     endpointPick: "",
+    pickNote: "",
     init() {
       this.syncFromConfig();
     },
@@ -31,27 +34,41 @@ document.addEventListener("alpine:init", () => {
       this.fetchEndpointModels(); // async, fire-and-forget
     },
     async fetchEndpointModels() {
+      const cfg = this.config; // guard: ignore a stale response for a superseded config
       this.endpointLoading = true;
       this.endpointError = "";
       this.endpointModels = [];
       this.endpointPick = "";
+      this.pickNote = "";
       try {
-        const res = await fetch("/endpoint-models?config=" + encodeURIComponent(this.config));
+        const res = await fetch("/endpoint-models?config=" + encodeURIComponent(cfg));
         const data = await res.json();
+        if (this.config !== cfg) return; // a newer config selection superseded this request
         this.endpointModels = data.models || [];
         this.endpointError = data.error || "";
       } catch (e) {
-        this.endpointError = "Endpoint-Abfrage fehlgeschlagen";
+        if (this.config === cfg) this.endpointError = "Endpoint-Abfrage fehlgeschlagen";
       } finally {
-        this.endpointLoading = false;
+        if (this.config === cfg) this.endpointLoading = false;
       }
     },
     addFromEndpoint() {
       const id = (this.endpointPick || "").trim();
-      if (id) {
-        this.adhoc.push({ id: id, quant: "", k: this._nextK++ });
+      this.pickNote = "";
+      if (!id) return;
+      // Skip if already selected (checked config model OR an existing ad-hoc row). Adding it
+      // again would make a duplicate eval cell: config models carry a quant but endpoint adds
+      // use quant="", so the server-side (id,quant) de-dupe would NOT collapse the two.
+      const already =
+        this.models.some((m) => m.on && m.id === id) ||
+        this.adhoc.some((a) => a.id.trim() === id);
+      if (already) {
+        this.pickNote = id + " ist bereits ausgewählt";
         this.endpointPick = "";
+        return;
       }
+      this.adhoc.push({ id: id, quant: "", k: this._nextK++ });
+      this.endpointPick = "";
     },
     addAdhoc() {
       this.adhoc.push({ id: "", quant: "", k: this._nextK++ });

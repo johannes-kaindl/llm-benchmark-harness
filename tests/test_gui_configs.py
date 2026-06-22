@@ -61,3 +61,10 @@ def test_order_configs_puts_embed_and_vlm_last():
         ["config.embed.yaml", "config.m5.yaml", "config.x.vlm.yaml", "config.a.yaml"]
     )
     assert got == ["config.a.yaml", "config.m5.yaml", "config.embed.yaml", "config.x.vlm.yaml"]
+
+
+def test_discover_endpoint_models_non_iterable_lister_does_not_raise():
+    # a misbehaving lister (returns None) must still degrade to an error, never raise
+    out = configs.discover_endpoint_models("config.m5.yaml", lister=lambda: None)
+    assert out["models"] == []
+    assert out["error"]

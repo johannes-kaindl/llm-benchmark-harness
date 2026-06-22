@@ -70,18 +70,23 @@ def discover_endpoint_models(
             from ramcheck.client import OpenAIStreamClient
 
             cfg = load_config(config_path)
-            client = OpenAIStreamClient(cfg.endpoint.base_url, cfg.endpoint.api_key, timeout=3.0)
+            # max_retries=0 → the 3s timeout is the true wall-clock bound (the SDK retries 2x
+            # by default, which would stretch a dead endpoint to ~10s).
+            client = OpenAIStreamClient(
+                cfg.endpoint.base_url, cfg.endpoint.api_key, timeout=3.0, max_retries=0
+            )
             return client.list_models()
 
     try:
         models = lister()
+        # de-dupe, preserve order — inside the try so a misbehaving lister (non-iterable, etc.)
+        # still degrades to an error rather than raising (the NEVER-raises contract).
+        seen: set[str] = set()
+        out: list[str] = []
+        for m in models:
+            if m not in seen:
+                seen.add(m)
+                out.append(m)
     except Exception as e:  # any failure degrades to an error message
         return {"models": [], "error": f"Endpoint nicht erreichbar: {e}"}
-    # de-dupe, preserve order
-    seen: set[str] = set()
-    out: list[str] = []
-    for m in models:
-        if m not in seen:
-            seen.add(m)
-            out.append(m)
     return {"models": out, "error": None}

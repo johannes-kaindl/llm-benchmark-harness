@@ -24,10 +24,21 @@ class OpenAIStreamClient:
         engine: str = "openai-compat",
         engine_version: str = "unknown",
         timeout: float | None = None,
+        max_retries: int | None = None,
     ) -> None:
-        from openai import OpenAI
+        from openai import NOT_GIVEN, OpenAI
 
-        self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout)
+        # Pass timeout=NOT_GIVEN (the SDK's "use default" sentinel) rather than None — None would
+        # mean an *infinite* wait and silently break every existing eval/judge caller that relies
+        # on the SDK's 600s read timeout. max_retries is a plain int (no sentinel), so omit it
+        # entirely unless set; discovery passes max_retries=0 so the 3s timeout is the true bound.
+        _timeout = NOT_GIVEN if timeout is None else timeout
+        if max_retries is None:
+            self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=_timeout)
+        else:
+            self._client = OpenAI(
+                base_url=base_url, api_key=api_key, timeout=_timeout, max_retries=max_retries
+            )
         self.engine = engine
         self.engine_version = engine_version
 

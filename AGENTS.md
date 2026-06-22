@@ -176,10 +176,15 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   `models_json` → 400, kein Spawn; `resume` ignoriert den Override. Pure Logik:
   `config.models_from_json`/`apply_models_override`, `gui/configs.py`.
 - **Endpoint-Modell-Discovery:** Der Picker fragt beim Config-Wechsel `GET /endpoint-models?config=…`
-  ab; der Server ruft `/v1/models` des Config-Endpoints (`OpenAIStreamClient.list_models`, Timeout ~3 s)
+  ab; der Server ruft `/v1/models` des Config-Endpoints (`OpenAIStreamClient.list_models`, Timeout 3 s
+  **+ `max_retries=0`** → ~3 s harter Bound, sonst dehnen SDK-Retries einen toten Endpoint auf ~10 s)
   und liefert `{"models": [...], "error": null}` — **nie 500**, ein toter Endpoint ergibt `error` +
-  leere Liste. Das Dropdown füllt sich daraus; „Hinzufügen" legt eine Auswahl-Zeile an. Default-Config
-  ordnet `*embed*`/`*vlm*` nach hinten (`order_configs`). Pure Logik: `configs.discover_endpoint_models`.
+  leere Liste. Die Route lässt nur die angebotenen `config*.yaml` zu (kein Lesen beliebiger cwd-YAML).
+  Das Dropdown füllt sich daraus; „Hinzufügen" legt eine Auswahl-Zeile an (dedupt per `id` gegen schon
+  Gewähltes). Default-Config ordnet `*embed*`/`*vlm*` nach hinten (`order_configs`); der Picker-Default
+  kommt aus der geordneten `configs`-Liste (`configs[0]`), nicht aus der JSON-Key-Reihenfolge.
+  Pure Logik: `configs.discover_endpoint_models`. **`OpenAIStreamClient`-Timeout/`max_retries` nur
+  forwarden, wenn gesetzt** — sonst überschriebe `timeout=None` den 600s-SDK-Default für alle eval/judge-Läufe.
 - **Zwei Vergleichs-Ebenen, klar getrennt:** `/compare` (Station 6) ist das **Cross-Run-Aggregat**
   über *alle* Bundles (`aggregate.load_all_scores` → Tabelle Hardware×Qualität). `/compare/{bundle}`
   ist der **Innerhalb-Bundle-Achsen-Vergleich** (Ink. 8): eine kontrollierte Ansicht entlang `model`

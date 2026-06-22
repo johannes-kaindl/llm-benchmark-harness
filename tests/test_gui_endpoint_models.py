@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 
 from fastapi.testclient import TestClient
@@ -50,12 +49,21 @@ def test_endpoint_models_route_rejects_traversal(tmp_path):
     assert _client(tmp_path).get("/endpoint-models?config=../etc/passwd").status_code == 404
 
 
+def test_endpoint_models_route_rejects_non_config_yaml(tmp_path):
+    # only the offered config*.yaml are readable — no arbitrary cwd YAML (info-disclosure guard)
+    assert _client(tmp_path).get("/endpoint-models?config=packs/ndassist.yaml").status_code == 404
+
+
 def test_config_default_is_not_embed(tmp_path):
+    # the config <select> options follow order_configs (embed/vlm last) and the picker defaults
+    # to configs[0]; assert the first config option is a non-embed/non-vlm config. (Decoupled
+    # from JSON key order — no longer relies on a global tojson sort_keys policy.)
     body = _client(tmp_path).get("/config").text
-    m = re.search(r"modelPicker\((\{.*?\})\)", body)
-    assert m is not None
-    first_key = next(iter(json.loads(m.group(1)).keys()))
-    assert "embed" not in first_key and "vlm" not in first_key
+    block = re.search(r'id="config_path".*?</select>', body, re.S)
+    assert block is not None
+    first = re.search(r'<option value="(config\.[^"]+\.yaml)"', block.group(0))
+    assert first is not None
+    assert "embed" not in first.group(1) and "vlm" not in first.group(1)
 
 
 def test_config_page_has_endpoint_dropdown(tmp_path):

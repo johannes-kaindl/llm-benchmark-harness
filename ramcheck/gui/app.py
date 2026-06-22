@@ -23,9 +23,6 @@ from ramcheck.pack import load_pack
 
 _PKG = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PKG / "templates"))
-# Preserve insertion order in tojson (models_by_config is ordered by order_configs; Jinja2's
-# default sort_keys=True would re-sort alphabetically and defeat the embed-last ordering).
-_templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 
 # Hosts allowed by the DNS-rebinding guard. The GUI binds to 127.0.0.1 and is
 # single-user; "testserver" is the host the Starlette TestClient uses.
@@ -172,8 +169,10 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     def endpoint_models(config: str) -> dict[str, Any]:
         """Models the selected config's endpoint advertises (/v1/models). Never 500s —
         a dead endpoint returns {"models": [], "error": "..."}."""
-        candidate = Path(config)
-        if candidate.is_absolute() or ".." in candidate.parts:
+        # Restrict to the config*.yaml files the picker actually offers — this rejects path
+        # traversal AND prevents reading (and error-echoing the parsed content of) any other
+        # cwd YAML.
+        if config not in {str(p) for p in Path(".").glob("config*.yaml")}:
             raise HTTPException(status_code=404)
         return configs_mod.discover_endpoint_models(config)
 

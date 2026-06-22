@@ -124,8 +124,9 @@ def load_config(path: str | Path) -> Config:
 
 def models_from_json(s: str) -> list[ModelSpec]:
     """Parse a JSON array of model specs (GUI picker). Raises ValueError on bad JSON,
-    a non-array, an empty array, or a spec with a missing/blank ``id``. De-duplicates by
-    (id, quant) so a config model left checked AND re-added ad-hoc never doubles an eval cell."""
+    a non-array, an empty array, or a spec with a missing/blank ``id``. De-duplicates exact
+    (id, quant) duplicates. (Note: same id with differing quant stays distinct — the picker
+    guards against re-adding a checked model by id so it can't double an eval cell.)"""
     try:
         data = json.loads(s)
     except json.JSONDecodeError as e:

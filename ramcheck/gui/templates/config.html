@@ -48,7 +48,7 @@
     </div>
     <button type="submit" class="btn btn-primary">Fortsetzen</button>
     {% else %}
-    <div x-data='modelPicker({{ models_by_config | tojson }})'>
+    <div x-data='modelPicker({{ models_by_config | tojson }}, {{ configs | tojson }})'>
       <div class="form-group">
         <label class="form-label" for="config_path">Config</label>
         <select class="form-select" id="config_path" name="config_path"
@@ -88,6 +88,7 @@
           </div>
           <p class="muted text-xs" x-show="endpointLoading" style="margin-top:0.2rem">… Endpoint wird abgefragt</p>
           <p class="muted text-xs" x-show="endpointError" x-text="endpointError" style="color:var(--einschr); margin-top:0.2rem"></p>
+          <p class="muted text-xs" x-show="pickNote" x-text="pickNote" style="margin-top:0.2rem"></p>
         </div>
         <input type="hidden" name="models_json" :value="modelsJson()">
         <p class="muted text-xs" x-show="count() === 0" style="color:var(--nein); margin-top:0.25rem">
