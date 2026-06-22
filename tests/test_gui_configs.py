@@ -40,3 +40,24 @@ def test_models_by_config_maps_and_survives_one_broken(tmp_path):
     out = configs.models_by_config([good, bad])
     assert out[good] == [{"id": "g", "quant": "", "max_tokens_default": 400}]
     assert out[bad] == []
+
+
+def test_discover_endpoint_models_success():
+    out = configs.discover_endpoint_models("config.m5.yaml", lister=lambda: ["m1", "m2"])
+    assert out == {"models": ["m1", "m2"], "error": None}
+
+
+def test_discover_endpoint_models_error_no_throw():
+    def boom():
+        raise ConnectionError("connection refused")
+
+    out = configs.discover_endpoint_models("config.m5.yaml", lister=boom)
+    assert out["models"] == []
+    assert "refused" in out["error"]
+
+
+def test_order_configs_puts_embed_and_vlm_last():
+    got = configs.order_configs(
+        ["config.embed.yaml", "config.m5.yaml", "config.x.vlm.yaml", "config.a.yaml"]
+    )
+    assert got == ["config.a.yaml", "config.m5.yaml", "config.embed.yaml", "config.x.vlm.yaml"]

@@ -4,13 +4,14 @@ single bad file never breaks the page."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import ValidationError
 
-from ramcheck.config import ModelSpec
+from ramcheck.config import ModelSpec, load_config
 
 
 def config_models(path: str | Path) -> list[ModelSpec]:
@@ -43,3 +44,46 @@ def config_models(path: str | Path) -> list[ModelSpec]:
 def models_by_config(files: list[str]) -> dict[str, list[dict[str, Any]]]:
     """{config_path: [model.model_dump(), ...]} for embedding into the template (JSON)."""
     return {f: [m.model_dump() for m in config_models(f)] for f in files}
+
+
+def order_configs(paths: list[str]) -> list[str]:
+    """Sort config paths so *embed*/*vlm* files sort last (the picker shouldn't default to
+    the embedding config). Within each group, alphabetical."""
+
+    def key(p: str) -> tuple[bool, str]:
+        name = Path(p).name.lower()
+        return (("embed" in name or "vlm" in name), p)
+
+    return sorted(paths, key=key)
+
+
+def discover_endpoint_models(
+    config_path: str | Path,
+    *,
+    lister: Callable[[], list[str]] | None = None,
+) -> dict[str, Any]:
+    """{"models": [ids...], "error": str|None}. NEVER raises — a dead/slow endpoint or a
+    broken config yields an empty list + an error string so the page/route never breaks."""
+    if lister is None:
+
+        def lister() -> list[str]:
+            from ramcheck.client import OpenAIStreamClient
+
+            cfg = load_config(config_path)
+            client = OpenAIStreamClient(
+                cfg.endpoint.base_url, cfg.endpoint.api_key, timeout=3.0
+            )
+            return client.list_models()
+
+    try:
+        models = lister()
+    except Exception as e:  # noqa: BLE001 — any failure degrades to an error message
+        return {"models": [], "error": f"Endpoint nicht erreichbar: {e}"}
+    # de-dupe, preserve order
+    seen: set[str] = set()
+    out: list[str] = []
+    for m in models:
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    return {"models": out, "error": None}
