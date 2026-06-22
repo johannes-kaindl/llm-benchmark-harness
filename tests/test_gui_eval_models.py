@@ -108,6 +108,10 @@ def test_config_page_renders_model_picker(tmp_path):
     assert "modelPicker(" in body  # Alpine component bound
     assert 'name="models_json"' in body  # hidden field present
     assert "/static/model_picker.js" in body
+    # Must load NON-deferred so it registers modelPicker before the deferred Alpine starts and
+    # fires alpine:init; otherwise the picker is dead (checkboxes/+Modell/:disabled never bind).
+    assert '<script src="/static/model_picker.js">' in body
+    assert 'defer src="/static/model_picker.js"' not in body
     assert "+ Modell" in body  # ad-hoc add button
     assert ":disabled" in body  # submit disabled at 0 models (no empty-submit dead-end)
 

@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title_suffix %} · Konfig + Start{% endblock %}
 {% block body %}
-<script defer src="/static/model_picker.js"></script>
+{# NOT deferred: Alpine (deferred in base.html) starts synchronously on its own script and
+   fires `alpine:init` immediately. This registration must run BEFORE that — a non-deferred
+   body script executes during parse, ahead of the deferred Alpine. #}
+<script src="/static/model_picker.js"></script>
 <div class="page-header">
   <h1 class="page-title">Konfig + Start</h1>
 </div>
