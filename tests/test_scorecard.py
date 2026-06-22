@@ -100,3 +100,48 @@ def test_red_flagged_prompts_collects_flagged_ids():
         _verdict("E1", "E", 1, red_flag=True),
     ]
     assert red_flagged_prompts(verdicts) == {"E1"}
+
+
+def test_scorecard_surfaces_reasoning_only_count():
+    from ramcheck.scorecard import reasoning_only_counts
+
+    # build two responses, one reasoning-only
+    def _r(pid, empty, rchars):
+        from ramcheck.results import EvalResponse
+
+        return EvalResponse(
+            pack_id="demo",
+            pack_version=1,
+            machine="M",
+            model="m",
+            quant="",
+            engine="e",
+            engine_version="0",
+            variant="none",
+            category="A",
+            prompt_id=pid,
+            repeat=0,
+            response_text="" if empty else "x",
+            content_empty=empty,
+            ttft_s=0.0,
+            decode_tps=0.0,
+            prefill_tps=0.0,
+            e2e_s=0.0,
+            prompt_tokens=0,
+            completion_tokens=0,
+            is_cold_start=False,
+            power_source="ac",
+            peak_rss_mb=None,
+            sys_used_mb=None,
+            mem_pressure_max="",
+            throttled=False,
+            ok=True,
+            error="",
+            seed=42,
+            t_start=0.0,
+            t_end=0.0,
+            reasoning_chars=rchars,
+        )
+
+    counts = reasoning_only_counts([_r("A1", True, 1200), _r("A2", False, 0)])
+    assert counts[("m", "none")] == 1

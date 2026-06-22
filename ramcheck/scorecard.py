@@ -63,6 +63,16 @@ def red_flagged_prompts(verdicts: list[Verdict]) -> set[str]:
     return {v.prompt_id for v in verdicts if v.red_flag and not v.unscored}
 
 
+def reasoning_only_counts(responses: list[EvalResponse]) -> dict[tuple[str, str], int]:
+    """Per-(model, variant): how many answers were reasoning-only (content_empty + reasoning)."""
+    out: dict[tuple[str, str], int] = {}
+    for r in responses:
+        if r.content_empty and r.reasoning_chars > 0:
+            key = (r.model, r.variant)
+            out[key] = out.get(key, 0) + 1
+    return out
+
+
 # --- rendering ---------------------------------------------------------------
 
 
@@ -144,20 +154,24 @@ def render_scorecard_md(
     lines.append("## ⚙️ Tech-Specs (automatisch)")
     lines.append("")
     lines.append(
-        "| Modell | Variante | TTFT P50/P95 (s) | Decode (tok/s) | Peak-RAM (System) | Akku? |"
+        "| Modell | Variante | TTFT P50/P95 (s) | Decode (tok/s) | Peak-RAM (System) | "
+        "reasoning-only | Akku? |"
     )
-    lines.append("|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|:-:|---|")
+    ro = reasoning_only_counts(responses)
     for model, variant in groups:
         g = [r for r in responses if r.model == model and r.variant == variant]
         p = _perf_summary(g)
         ram = p["peak_ram_gb"]
         ram_s = f"{_f(ram if isinstance(ram, float) else None)} GB" if ram is not None else "—"
+        n_ro = ro.get((model, variant), 0)
+        ro_s = f"⚠️ {n_ro}/{len(g)}" if n_ro else "—"
         lines.append(
             f"| {model} | {variant} | "
             f"{_f(p['ttft_p50'] if isinstance(p['ttft_p50'], float) else None, 2)} / "
             f"{_f(p['ttft_p95'] if isinstance(p['ttft_p95'], float) else None, 2)} | "
             f"{_f(p['decode_med'] if isinstance(p['decode_med'], float) else None)} | "
-            f"{ram_s} | {'⚠️ ja' if p['battery'] else 'nein'} |"
+            f"{ram_s} | {ro_s} | {'⚠️ ja' if p['battery'] else 'nein'} |"
         )
     lines.append("")
 
