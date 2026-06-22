@@ -38,7 +38,15 @@ def test_models_by_config_maps_and_survives_one_broken(tmp_path):
     good = _write(tmp_path / "config.good.yaml", "models:\n  - {id: 'g'}\n")
     bad = _write(tmp_path / "config.bad.yaml", "models: [oops\n")
     out = configs.models_by_config([good, bad])
-    assert out[good] == [{"id": "g", "quant": "", "max_tokens_default": 400}]
+    assert out[good] == [
+        {
+            "id": "g",
+            "quant": "",
+            "max_tokens_default": 400,
+            "reasoning_headroom_tokens": 0,
+            "extra_body": {},
+        }
+    ]
     assert out[bad] == []
 
 
