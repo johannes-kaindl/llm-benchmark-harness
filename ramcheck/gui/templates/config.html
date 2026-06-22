@@ -75,6 +75,20 @@
           </div>
         </template>
         <button type="button" class="btn btn-secondary" style="margin-top:0.4rem" @click="addAdhoc()">+ Modell</button>
+        <div style="margin-top:0.6rem">
+          <label class="form-label text-xs" style="display:block">Vom Endpoint hinzufügen</label>
+          <div class="flex gap-2">
+            <select class="form-select" x-model="endpointPick" :disabled="endpointModels.length === 0" style="flex:1">
+              <option value="">— Modell wählen —</option>
+              <template x-for="mid in endpointModels" :key="mid">
+                <option :value="mid" x-text="mid"></option>
+              </template>
+            </select>
+            <button type="button" class="btn btn-secondary" @click="addFromEndpoint()" :disabled="!endpointPick">Hinzufügen</button>
+          </div>
+          <p class="muted text-xs" x-show="endpointLoading" style="margin-top:0.2rem">… Endpoint wird abgefragt</p>
+          <p class="muted text-xs" x-show="endpointError" x-text="endpointError" style="color:var(--einschr); margin-top:0.2rem"></p>
+        </div>
         <input type="hidden" name="models_json" :value="modelsJson()">
         <p class="muted text-xs" x-show="count() === 0" style="color:var(--nein); margin-top:0.25rem">
           Wähle mindestens ein Modell.

@@ -11,6 +11,10 @@ document.addEventListener("alpine:init", () => {
     models: [],
     adhoc: [],
     _nextK: 0, // monotonic key so x-for rows stay stable across removals
+    endpointModels: [],
+    endpointError: "",
+    endpointLoading: false,
+    endpointPick: "",
     init() {
       this.syncFromConfig();
     },
@@ -24,6 +28,30 @@ document.addEventListener("alpine:init", () => {
         on: true,
       }));
       this.adhoc = [];
+      this.fetchEndpointModels(); // async, fire-and-forget
+    },
+    async fetchEndpointModels() {
+      this.endpointLoading = true;
+      this.endpointError = "";
+      this.endpointModels = [];
+      this.endpointPick = "";
+      try {
+        const res = await fetch("/endpoint-models?config=" + encodeURIComponent(this.config));
+        const data = await res.json();
+        this.endpointModels = data.models || [];
+        this.endpointError = data.error || "";
+      } catch (e) {
+        this.endpointError = "Endpoint-Abfrage fehlgeschlagen";
+      } finally {
+        this.endpointLoading = false;
+      }
+    },
+    addFromEndpoint() {
+      const id = (this.endpointPick || "").trim();
+      if (id) {
+        this.adhoc.push({ id: id, quant: "", k: this._nextK++ });
+        this.endpointPick = "";
+      }
     },
     addAdhoc() {
       this.adhoc.push({ id: "", quant: "", k: this._nextK++ });
