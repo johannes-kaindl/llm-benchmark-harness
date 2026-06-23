@@ -34,6 +34,7 @@ class ResourceSample:
     mem_pressure_level: str  # normal | warn | critical
     throttled: bool
     cpu_pct: float | None = None  # system CPU load %, None for ticks recorded before cpu sampling
+    baseline: bool = False  # True for the single pre-loop tick captured before sampling starts
 
 
 @dataclass
