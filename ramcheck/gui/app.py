@@ -8,8 +8,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+import yaml
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -100,6 +101,32 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         except (FileNotFoundError, OSError):
             raise HTTPException(status_code=404) from None
         return render("config_view.html", request, cfg=cfg, path=config_path, active="config")
+
+    @app.get("/export-yaml")
+    def export_yaml(kind: str, path: str) -> Any:
+        """Serialize the *effective* (validated) config or pack back to YAML for download.
+        Path is confined to the exact globs the pickers offer — never an arbitrary cwd file."""
+        if kind == "config":
+            offered = {str(p) for p in Path(".").glob("config*.yaml")}
+            loader: Any = load_config
+        elif kind == "pack":
+            offered = {str(p) for p in Path("packs").glob("*.yaml")}
+            loader = load_pack
+        else:
+            raise HTTPException(status_code=404)
+        if path not in offered:
+            raise HTTPException(status_code=404)
+        try:
+            model = loader(path)
+        except (FileNotFoundError, OSError, ValueError):
+            raise HTTPException(status_code=404) from None
+        body = yaml.safe_dump(model.model_dump(mode="json"), sort_keys=False, allow_unicode=True)
+        name = Path(path).name
+        return Response(
+            body,
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
 
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(request: Request, name: str) -> HTMLResponse:
