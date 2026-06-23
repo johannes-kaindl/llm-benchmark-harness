@@ -118,3 +118,50 @@ def test_result_shows_per_answer_perf(tmp_path):
     # scoped to the per-answer block: prompt→completion token arrow is unique to it
     # (the aggregate perf panel never renders the raw 100→50 token counts)
     assert "100→50 tok" in r.text
+
+
+def test_per_answer_perf_suppresses_nan_metrics(tmp_path):
+    # ttft/decode/prefill are genuinely math.nan when a request produced no content;
+    # the `resp.x == resp.x` Jinja guard must keep "nan" out of the rendered metrics.
+    d = tmp_path / "2026_eval_nan"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {q: 4 for q in DIMS}},
+        perf={
+            "ttft_s": float("nan"),
+            "decode_tps": float("nan"),
+            "prefill_tps": float("nan"),
+            "e2e_s": 1.0,
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+        },
+    )
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    # the NaN-valued metrics are not rendered at all (no "nan s" / "nan tok/s")
+    assert "nan s" not in r.text and "nan tok/s" not in r.text
+    # the still-valid metrics + token arrow remain
+    assert "10→5 tok" in r.text
+
+
+def test_per_answer_reasoning_block_renders_when_text_present(tmp_path):
+    # reasoning_text is persisted only on content_empty; when present the collapsible
+    # block (header + affordance + the text itself) must render.
+    d = tmp_path / "2026_eval_reason"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {q: 4 for q in DIMS}},
+        perf={
+            "content_empty": True,
+            "response_text": "",
+            "reasoning_chars": 28,
+            "reasoning_text": "Schritt 1: nachdenken über A1.",
+        },
+    )
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    assert "💭 Reasoning" in r.text  # block header
+    assert "Reasoning anzeigen" in r.text  # collapsible affordance
+    assert "Schritt 1: nachdenken über A1." in r.text  # the reasoning text itself

@@ -402,7 +402,7 @@
           <div class="muted text-xs" style="text-transform:uppercase; margin-bottom:0.25rem">Geschwindigkeit</div>
           <div class="text-sm">
             TTFT P50: <strong>
-              {% if detail.perf and detail.perf.ttft_p50 is number %}
+              {% if detail.perf and detail.perf.ttft_p50 is number and detail.perf.ttft_p50 == detail.perf.ttft_p50 %}
                 {{ "%.2f"|format(detail.perf.ttft_p50) }}s
               {% else %}
                 —
@@ -410,7 +410,7 @@
             </strong>
           </div>
           <div class="text-sm muted">Decode: <strong>
-            {% if detail.perf and detail.perf.decode_med is number %}
+            {% if detail.perf and detail.perf.decode_med is number and detail.perf.decode_med == detail.perf.decode_med %}
               {{ "%.0f"|format(detail.perf.decode_med) }} tok/s
             {% else %}
               —
