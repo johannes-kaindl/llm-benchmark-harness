@@ -35,5 +35,8 @@ def test_config_view_renders_key_fields(tmp_path):
 
 
 def test_config_view_rejects_traversal(tmp_path):
-    r = _client(tmp_path).get("/config-view/../etc/passwd")
+    # Encode the slashes so httpx does NOT normalize the dot-segments away before sending —
+    # this actually reaches the handler's in-route '..'/glob guard (a bare '../etc/passwd'
+    # would be normalized by the client and 404 as a mere route-miss, never exercising it).
+    r = _client(tmp_path).get("/config-view/..%2F..%2Fetc%2Fpasswd")
     assert r.status_code == 404

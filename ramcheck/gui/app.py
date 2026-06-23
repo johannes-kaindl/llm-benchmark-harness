@@ -122,7 +122,14 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             model = loader(path)
         except (FileNotFoundError, OSError, ValueError):
             raise HTTPException(status_code=404) from None
-        body = yaml.safe_dump(model.model_dump(mode="json"), sort_keys=False, allow_unicode=True)
+        data = model.model_dump(mode="json")
+        if kind == "config":
+            # Never ship the endpoint api_key in a downloadable artifact (the on-screen
+            # config viewer masks it too — the download must not be a side-channel leak).
+            ep = data.get("endpoint")
+            if isinstance(ep, dict) and "api_key" in ep:
+                ep["api_key"] = "<redacted>"
+        body = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
         name = Path(path).name
         return Response(
             body,
@@ -287,16 +294,29 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         with tempfile.TemporaryDirectory() as tmp:
             extracted = Path(tmp) / "extracted"
             extracted.mkdir()
+            max_total = 500 * 1024 * 1024  # decompressed budget for an untrusted bundle
+            max_members = 10_000
+            raw = file.file.read(max_total + 1)
+            if len(raw) > max_total:
+                raise HTTPException(status_code=400, detail="upload too large")
             try:
-                with zipfile.ZipFile(io.BytesIO(file.file.read())) as z:
-                    # Reject any member that would escape the extraction root.
-                    for member in z.namelist():
-                        dest = (extracted / member).resolve()
-                        if not dest.is_relative_to(extracted.resolve()):
-                            raise HTTPException(status_code=400, detail="unsafe zip entry")
-                    z.extractall(extracted)
+                zf = zipfile.ZipFile(io.BytesIO(raw))
             except zipfile.BadZipFile:
                 raise HTTPException(status_code=400, detail="not a zip file") from None
+            with zf as z:
+                # Reject any member that would escape the extraction root (zip-slip).
+                for member in z.namelist():
+                    dest = (extracted / member).resolve()
+                    if not dest.is_relative_to(extracted.resolve()):
+                        raise HTTPException(status_code=400, detail="unsafe zip entry")
+                # Reject zip-bombs before extracting untrusted input: a tiny upload can
+                # inflate to gigabytes. Cap member count and total uncompressed size.
+                infos = z.infolist()
+                if len(infos) > max_members:
+                    raise HTTPException(status_code=400, detail="too many zip entries")
+                if sum(i.file_size for i in infos) > max_total:
+                    raise HTTPException(status_code=400, detail="zip too large")
+                z.extractall(extracted)
 
             if not (extracted / "bundle.json").exists():
                 raise HTTPException(status_code=400, detail="missing bundle.json")

@@ -214,3 +214,59 @@ def test_import_bundle_name_collision_is_suffixed(tmp_path):
     n1, n2 = first.json()["run_dir"], second.json()["run_dir"]
     assert n1 != n2
     assert (tmp_path / n1).is_dir() and (tmp_path / n2).is_dir()
+
+
+def _zip_from_members(members):
+    """Build an in-memory zip from {arcname: bytes|str}. Allows unsafe arcnames for slip tests."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for arc, data in members.items():
+            z.writestr(arc, data)
+    return buf.getvalue()
+
+
+def test_import_bundle_rejects_zip_slip(tmp_path):
+    # A member that escapes the extraction root must be rejected before any extraction.
+    escape_target = tmp_path.parent / "escape.txt"
+    if escape_target.exists():
+        escape_target.unlink()
+    payload = _zip_from_members(
+        {"bundle.json": "{}", "../escape.txt": "pwned"}
+    )
+    r = _client(tmp_path).post(
+        "/import-bundle", files={"file": ("evil.zip", payload, "application/zip")}
+    )
+    assert r.status_code == 400
+    assert "unsafe zip entry" in r.text
+    assert not escape_target.exists()  # nothing written outside runs_dir
+
+
+def test_import_bundle_not_a_zip_is_400(tmp_path):
+    r = _client(tmp_path).post(
+        "/import-bundle", files={"file": ("x.zip", b"this is not a zip", "application/zip")}
+    )
+    assert r.status_code == 400
+    assert "not a zip" in r.text
+
+
+def test_import_bundle_bad_responses_line_is_400(tmp_path):
+    payload = _zip_from_members(
+        {"bundle.json": "{}", "responses.jsonl": "{}\nnot json at all\n"}
+    )
+    r = _client(tmp_path).post(
+        "/import-bundle", files={"file": ("b.zip", payload, "application/zip")}
+    )
+    assert r.status_code == 400
+    assert "invalid responses.jsonl" in r.text
+
+
+def test_import_bundle_rejects_too_many_members(tmp_path):
+    # zip-bomb guard: a member count over the cap is rejected before extractall.
+    members = {f"f{i}.txt": "" for i in range(10_001)}
+    members["bundle.json"] = "{}"
+    payload = _zip_from_members(members)
+    r = _client(tmp_path).post(
+        "/import-bundle", files={"file": ("bomb.zip", payload, "application/zip")}
+    )
+    assert r.status_code == 400
+    assert "too many zip entries" in r.text

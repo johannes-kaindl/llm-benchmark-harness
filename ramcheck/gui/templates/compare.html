@@ -46,10 +46,10 @@
         <td>
           {% if r.quality_pct is not none %}<strong>{{ "%.0f" | format(r.quality_pct) }}%</strong>{% else %}<span class="muted">—</span>{% endif %}
         </td>
-        <td>{{ r.ttft_p50 }}</td>
-        <td>{{ r.decode_med }}</td>
-        <td>{{ r.peak_ram_gb }}</td>
-        <td>{% if r.model_delta_gb %}{{ r.model_delta_gb }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.ttft_p50 %}{{ r.ttft_p50 }} s{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.decode_med %}{{ r.decode_med }} tok/s{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.peak_ram_gb %}{{ r.peak_ram_gb }} GB{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.model_delta_gb %}{{ r.model_delta_gb }} GB{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

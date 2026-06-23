@@ -34,3 +34,22 @@ def test_apply_overrides_empty_is_noop():
     cfg = load_config("config.m5.yaml")
     out = apply_overrides(cfg, {})
     assert out == cfg
+
+
+def test_apply_overrides_rejects_bool_for_int():
+    cfg = load_config("config.m5.yaml")
+    with pytest.raises(ValueError):
+        apply_overrides(cfg, {"runs_per_cell": True})  # bool is an int subclass — rejected
+
+
+def test_apply_overrides_rejects_float_for_int():
+    cfg = load_config("config.m5.yaml")
+    with pytest.raises(ValueError):
+        apply_overrides(cfg, {"runs_per_cell": 2.5})
+
+
+def test_apply_overrides_revalidates_field_constraint():
+    cfg = load_config("config.m5.yaml")
+    # runs_per_cell must stay >= 2 — the re-validation through Config.model_validate enforces it.
+    with pytest.raises(ValueError):
+        apply_overrides(cfg, {"runs_per_cell": 1})

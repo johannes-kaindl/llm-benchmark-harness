@@ -58,3 +58,12 @@ def test_export_yaml_rejects_pack_as_config(tmp_path):
     # A pack path offered under the pack glob must not be readable via kind=config.
     r = _client(tmp_path).get("/export-yaml?kind=config&path=packs/ndassist.yaml")
     assert r.status_code == 404
+
+
+def test_export_yaml_config_redacts_api_key(tmp_path):
+    # SECURITY: the downloadable config must never carry the endpoint api_key in cleartext
+    # (the on-screen viewer masks it; the download must not be a side-channel).
+    r = _client(tmp_path).get("/export-yaml?kind=config&path=config.m5.yaml")
+    assert r.status_code == 200
+    parsed = yaml.safe_load(r.text)
+    assert parsed["endpoint"]["api_key"] == "<redacted>"
