@@ -76,3 +76,24 @@ def test_discover_endpoint_models_non_iterable_lister_does_not_raise():
     out = configs.discover_endpoint_models("config.m5.yaml", lister=lambda: None)
     assert out["models"] == []
     assert out["error"]
+
+
+def test_discover_models_generic_dedupes_and_never_raises():
+    from ramcheck.gui.configs import discover_models
+
+    out = discover_models("http://x/v1", "k", lister=lambda: ["a", "a", "b"])
+    assert out == {"models": ["a", "b"], "error": None}
+
+    boom = discover_models(
+        "http://x/v1", "k", lister=lambda: (_ for _ in ()).throw(RuntimeError("dead"))
+    )
+    assert boom["models"] == [] and "dead" in boom["error"]
+
+
+def test_discover_judge_endpoint_models(tmp_path):
+    from ramcheck.gui.configs import discover_judge_endpoint_models
+
+    jc = tmp_path / "judge.yaml"
+    jc.write_text("endpoint:\n  base_url: http://x/v1\nmodel: qwen\n", encoding="utf-8")
+    out = discover_judge_endpoint_models(str(jc), lister=lambda: ["qwen", "gemma"])
+    assert out == {"models": ["qwen", "gemma"], "error": None}

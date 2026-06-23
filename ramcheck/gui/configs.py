@@ -57,36 +57,60 @@ def order_configs(paths: list[str]) -> list[str]:
     return sorted(paths, key=key)
 
 
-def discover_endpoint_models(
-    config_path: str | Path,
+def discover_models(
+    base_url: str,
+    api_key: str,
     *,
     lister: Callable[[], list[str]] | None = None,
 ) -> dict[str, Any]:
-    """{"models": [ids...], "error": str|None}. NEVER raises — a dead/slow endpoint or a
-    broken config yields an empty list + an error string so the page/route never breaks."""
+    """{"models": [...], "error": str|None}. NEVER raises. Shared by eval + judge discovery."""
     if lister is None:
 
         def lister() -> list[str]:
             from ramcheck.client import OpenAIStreamClient
 
-            cfg = load_config(config_path)
-            # max_retries=0 → the 3s timeout is the true wall-clock bound (the SDK retries 2x
-            # by default, which would stretch a dead endpoint to ~10s).
-            client = OpenAIStreamClient(
-                cfg.endpoint.base_url, cfg.endpoint.api_key, timeout=3.0, max_retries=0
-            )
+            client = OpenAIStreamClient(base_url, api_key, timeout=3.0, max_retries=0)
             return client.list_models()
 
     try:
-        models = lister()
-        # de-dupe, preserve order — inside the try so a misbehaving lister (non-iterable, etc.)
-        # still degrades to an error rather than raising (the NEVER-raises contract).
         seen: set[str] = set()
         out: list[str] = []
-        for m in models:
+        for m in lister():
             if m not in seen:
                 seen.add(m)
                 out.append(m)
-    except Exception as e:  # any failure degrades to an error message
+    except Exception as e:
         return {"models": [], "error": f"Endpoint nicht erreichbar: {e}"}
     return {"models": out, "error": None}
+
+
+def discover_endpoint_models(
+    config_path: str | Path,
+    *,
+    lister: Callable[[], list[str]] | None = None,
+) -> dict[str, Any]:
+    """Eval-config variant: load the config, discover its endpoint's models."""
+    if lister is None:
+        try:
+            cfg = load_config(config_path)
+        except Exception as e:
+            return {"models": [], "error": f"Config nicht lesbar: {e}"}
+        return discover_models(cfg.endpoint.base_url, cfg.endpoint.api_key)
+    return discover_models("", "", lister=lister)
+
+
+def discover_judge_endpoint_models(
+    judge_config_path: str | Path,
+    *,
+    lister: Callable[[], list[str]] | None = None,
+) -> dict[str, Any]:
+    """Judge-config variant: load the JudgeConfig, discover its endpoint's models."""
+    if lister is None:
+        from ramcheck.judge import load_judge_config
+
+        try:
+            jc = load_judge_config(judge_config_path)
+        except Exception as e:
+            return {"models": [], "error": f"Judge-Config nicht lesbar: {e}"}
+        return discover_models(jc.endpoint.base_url, jc.endpoint.api_key)
+    return discover_models("", "", lister=lister)
