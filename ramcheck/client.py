@@ -51,20 +51,23 @@ class OpenAIStreamClient:
         *,
         messages: list[dict[str, object]],
         model: str,
-        max_tokens: int,
+        max_tokens: int | None,
         temperature: float,
         seed: int,
         extra_body: dict[str, object] | None = None,
     ) -> Iterator[StreamEvent]:
         # Our engine-agnostic message dicts don't match the SDK's TypedDict overloads;
         # the server-side schema is what actually validates them.
-        # Forward extra_body ONLY when set — an unconditional extra_body=None would not hurt the
-        # SDK but keeps the call clean and the spy-tested contract honest.
-        extra = {"extra_body": extra_body} if extra_body else {}
+        # max_tokens=None → omit the cap so the server answers freely (eval default); a positive int
+        # caps it (latency runner). extra_body forwarded only when set — keeps the call clean.
+        extra: dict[str, object] = {}
+        if max_tokens is not None:
+            extra["max_tokens"] = max_tokens
+        if extra_body:
+            extra["extra_body"] = extra_body
         stream = self._client.chat.completions.create(  # type: ignore[call-overload]
             model=model,
             messages=messages,
-            max_tokens=max_tokens,
             temperature=temperature,
             seed=seed,
             stream=True,

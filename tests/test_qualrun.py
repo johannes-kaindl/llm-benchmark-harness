@@ -253,15 +253,44 @@ def _config_with(model_dict):
     )
 
 
-def test_run_eval_adds_reasoning_headroom_to_budget(tmp_path):
+def _pack_with_cap(max_tokens):
+    return Pack.model_validate(
+        {
+            "id": "demo",
+            "title": "D",
+            "scale": {1: "a", 2: "b", 3: "c", 4: "d", 5: "e"},
+            "dimensions": [{"id": "Q1", "name": "K", "weight": 1}],
+            "ko_rule": {"dimension": "Q1", "threshold": 2},
+            "categories": [
+                {
+                    "id": "A",
+                    "name": "A",
+                    "prompts": [
+                        {"id": "A1", "title": "t", "prompt": "p", "max_tokens": max_tokens}
+                    ],
+                }
+            ],
+        }
+    )
+
+
+def test_run_eval_adds_reasoning_headroom_to_explicit_cap(tmp_path):
     client = CapturingClient()
     cfg = _config_with(
         {"id": "m1", "reasoning_headroom_tokens": 1000, "extra_body": {"enable_thinking": False}}
     )
-    run_eval(cfg, _pack(), client, run_dir=tmp_path, sampler=NoopSampler())
-    # pack prompts default max_tokens=400; effective = 400 + 1000
+    # an EXPLICIT cap → headroom adds on top (400 + 1000)
+    run_eval(cfg, _pack_with_cap(400), client, run_dir=tmp_path, sampler=NoopSampler())
     assert all(s["max_tokens"] == 1400 for s in client.seen)
     assert all(s["extra_body"] == {"enable_thinking": False} for s in client.seen)
+
+
+def test_run_eval_free_budget_sends_no_limit(tmp_path):
+    client = CapturingClient()
+    # _pack() prompts have no max_tokens → free → stream_once gets max_tokens=None (headroom ignored)
+    cfg = _config_with({"id": "m1", "reasoning_headroom_tokens": 1000})
+    run_eval(cfg, _pack(), client, run_dir=tmp_path, sampler=NoopSampler())
+    assert all(s["max_tokens"] is None for s in client.seen)
 
 
 def test_run_eval_persists_reasoning_text_only_when_empty(tmp_path):

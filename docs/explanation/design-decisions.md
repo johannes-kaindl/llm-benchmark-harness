@@ -94,12 +94,18 @@ und klar als Setup-Hinweis markiert, statt als stille 1 das Ergebnis zu verfäls
 Ausgabe (auch kein Reasoning) bleibt 1 = unbrauchbar. Das Denken selbst wird bei leerem content
 persistiert (`reasoning_text`), bleibt also einsehbar.
 
-Die „faire Chance" für ein Thinking-Modell ist bewusst **opt-in**, nicht automatisch: Ein kleines
-Token-Budget ist ein **legitimes Test-Setup** (kleine Maschine), und der Harness darf die Mess-Bedingung
-nie heimlich verändern. Wer einem Modell mehr Denk-Raum geben will, setzt pro Modell
-`reasoning_headroom_tokens` (ein Aufschlag aufs Gesamt-Budget — das *sichtbare* Antwort-Budget bleibt
-`pack.prompt.max_tokens`, damit der Modellvergleich fair bleibt) oder schaltet Thinking via `extra_body`
-ab, wo der Endpoint das kann. Das Default-Verhalten ist identisch zu vorher, nur transparenter.
+Die **eigentliche, elegante Lösung** ist aber, das Limit gar nicht erst zu setzen: Für die Eval lässt der
+Harness Modelle **standardmäßig frei antworten** (`PackPrompt.max_tokens` default `None` → kein `max_tokens`
+an die API → der Server entscheidet, kontextfenster-begrenzt). Das ist näher am echten Einsatz und erwürgt
+ein Thinking-Modell gar nicht erst — der ursprüngliche Blocker entsteht so nie. Das feste Budget lebt nur
+noch im **Latenz-Runner** (`run`), wo eine vergleichbare Generierungs-Last gewollt ist.
+
+Wer für die Eval doch ein **kontrolliertes** sichtbares Budget will (kleine Maschine, Vergleich „bei gleichem
+Budget"), setzt pro Prompt ein `max_tokens` — und gibt einem Thinking-Modell darüber hinaus mit
+`reasoning_headroom_tokens` extra Denk-Raum *obendrauf* (das sichtbare Antwort-Budget bleibt der Cap, fairer
+Vergleich), oder schaltet Thinking via `extra_body` ab. Diese Hebel sind **opt-in**; der Harness verändert die
+Mess-Bedingung nie heimlich. Ein kleines Budget ist ein legitimes Test-Setup — der Pre-Flight macht den
+Trade-off nur sichtbar.
 
 Damit man das nicht erst nach einem 30-Minuten-Lauf merkt, prüft ein **Pre-Flight-Smoke** vor der Matrix
 einmal pro Modell, ob das gewählte Setup sichtbaren content liefert. Er nutzt bewusst das **großzügigste**

@@ -82,3 +82,46 @@ def test_stream_forwards_extra_body_only_when_set(monkeypatch):
         )
     )
     assert captured["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_stream_omits_max_tokens_when_none(monkeypatch):
+    from ramcheck.client import OpenAIStreamClient
+
+    captured = {}
+
+    class _FakeCreate:
+        def __call__(self, **kwargs):
+            captured.update(kwargs)
+            return iter([])  # empty stream
+
+    class _FakeOpenAI:
+        def __init__(self, **_):
+            self.chat = type("C", (), {"completions": type("X", (), {"create": _FakeCreate()})()})()
+            self.models = None
+
+    monkeypatch.setattr("openai.OpenAI", _FakeOpenAI)
+    c = OpenAIStreamClient("http://x/v1")
+
+    # max_tokens=None → no cap sent → the server answers freely (eval default)
+    list(
+        c.stream(
+            messages=[{"role": "user", "content": "hi"}],
+            model="m",
+            max_tokens=None,
+            temperature=0.0,
+            seed=42,
+        )
+    )
+    assert "max_tokens" not in captured
+
+    captured.clear()
+    list(
+        c.stream(
+            messages=[{"role": "user", "content": "hi"}],
+            model="m",
+            max_tokens=256,
+            temperature=0.0,
+            seed=42,
+        )
+    )
+    assert captured["max_tokens"] == 256

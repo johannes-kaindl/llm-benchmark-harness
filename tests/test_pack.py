@@ -59,7 +59,7 @@ def test_valid_pack_loads_with_defaults():
     assert pack.id == "demo"
     a1 = pack.categories[0].prompts[0]
     assert a1.repeats == 1  # default
-    assert a1.max_tokens == 400  # default
+    assert a1.max_tokens is None  # default = no limit (answer freely, like real use)
     assert a1.safety_critical is False
     assert pack.sampling.temperature == 0.0  # deterministic default
     assert pack.sampling.seed == 42

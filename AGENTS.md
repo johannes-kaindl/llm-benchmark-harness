@@ -147,12 +147,18 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   `ok | reasoning_only | empty | error`. It **never raises** and never measures. Default **warns** (CLI print
   + a `preflight` event in `events.jsonl` → folded by `events.build_view` → GUI live banner / webmon banner);
   `eval --strict-preflight` raises before the matrix (no run-dir garbage). `resume` skips it.
-- **Thinking knobs on `ModelSpec` are opt-in and default-neutral.** `reasoning_headroom_tokens` adds extra
-  *total* budget for THAT model so a thinker can still reach visible content — the *visible* answer budget
-  stays `pack.prompt.max_tokens` (fair cross-model compare); a small budget is a legitimate test setup, so
-  the harness never inflates it silently. `extra_body` is forwarded verbatim to `chat.completions.create`
-  (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}`) — engine-agnostic, no engine branch outside
-  `client.py`, forwarded only when non-empty. The judge backend never disables thinking.
+- **Eval lets models answer freely by default.** `PackPrompt.max_tokens` defaults to `None` (no cap) for the
+  qualitative eval — closer to real use, and a reasoning model isn't starved before it reaches visible content.
+  `client.stream` omits `max_tokens` from the API call when `None` (the server decides, context-window-bounded);
+  a positive int caps it (set per pack prompt for a controlled budget). The **latency runner** (`run`) keeps its
+  fixed `config.max_tokens_for` budget — it measures decode under a comparable load.
+- **Thinking knobs on `ModelSpec` are opt-in and default-neutral.** `reasoning_headroom_tokens` is a fine-tuning
+  knob: it adds extra *total* budget for THAT model **on top of an explicit `pack.prompt.max_tokens` cap** (the
+  visible answer budget stays the cap → fair compare); with the default free budget there's no cap to add to, so
+  it's ignored. A small cap is a legitimate test setup, so the harness never inflates it silently. `extra_body`
+  is forwarded verbatim to `chat.completions.create` (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}`)
+  — engine-agnostic, no engine branch outside `client.py`, forwarded only when non-empty. The judge backend
+  never disables thinking.
 - **Judge model is pickable like the eval model.** `gui/configs.discover_models` is the shared discovery
   core; `discover_judge_endpoint_models` + `GET /judge-endpoint-models` (never-500, `judge*.yaml` path-guard)
   feed a GUI dropdown; `judge --judge-model <id>` overrides the YAML model for one run (no write-back),

@@ -114,15 +114,22 @@ def run_eval(
     cells = iter_eval_cells(config, pack)
     if not resume:
         prompts = [p for _, p in pack.all_prompts()]
-        max_prompt_budget = max((p.max_tokens for p in prompts), default=0)
+        # max_tokens=None means "no limit" (free) — the most generous budget, so if any prompt is
+        # unlimited the smoke runs unlimited too; otherwise smoke the largest cap (+ headroom).
+        limits = [p.max_tokens for p in prompts]
+        base_budget = (
+            None
+            if any(lim is None for lim in limits)
+            else max((lim for lim in limits if lim is not None), default=0)
+        )
         # A reasoning model thinks proportionally to task complexity, so a trivial synthetic smoke
-        # would pass while the real prompts starve the budget (verified against gemma-4-12b-qat:
+        # would pass while the real prompts starve a (capped) budget (verified against gemma-4-12b-qat:
         # "2+2" → ok, real ndassist prompt → reasoning-only). Smoke with the LONGEST real prompt
         # (worst case) so the warning actually fires before a 30-min run into the void.
         smoke_prompt = max((p.prompt for p in prompts), key=len, default=SMOKE_PROMPT)
 
-        def _budget_for(m: ModelSpec) -> int:
-            return max_prompt_budget + m.reasoning_headroom_tokens
+        def _budget_for(m: ModelSpec) -> int | None:
+            return None if base_budget is None else base_budget + m.reasoning_headroom_tokens
 
         pf = preflight_models(client, config.models, budget_for=_budget_for, prompt=smoke_prompt)
         if on_preflight is not None:
@@ -151,7 +158,11 @@ def run_eval(
                     client,
                     messages=_messages(cell.variant, cell.prompt),
                     model=cell.model.id,
-                    max_tokens=cell.prompt.max_tokens + cell.model.reasoning_headroom_tokens,
+                    max_tokens=(
+                        None
+                        if cell.prompt.max_tokens is None
+                        else cell.prompt.max_tokens + cell.model.reasoning_headroom_tokens
+                    ),
                     temperature=pack.sampling.temperature,
                     seed=pack.sampling.seed,
                     counter=counter_for(cell.model.id),

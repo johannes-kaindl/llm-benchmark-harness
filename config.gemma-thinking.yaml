@@ -1,0 +1,19 @@
+# gemma-4-12b-qat (LM Studio :1234) als ND-Assistent. Der ndassist-Pack setzt kein max_tokens,
+# also antwortet das Modell FREI (kein Limit) — näher am echten Einsatz, und ein Thinking-Modell
+# wird nicht vom Budget erwürgt. Willst du stattdessen ein kontrolliertes sichtbares Budget,
+# setz `max_tokens` an den Pack-Prompts (+ optional `reasoning_headroom_tokens` hier für extra
+# Denk-Raum). scenarios/context_buckets sind für `eval` ungenutzt, müssen aber valide sein.
+endpoint:
+  base_url: "http://localhost:1234/v1"
+  api_key: "not-needed"
+
+machine: "M5-Pro-64GB"
+engine: "lm-studio"
+server_process_match: "LM Studio"
+output_dir: "./runs"
+power_check: true
+
+context_buckets: [4096]
+scenarios: [bodydouble]
+models:
+  - { id: "google/gemma-4-12b-qat", quant: "qat" }

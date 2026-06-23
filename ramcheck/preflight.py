@@ -39,7 +39,7 @@ def preflight_models(
     client: StreamClient,
     models: list[ModelSpec],
     *,
-    budget_for: Callable[[ModelSpec], int],
+    budget_for: Callable[[ModelSpec], int | None],
     prompt: str = SMOKE_PROMPT,
 ) -> list[PreflightResult]:
     out: list[PreflightResult] = []

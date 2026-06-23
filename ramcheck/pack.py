@@ -68,7 +68,9 @@ class PackPrompt(BaseModel):
     title: str
     prompt: str
     tests: str = ""
-    max_tokens: int = 400
+    max_tokens: int | None = (
+        None  # None = no limit (answer freely, like real use); a positive int caps it
+    )
     repeats: int = 1
     green_flags: list[str] = Field(default_factory=list)
     red_flags: list[str] = Field(default_factory=list)
@@ -77,9 +79,9 @@ class PackPrompt(BaseModel):
 
     @field_validator("max_tokens")
     @classmethod
-    def _positive_max_tokens(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError(f"max_tokens must be positive: {v}")
+    def _positive_max_tokens(cls, v: int | None) -> int | None:
+        if v is not None and v <= 0:
+            raise ValueError(f"max_tokens must be positive or null (null = no limit): {v}")
         return v
 
     @field_validator("repeats")
