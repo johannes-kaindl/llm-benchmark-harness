@@ -271,3 +271,42 @@ def test_stream_once_forwards_extra_body():
         extra_body={"foo": "bar"},
     )
     assert seen["extra_body"] == {"foo": "bar"}
+
+
+def test_derive_rates_decode_window_starts_at_first_generated_token():
+    # Reasoning model: first reasoning token at 0.3s, first content (TTFT) only at 5.9s,
+    # e2e 5.95s. Using TTFT would give decode_window ≈ 0.05s → absurd tps. The fix starts
+    # the window at the first generated (reasoning) token.
+    from ramcheck.runner import RequestOutcome, derive_rates
+
+    o = RequestOutcome(
+        ttft_s=5.9,
+        e2e_s=5.95,
+        prompt_tokens=30,
+        completion_tokens=300,
+        t_start=0.0,
+        t_end=0.0,
+        t_reasoning_start=0.3,
+    )
+    prefill, decode = derive_rates(o)
+    # decode window = 5.95 - 0.3 = 5.65 → ~53 tok/s, NOT 300/0.05 = 6000
+    assert 40 < decode < 80, decode
+    # prefill = 30 / 0.3 = 100 tok/s, NOT 30/5.9 ≈ 5
+    assert 80 < prefill < 120, prefill
+
+
+def test_derive_rates_unchanged_without_reasoning():
+    # No reasoning → t_reasoning_start is nan → gen_start = TTFT (legacy behavior preserved).
+    from ramcheck.runner import RequestOutcome, derive_rates
+
+    o = RequestOutcome(
+        ttft_s=0.2,
+        e2e_s=2.2,
+        prompt_tokens=20,
+        completion_tokens=200,
+        t_start=0.0,
+        t_end=0.0,
+    )
+    prefill, decode = derive_rates(o)
+    assert abs(prefill - 100.0) < 1e-6  # 20 / 0.2
+    assert abs(decode - 100.0) < 1e-6  # 200 / (2.2 - 0.2)
