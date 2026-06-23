@@ -60,6 +60,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">Modelle</label>
+        <p class="muted text-xs">Nur angehakte Modelle werden evaluiert. Abwählen schließt ein Modell aus diesem Lauf aus (nichts wird in die Config geschrieben).</p>
         <template x-for="(m, i) in models" :key="i">
           <label style="display:block; font-size:0.9rem">
             <input type="checkbox" x-model="m.on">

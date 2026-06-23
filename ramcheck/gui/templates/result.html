@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title_suffix %} · {{ run_dir.name }}{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Ergebnis › {{ run_dir.name }}</nav>
+{% endblock %}
 {% block body %}
 <script src="/static/sparkline.js" defer></script>
 

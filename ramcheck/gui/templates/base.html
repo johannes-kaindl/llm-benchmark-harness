@@ -6,7 +6,6 @@
   <title>ramcheck{% block title_suffix %}{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
   <script defer src="/static/alpine.min.js"></script>
-  <script src="/static/htmx.min.js"></script>
 </head>
 <body>
   <!-- sidebar -->
@@ -25,6 +24,7 @@
 
   <!-- main -->
   <main class="main">
+    {% block breadcrumb %}{% endblock %}
     {% block body %}{% endblock %}
   </main>
 </body>

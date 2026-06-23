@@ -31,7 +31,7 @@ dependencies = [
 tokenizer = [
     "transformers>=4.44",
 ]
-# Local control-center web UI (ramcheck gui). Build-free: vendored HTMX/Alpine assets.
+# Local control-center web UI (ramcheck gui). Build-free: vendored Alpine asset.
 gui = [
     "fastapi>=0.110",
     "uvicorn>=0.29",

@@ -263,6 +263,29 @@ a:hover { text-decoration: underline; }
 .alert-error { background: var(--nein-bg);    color: var(--nein);    border-color: var(--nein); }
 .alert-info  { background: var(--running-bg); color: var(--running-fg); border-color: var(--running-fg); }
 
+/* ── breadcrumb + explainer (P2c) ───────────────────────────────────────────── */
+.breadcrumb { margin-bottom: 0.75rem; }
+.breadcrumb a { color: var(--muted); }
+
+.formula {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
+  white-space: pre-wrap;
+}
+
+.ko-branch {
+  flex: 1;
+  min-width: 220px;
+  margin-bottom: 0;
+}
+
+.scale-table { border-collapse: collapse; font-size: 0.82rem; margin-top: 0.35rem; }
+.scale-table td { padding: 0.15rem 0.6rem 0.15rem 0; }
+
 /* ── tables ───────────────────────────────────────────────────────────────── */
 .bundle-table {
   width: 100%;

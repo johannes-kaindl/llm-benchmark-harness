@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block title_suffix %} · Vergleich{% endblock %}
 {% block body %}
 <div class="page-header">
@@ -19,10 +20,10 @@
         <th>Modell</th>
         <th>Variante</th>
         <th>Quant</th>
-        <th>Qualität %</th>
-        <th>TTFT P50</th>
-        <th>Decode Median</th>
-        <th>Peak RAM</th>
+        <th>{{ ui.mlabel("quality_pct") }}</th>
+        <th>{{ ui.mlabel("ttft_p50") }}</th>
+        <th>{{ ui.mlabel("decode_median") }}</th>
+        <th>{{ ui.mlabel("system_peak_ram") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -37,7 +38,7 @@
             {{ r.machine }}
           {% endif %}
         </td>
-        <td>{{ r.pack }}</td>
+        <td><a href="/packs/packs/{{ r.pack }}.yaml">{{ r.pack }}</a></td>
         <td>{{ r.model }}</td>
         <td>{{ r.variant }}</td>
         <td>{{ r.quant }}</td>
