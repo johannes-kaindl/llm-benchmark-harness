@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block title_suffix %} · {{ run_dir.name }}{% endblock %}
 {% block breadcrumb %}
 <nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Ergebnis › {{ run_dir.name }}</nav>
@@ -341,6 +342,26 @@
                     {% endif %}
                   </div>
                 </div>
+                {# Per-answer perf/token metrics (NaN-guarded via the x == x Jinja idiom) #}
+                <div class="flex gap-2 text-xs muted" style="flex-wrap:wrap; margin-top:0.35rem">
+                  {% if resp.ttft_s is not none and resp.ttft_s == resp.ttft_s %}{{ ui.metric("%.2f"|format(resp.ttft_s), "ttft_p50", "s") }}{% endif %}
+                  {% if resp.decode_tps is not none and resp.decode_tps == resp.decode_tps %}{{ ui.metric("%.0f"|format(resp.decode_tps), "decode_median", "tok/s") }}{% endif %}
+                  {% if resp.prefill_tps is not none and resp.prefill_tps == resp.prefill_tps %}{{ ui.metric("%.0f"|format(resp.prefill_tps), "prefill_tps", "tok/s") }}{% endif %}
+                  {% if resp.e2e_s is not none %}{{ ui.metric("%.2f"|format(resp.e2e_s), "e2e", "s") }}{% endif %}
+                  {% if resp.e2e_s and resp.e2e_s > 0 %}{{ ui.metric("%.0f"|format((resp.prompt_tokens + resp.completion_tokens) / resp.e2e_s), "total_throughput", "tok/s") }}{% endif %}
+                  <span class="metric" title="Prompt-/Antwort-Tokens">{{ resp.prompt_tokens }}→{{ resp.completion_tokens }} tok</span>
+                  {% if resp.reasoning_chars > 0 %}<span class="metric" title="{{ g('reasoning_only').short }}">💭 {{ resp.reasoning_chars }} Z.</span>{% endif %}
+                </div>
+                {# Reasoning text (persisted only on content_empty) — collapsible, mirrors the answer block #}
+                {% if resp.reasoning_text %}
+                  <div style="margin-top:0.35rem">
+                    <div class="muted text-xs" style="text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.2rem">💭 Reasoning</div>
+                    <div x-data="{ openR: false }" style="background:var(--card-bg); border-radius:6px; padding:0.5rem 0.7rem">
+                      <a style="cursor:pointer" @click.prevent="openR = !openR" x-text="openR ? '▲ Reasoning ausblenden' : '▼ Reasoning anzeigen'"></a>
+                      <div x-show="openR" x-cloak style="white-space:pre-wrap; margin-top:0.25rem">{{ resp.reasoning_text }}</div>
+                    </div>
+                  </div>
+                {% endif %}
                 {% if ns3.verdict %}
                   <div style="margin-top:0.4rem">
                     <span class="text-xs muted">Judge: </span>
