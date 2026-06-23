@@ -96,4 +96,38 @@ document.addEventListener("alpine:init", () => {
       return JSON.stringify(out);
     },
   }));
+
+  // Slim judge-model picker: fetches /judge-endpoint-models on judge-config change and fills a
+  // single dropdown (the judge only needs an id — no quant/multi-select like the eval picker).
+  Alpine.data("judgeModelPicker", () => ({
+    judgeConfig: "",
+    models: [],
+    pick: "",
+    loading: false,
+    error: "",
+    init() {
+      const sel = document.getElementById("judge_config_path");
+      this.judgeConfig = sel ? sel.value : "";
+      this.fetchModels();
+    },
+    async fetchModels() {
+      const cfg = this.judgeConfig; // guard: ignore a stale response for a superseded config
+      if (!cfg) return;
+      this.loading = true;
+      this.error = "";
+      this.models = [];
+      this.pick = "";
+      try {
+        const res = await fetch("/judge-endpoint-models?judge_config=" + encodeURIComponent(cfg));
+        const data = await res.json();
+        if (this.judgeConfig !== cfg) return;
+        this.models = data.models || [];
+        this.error = data.error || "";
+      } catch (e) {
+        if (this.judgeConfig === cfg) this.error = "Endpoint-Abfrage fehlgeschlagen";
+      } finally {
+        if (this.judgeConfig === cfg) this.loading = false;
+      }
+    },
+  }));
 });
