@@ -18,11 +18,13 @@ from ramcheck import aggregate as aggregate_mod
 from ramcheck.config import models_from_json
 from ramcheck.gui import bundles, compare
 from ramcheck.gui import configs as configs_mod
+from ramcheck.gui import glossary as _glossary
 from ramcheck.gui.control import RunRegistry
 from ramcheck.pack import load_pack
 
 _PKG = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PKG / "templates"))
+_templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templates
 
 # Hosts allowed by the DNS-rebinding guard. The GUI binds to 127.0.0.1 and is
 # single-user; "testserver" is the host the Starlette TestClient uses.

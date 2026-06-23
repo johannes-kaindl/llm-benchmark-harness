@@ -240,6 +240,29 @@ a:hover { text-decoration: underline; }
 .badge.eval-only { background: var(--eval-bg);   color: var(--eval-fg); }
 .badge.judged   { background: var(--ja-bg);      color: var(--ja); }
 
+/* ── metrics + glossary (macros/ui.html) ────────────────────────────────────── */
+.metric-help   { font-size: 0.7em; opacity: 0.5; margin-left: 2px; }
+.metric-label  { color: var(--muted); }
+
+.kv-row {
+  display: flex;
+  gap: 1rem;
+  padding: 0.15rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.kv-label { color: var(--muted); }
+.kv-value { color: var(--text); }
+
+.alert {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.alert-warn  { background: var(--einschr-bg); color: var(--einschr); border-color: var(--einschr); }
+.alert-error { background: var(--nein-bg);    color: var(--nein);    border-color: var(--nein); }
+.alert-info  { background: var(--running-bg); color: var(--running-fg); border-color: var(--running-fg); }
+
 /* ── tables ───────────────────────────────────────────────────────────────── */
 .bundle-table {
   width: 100%;
