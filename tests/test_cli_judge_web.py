@@ -209,9 +209,18 @@ def test_judge_model_override_replaces_config_model():
     from ramcheck.judge import JudgeConfig, JudgeEndpoint
 
     jc = JudgeConfig(endpoint=JudgeEndpoint(base_url="http://x/v1"), model="qwen", temperature=0.0)
-    overridden = jc.model_copy(update={"model": "gemma"}) if "gemma" else jc
+
+    # mirrors the cli `judge` override: apply only when --judge-model is non-empty
+    def _apply(jc, judge_model):
+        return jc.model_copy(update={"model": judge_model.strip()}) if judge_model.strip() else jc
+
+    overridden = _apply(jc, "gemma")
     assert overridden.model == "gemma"
     assert overridden.endpoint.base_url == "http://x/v1"  # endpoint untouched
+
+    unchanged = _apply(jc, "")  # empty → config default, no override
+    assert unchanged.model == "qwen"
+    assert unchanged is jc
 
 
 def test_judge_web_truncates_stale_events(tmp_path, monkeypatch):

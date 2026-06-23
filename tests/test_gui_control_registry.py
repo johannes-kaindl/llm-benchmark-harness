@@ -100,6 +100,15 @@ def test_start_judge_appends_judge_model_to_argv(tmp_path):
     assert "gemma" in argv
 
 
+def test_start_judge_omits_judge_model_when_empty(tmp_path):
+    reg = _reg(tmp_path)
+    bundle = tmp_path / "b"
+    bundle.mkdir(parents=True)
+    reg.start_judge(bundle=bundle, judge_config_path="judge.yaml", judge_model="")
+    argv = reg.launcher.calls[0]
+    assert "--judge-model" not in argv  # only appended when set
+
+
 def test_sentinel_written_before_spawn(tmp_path):
     """The on-disk lock must exist BEFORE spawn so no guard-window opens (MAJOR 1)."""
 
