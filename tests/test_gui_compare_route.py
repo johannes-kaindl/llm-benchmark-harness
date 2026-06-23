@@ -55,6 +55,24 @@ def test_compare_route_variant_axis_renders(tmp_path):
     assert "label" in pts[0]
 
 
+def test_compare_route_renders_model_delta_row(tmp_path):
+    d = tmp_path / "2026_eval_delta"
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    _write_compare_bundle(
+        d,
+        cells=[("m", "baseline"), ("m", "none")],
+        dim_scores_by_cell={("m", "baseline"): full, ("m", "none"): dict(full)},
+        perf_by_cell={
+            ("m", "baseline"): {"sys_used_mb": 52000.0, "sys_used_delta_mb": 12000.0},
+            ("m", "none"): {"sys_used_mb": 50000.0, "sys_used_delta_mb": 10000.0},
+        },
+    )
+    r = _client(tmp_path).get(f"/compare/{d.name}?axis=variant")
+    assert r.status_code == 200
+    assert "Modell-Delta" in r.text  # the new ui.mlabel row header
+    assert "11.7 GB" in r.text  # 12000 MB / 1024 ≈ 11.7 GB (baseline cell)
+
+
 def test_compare_route_model_axis_shows_projection(tmp_path):
     d = _two_model_bundle(tmp_path)
     r = _client(tmp_path).get(f"/compare/{d.name}?axis=model")

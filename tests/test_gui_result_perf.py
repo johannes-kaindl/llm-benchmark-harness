@@ -120,6 +120,22 @@ def test_result_shows_per_answer_perf(tmp_path):
     assert "100→50 tok" in r.text
 
 
+def test_result_shows_per_answer_model_delta(tmp_path):
+    # peak 52000 MB system, baseline-subtracted delta 12000 MB → 11.7 GB Modell-Delta.
+    d = tmp_path / "2026_eval_delta"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {q: 4 for q in DIMS}},
+        perf={"sys_used_mb": 52000.0, "sys_used_delta_mb": 12000.0},
+    )
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    assert "11.7 GB" in r.text  # 12000 MB / 1024 ≈ 11.7 GB
+    # the model-delta metric carries its glossary tooltip (distinct from System-Peak)
+    assert "maschinen-vergleichbare Speicher-Zuwachs" in r.text
+
+
 def test_per_answer_perf_suppresses_nan_metrics(tmp_path):
     # ttft/decode/prefill are genuinely math.nan when a request produced no content;
     # the `resp.x == resp.x` Jinja guard must keep "nan" out of the rendered metrics.

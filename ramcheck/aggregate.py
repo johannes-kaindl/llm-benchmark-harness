@@ -53,6 +53,7 @@ class AggRow:
     decode_med: str
     e2e_med: str
     peak_ram_gb: str
+    model_delta_gb: str
     power: str
     dim_scores: dict[str, int] = field(default_factory=dict)
 
@@ -122,6 +123,7 @@ def aggregate(rows: list[dict[str, str]]) -> list[AggRow]:
                 decode_med=first.get("decode_med", ""),
                 e2e_med=first.get("e2e_med", ""),
                 peak_ram_gb=first.get("peak_ram_gb", ""),
+                model_delta_gb=first.get("model_delta_gb", ""),
                 power=first.get("power", ""),
                 dim_scores=dim_scores,
             )
@@ -141,9 +143,9 @@ def render_aggregate_md(agg: list[AggRow], *, date_str: str = "") -> str:
         lines.append("")
     lines.append(
         "| Chip | RAM | Maschine | Modell | Quant | Variante | Pack | Qualität % | "
-        "TTFT P50 (s) | Decode (tok/s) | Peak-RAM (GB) | Power |"
+        "TTFT P50 (s) | Decode (tok/s) | System-Peak (GB) | Modell-Delta (GB) | Power |"
     )
-    lines.append("|---|---|---|---|---|---|---|:-:|:-:|:-:|:-:|:-:|")
+    lines.append("|---|---|---|---|---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|")
     for a in agg:
         q = f"{a.quality_pct:.1f}" if a.quality_pct is not None else "—"
         pack_cell = (a.pack or "—") + (f" v{a.pack_version}" if a.pack_version else "")
@@ -151,7 +153,7 @@ def render_aggregate_md(agg: list[AggRow], *, date_str: str = "") -> str:
             f"| {a.chip or '—'} | {a.ram_gb or '—'} | {a.machine or '—'} | {a.model or '—'} | "
             f"{a.quant or '—'} | {a.variant or '—'} | {pack_cell} | {q} | "
             f"{a.ttft_p50 or '—'} | {a.decode_med or '—'} | {a.peak_ram_gb or '—'} | "
-            f"{a.power or '—'} |"
+            f"{a.model_delta_gb or '—'} | {a.power or '—'} |"
         )
     lines.append("")
     lines.append(

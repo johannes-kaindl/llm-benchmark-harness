@@ -24,6 +24,7 @@
         <th>{{ ui.mlabel("ttft_p50") }}</th>
         <th>{{ ui.mlabel("decode_median") }}</th>
         <th>{{ ui.mlabel("system_peak_ram") }}</th>
+        <th>{{ ui.mlabel("model_delta_ram") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -48,6 +49,7 @@
         <td>{{ r.ttft_p50 }}</td>
         <td>{{ r.decode_med }}</td>
         <td>{{ r.peak_ram_gb }}</td>
+        <td>{% if r.model_delta_gb %}{{ r.model_delta_gb }}{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

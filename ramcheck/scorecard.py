@@ -105,12 +105,16 @@ def _perf_summary(group: list[EvalResponse]) -> dict[str, object]:
     e2es = [r.e2e_s for r in ok if not math.isnan(r.e2e_s)]
     sys_used = [r.sys_used_mb for r in ok if r.sys_used_mb is not None]
     peak_ram_gb = (max(sys_used) / 1024.0) if sys_used else None
+    # Model delta = peak − pre-run baseline (cross-machine-comparable memory growth).
+    deltas = [r.sys_used_delta_mb for r in ok if r.sys_used_delta_mb is not None]
+    model_delta_gb = (max(deltas) / 1024.0) if deltas else None
     return {
         "ttft_p50": percentile(ttfts, 50.0),
         "ttft_p95": percentile(ttfts, 95.0),
         "decode_med": median(decodes),
         "e2e_med": median(e2es),
         "peak_ram_gb": peak_ram_gb,
+        "model_delta_gb": model_delta_gb,
         "battery": any(r.power_source == "battery" for r in ok),
     }
 
@@ -156,16 +160,20 @@ def render_scorecard_md(
     lines.append("## ⚙️ Tech-Specs (automatisch)")
     lines.append("")
     lines.append(
-        "| Modell | Variante | TTFT P50/P95 (s) | Decode (tok/s) | Peak-RAM (System) | "
+        "| Modell | Variante | TTFT P50/P95 (s) | Decode (tok/s) | System-Peak | Modell-Delta | "
         "reasoning-only | Akku? |"
     )
-    lines.append("|---|---|---|---|---|:-:|---|")
+    lines.append("|---|---|---|---|---|---|:-:|---|")
     ro = reasoning_only_counts(responses)
     for model, variant in groups:
         g = [r for r in responses if r.model == model and r.variant == variant]
         p = _perf_summary(g)
         ram = p["peak_ram_gb"]
         ram_s = f"{_f(ram if isinstance(ram, float) else None)} GB" if ram is not None else "—"
+        delta = p["model_delta_gb"]
+        delta_s = (
+            f"{_f(delta if isinstance(delta, float) else None)} GB" if delta is not None else "—"
+        )
         n_ro = ro.get((model, variant), 0)
         ro_s = f"⚠️ {n_ro}/{len(g)}" if n_ro else "—"
         lines.append(
@@ -173,7 +181,7 @@ def render_scorecard_md(
             f"{_f(p['ttft_p50'] if isinstance(p['ttft_p50'], float) else None, 2)} / "
             f"{_f(p['ttft_p95'] if isinstance(p['ttft_p95'], float) else None, 2)} | "
             f"{_f(p['decode_med'] if isinstance(p['decode_med'], float) else None)} | "
-            f"{ram_s} | {ro_s} | {'⚠️ ja' if p['battery'] else 'nein'} |"
+            f"{ram_s} | {delta_s} | {ro_s} | {'⚠️ ja' if p['battery'] else 'nein'} |"
         )
     lines.append("")
 
@@ -308,6 +316,9 @@ def scores_csv_rows(
             "decode_med": _num(p["decode_med"] if isinstance(p["decode_med"], float) else None),
             "e2e_med": _num(p["e2e_med"] if isinstance(p["e2e_med"], float) else None),
             "peak_ram_gb": _num(p["peak_ram_gb"] if isinstance(p["peak_ram_gb"], float) else None),
+            "model_delta_gb": _num(
+                p["model_delta_gb"] if isinstance(p["model_delta_gb"], float) else None
+            ),
             "power": "battery" if p["battery"] else "ac",
         }
         rep = reports_by.get((model, variant))

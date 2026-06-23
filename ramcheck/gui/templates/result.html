@@ -349,6 +349,8 @@
                   {% if resp.prefill_tps is not none and resp.prefill_tps == resp.prefill_tps %}{{ ui.metric("%.0f"|format(resp.prefill_tps), "prefill_tps", "tok/s") }}{% endif %}
                   {% if resp.e2e_s is not none %}{{ ui.metric("%.2f"|format(resp.e2e_s), "e2e", "s") }}{% endif %}
                   {% if resp.e2e_s and resp.e2e_s > 0 %}{{ ui.metric("%.0f"|format((resp.prompt_tokens + resp.completion_tokens) / resp.e2e_s), "total_throughput", "tok/s") }}{% endif %}
+                  {% if resp.sys_used_mb is not none %}{{ ui.metric("%.1f"|format(resp.sys_used_mb / 1024), "system_peak_ram", "GB") }}{% endif %}
+                  {% if resp.sys_used_delta_mb is not none %}{{ ui.metric("%.1f"|format(resp.sys_used_delta_mb / 1024), "model_delta_ram", "GB") }}{% endif %}
                   <span class="metric" title="Prompt-/Antwort-Tokens">{{ resp.prompt_tokens }}→{{ resp.completion_tokens }} tok</span>
                   {% if resp.reasoning_chars > 0 %}<span class="metric" title="{{ g('reasoning_only').short }}">💭 {{ resp.reasoning_chars }} Z.</span>{% endif %}
                 </div>

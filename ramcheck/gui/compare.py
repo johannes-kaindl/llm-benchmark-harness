@@ -100,6 +100,7 @@ class CompareCell:
     ttft_p50: float | None = None
     e2e_med: float | None = None
     peak_ram_mb: float | None = None
+    model_delta_mb: float | None = None  # peak − pre-run baseline (cross-machine-comparable)
     mem_pressure_max: str = "normal"
     cpu_max: float | None = None
     cpu_avg: float | None = None
@@ -148,6 +149,7 @@ def _cell_metrics(
     cell_resps = [r for r in responses if (r.model, r.variant) == (model, variant)]
     ok = [r for r in cell_resps if r.ok and not r.is_cold_start]
     sys_used = [r.sys_used_mb for r in ok if r.sys_used_mb is not None]
+    deltas = [r.sys_used_delta_mb for r in ok if r.sys_used_delta_mb is not None]
     # Pressure shares the ok/non-cold population with Peak-RAM (scorecard convention) so a
     # cold-start spike can't inflate the displayed Druck while the paired RAM number ignores it.
     levels = [r.mem_pressure_max for r in ok if r.mem_pressure_max]
@@ -166,6 +168,7 @@ def _cell_metrics(
         ttft_p50=_p50_or_none([r.ttft_s for r in ok]),
         e2e_med=_med_or_none([r.e2e_s for r in ok]),
         peak_ram_mb=(max(sys_used) if sys_used else None),
+        model_delta_mb=(max(deltas) if deltas else None),
         mem_pressure_max=pressure_max(levels),
         cpu_max=cpu_max,
         cpu_avg=cpu_avg,

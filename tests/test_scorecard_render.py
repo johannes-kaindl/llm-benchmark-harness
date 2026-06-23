@@ -27,7 +27,7 @@ def _pack():
     )
 
 
-def _resp(prompt_id, category, model="m1"):
+def _resp(prompt_id, category, model="m1", sys_used_mb=18000.0, sys_used_delta_mb=None):
     return EvalResponse(
         pack_id="demo",
         pack_version=1,
@@ -51,7 +51,7 @@ def _resp(prompt_id, category, model="m1"):
         is_cold_start=False,
         power_source="ac",
         peak_rss_mb=None,
-        sys_used_mb=18000.0,
+        sys_used_mb=sys_used_mb,
         mem_pressure_max="normal",
         throttled=False,
         ok=True,
@@ -59,6 +59,7 @@ def _resp(prompt_id, category, model="m1"):
         seed=42,
         t_start=0.0,
         t_end=1.0,
+        sys_used_delta_mb=sys_used_delta_mb,
     )
 
 
@@ -113,3 +114,21 @@ def test_scores_csv_rows_are_flat_and_mergeable():
     assert all("machine" in r and "model" in r for r in rows)
     # carries hardware + a score column so many machines' CSVs concatenate
     assert any("chip" in r for r in rows)
+
+
+def test_scores_csv_carries_model_delta_gb():
+    pack = _pack()
+    # peak 52000 MB, baseline 40000 → delta 12000 MB = 11.72 GB
+    responses = [_resp("A1", "A", sys_used_mb=52000.0, sys_used_delta_mb=12000.0)]
+    reports = [ModelReport("m1", "none", {"Q1": 4, "Q6": 5})]
+    rows = scores_csv_rows(pack, responses, [], reports, host=_host())
+    assert all("model_delta_gb" in r for r in rows)
+    assert rows[0]["model_delta_gb"] == round(12000.0 / 1024.0, 2)
+
+
+def test_render_tech_specs_shows_model_delta():
+    pack = _pack()
+    responses = [_resp("A1", "A", sys_used_mb=52000.0, sys_used_delta_mb=12000.0)]
+    md = render_scorecard_md(pack, responses, [], [], host=_host(), date_str="2026-06-23")
+    assert "Modell-Delta" in md  # header column
+    assert "11.7 GB" in md  # 12000 MB / 1024 ≈ 11.7 GB

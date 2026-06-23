@@ -47,6 +47,10 @@ class ResourceAggregate:
     mem_pressure_max: str
     throttled: bool
     n_samples: int
+    # Baseline = system "used" captured before the first request (the pre-run host floor).
+    # delta = peak − baseline → the cross-machine-comparable model memory growth.
+    sys_used_baseline_mb: float | None = None
+    sys_used_delta_mb: float | None = None
 
 
 @dataclass
@@ -86,6 +90,7 @@ class RunRecord:
     # --- resource fields (filled by merge from the sampler log) ---
     peak_rss_mb: float | None = None
     sys_used_mb: float | None = None
+    sys_used_delta_mb: float | None = None  # peak − pre-run baseline (model memory growth)
     swap_delta_mb: float | None = None
     mem_pressure_max: str = ""
     throttled: bool = False
@@ -112,6 +117,7 @@ RAW_CSV_COLUMNS: list[str] = [
     "e2e_s",
     "peak_rss_mb",
     "sys_used_mb",
+    "sys_used_delta_mb",
     "swap_delta_mb",
     "mem_pressure_max",
     "throttled",

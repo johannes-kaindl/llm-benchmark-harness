@@ -88,6 +88,7 @@
       <tr><td>{{ ui.mlabel("ttft_p50") }}</td>{% for c in detail.cells %}<td>{% if c.ttft_p50 is not none %}{{ "%.2f"|format(c.ttft_p50) }} s{% if detail.winners.ttft == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
       <tr><td>{{ ui.mlabel("e2e") }}</td>{% for c in detail.cells %}<td>{% if c.e2e_med is not none %}{{ "%.2f"|format(c.e2e_med) }} s{% if detail.winners.e2e == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
       <tr><td>{{ ui.mlabel("system_peak_ram") }}</td>{% for c in detail.cells %}<td>{% if c.peak_ram_mb is not none %}{{ "%.1f"|format(c.peak_ram_mb / 1024) }} GB{% if detail.winners.ram == c.label %} 🏆{% endif %}<div class="muted text-xs">Druck: {{ c.mem_pressure_max }}</div>{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("model_delta_ram") }}</td>{% for c in detail.cells %}<td>{% if c.model_delta_mb is not none %}{{ "%.1f"|format(c.model_delta_mb / 1024) }} GB{% else %}<span class="muted">n. v.</span>{% endif %}</td>{% endfor %}</tr>
       <tr><td>{{ ui.mlabel("cpu") }}</td>{% for c in detail.cells %}<td>{% if c.cpu_max is not none %}{{ "%.0f"|format(c.cpu_avg) }} / {{ "%.0f"|format(c.cpu_max) }} %{% if detail.winners.cpu == c.label %} 🏆{% endif %}{% else %}<span class="muted">n. v.</span>{% endif %}</td>{% endfor %}</tr>
     </tbody>
   </table>

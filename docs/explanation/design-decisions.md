@@ -113,3 +113,29 @@ Budget des Packs: liefert ein Modell selbst dann nur Reasoning, ist die Warnung 
 Einzel-Budgets, die nur manche Zellen leer lassen, fängt die per-Zelle-`unscored`-Logik. Der Smoke
 **warnt** nur (er misst nichts und bricht nichts ab — ein falsch-negativer Smoke darf keinen validen Lauf
 verhindern); allein `--strict-preflight` bricht hart ab.
+
+## Warum „Modell-Delta" statt nackter System-Peak die vergleichbare Speicherzahl ist
+
+Der rohe Speicher-Peak (`sys_used_mb`, im UI **System-Peak**) misst den gesamten belegten
+Systemspeicher — Betriebssystem, Browser, alles. Er sagt etwas über die *momentane* Maschine aus,
+ist aber zwischen Maschinen **nicht vergleichbar**: dieselbe Modell-Last sieht auf einem frisch
+gebooteten Laptop ganz anders aus als auf einem mit 40 offenen Tabs. Deshalb berichten wir als
+maschinen-vergleichbare Zahl das **Modell-Delta** = `Peak − Baseline` (`sys_used_delta_mb`, im UI
+**Modell-Delta**).
+
+Die **Baseline** ist der Systemspeicher *unmittelbar vor der ersten Anfrage*: `sampler.run_to_file`
+nimmt vor der Schleife einen Tick und schreibt ihn als erste `resources.jsonl`-Zeile mit
+`baseline: true`. Weil dieser Tick außerhalb jedes Lauf-Fensters liegt, leitet
+`merge.resources_for_window` die Baseline aus der *vollständigen* Sample-Liste ab (Fallback auf
+älteren Bundles ohne Marker: `min` aller Samples) und reicht sie in `aggregate_window` durch; von
+dort fließt sie in `RunRecord` / `EvalResponse` / `scores.csv` (`model_delta_gb`).
+
+Eine bewusste **Unschärfe** bleibt: Der Harness treibt einen *bereits laufenden* Endpoint. Ist das
+Modell beim Sampler-Start schon geladen, misst das Delta die Inferenz-Last (KV-Cache, Kontext,
+Aktivierungen); lädt der Server faul nach, steckt auch das Gewicht mit drin. Auf Apple-Silicon liegt
+all das im *Unified Memory*, wo sich der KV-/Kontext-Anteil **nicht sauber** vom Gewicht trennen
+lässt — wir dekomponieren ihn daher **nicht**. Eine **Per-Prompt-KV-Isolation** (jede Anfrage ihr
+eigenes Speicher-Fenster) wäre die nächste Stufe, ist aber bewusst **aufgeschoben**: sie erfordert
+ein deterministisches Entladen zwischen den Prompts, das ein fremder, dauerlaufender Endpoint nicht
+garantiert. System-Peak bleibt sichtbar (für die „passt es überhaupt auf diese Maschine?"-Frage),
+das Modell-Delta steht als die ehrlich vergleichbare Zahl daneben.

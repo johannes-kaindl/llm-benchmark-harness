@@ -221,6 +221,8 @@ def run_eval(
         agg = merge_mod.resources_for_window(samples, r.t_start, r.t_end)
         r.peak_rss_mb = agg.peak_rss_mb
         r.sys_used_mb = agg.sys_used_mb
+        r.sys_used_baseline_mb = agg.sys_used_baseline_mb
+        r.sys_used_delta_mb = agg.sys_used_delta_mb
         r.mem_pressure_max = agg.mem_pressure_max
         r.throttled = r.throttled or agg.throttled
 
@@ -254,6 +256,7 @@ def _resp_to_raw_row(r: EvalResponse) -> dict[str, object]:
         "e2e_s": r.e2e_s,
         "peak_rss_mb": r.peak_rss_mb,
         "sys_used_mb": r.sys_used_mb,
+        "sys_used_delta_mb": r.sys_used_delta_mb,
         "swap_delta_mb": 0.0,
         "mem_pressure_max": r.mem_pressure_max,
         "throttled": r.throttled,

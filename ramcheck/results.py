@@ -53,6 +53,10 @@ class EvalResponse:
     t_end: float
     reasoning_chars: int = 0  # length of "thinking" output (0 if none / non-reasoning model)
     reasoning_text: str = ""  # the "thinking" text — persisted ONLY when content_empty (else "")
+    # baseline = pre-run host memory floor; delta = peak − baseline (cross-machine-comparable
+    # model memory growth). Both None on bundles produced before the baseline tick existed.
+    sys_used_baseline_mb: float | None = None
+    sys_used_delta_mb: float | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
