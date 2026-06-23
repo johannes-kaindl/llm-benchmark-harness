@@ -259,10 +259,16 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
         return {"run_dir": h.run_dir.name, "kind": h.kind}
 
     @app.post("/runs/judge")
-    def start_judge(bundle: str = Form(...), judge_config_path: str = Form(...)) -> Any:
+    def start_judge(
+        bundle: str = Form(...),
+        judge_config_path: str = Form(...),
+        judge_model: str = Form(""),
+    ) -> Any:
         bundle_dir = _confine(bundle)
         try:
-            h = registry.start_judge(bundle=bundle_dir, judge_config_path=judge_config_path)
+            h = registry.start_judge(
+                bundle=bundle_dir, judge_config_path=judge_config_path, judge_model=judge_model
+            )
         except RunInProgress as e:
             raise HTTPException(status_code=409, detail=str(e)) from None
         return {"run_dir": h.run_dir.name, "kind": h.kind}

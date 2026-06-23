@@ -123,7 +123,7 @@ def test_start_judge_calls_registry(tmp_path):
     bundle_dir.mkdir()
 
     class _Reg(RunRegistry):
-        def start_judge(self, *, bundle, judge_config_path):
+        def start_judge(self, *, bundle, judge_config_path, judge_model=""):
             return RunHandle("judge", bundle, 2)
 
     reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())
@@ -135,6 +135,26 @@ def test_start_judge_calls_registry(tmp_path):
     data = r.json()
     assert data["kind"] == "judge"
     assert data["run_dir"] == bundle_dir.name
+
+
+def test_start_judge_passes_judge_model(tmp_path):
+    """judge_model form field is threaded through to registry.start_judge."""
+    bundle_dir = tmp_path / "run_judge_model"
+    bundle_dir.mkdir()
+    received: dict[str, str] = {}
+
+    class _Reg(RunRegistry):
+        def start_judge(self, *, bundle, judge_config_path, judge_model=""):
+            received["judge_model"] = judge_model
+            return RunHandle("judge", bundle, 2)
+
+    reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())
+    r = TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg)).post(
+        "/runs/judge",
+        data={"bundle": bundle_dir.name, "judge_config_path": "judge.yaml", "judge_model": "gemma"},
+    )
+    assert r.status_code == 200
+    assert received["judge_model"] == "gemma"
 
 
 def test_start_judge_rejects_traversal(tmp_path):

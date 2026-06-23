@@ -90,6 +90,16 @@ def test_stop_terminates_and_marks(tmp_path):
     assert control.read_sentinel(h.run_dir)["state"] == "stopped"
 
 
+def test_start_judge_appends_judge_model_to_argv(tmp_path):
+    reg = _reg(tmp_path)
+    bundle = tmp_path / "b"
+    bundle.mkdir(parents=True)
+    reg.start_judge(bundle=bundle, judge_config_path="judge.yaml", judge_model="gemma")
+    argv = reg.launcher.calls[0]
+    assert "--judge-model" in argv
+    assert "gemma" in argv
+
+
 def test_sentinel_written_before_spawn(tmp_path):
     """The on-disk lock must exist BEFORE spawn so no guard-window opens (MAJOR 1)."""
 

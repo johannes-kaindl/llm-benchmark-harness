@@ -217,7 +217,9 @@ class RunRegistry:
             set_sentinel_pid(run_dir, pid)
             return RunHandle("eval", run_dir, pid)
 
-    def start_judge(self, *, bundle: Path, judge_config_path: str) -> RunHandle:
+    def start_judge(
+        self, *, bundle: Path, judge_config_path: str, judge_model: str = ""
+    ) -> RunHandle:
         with self._lock:
             self._guard_free()
             argv = [
@@ -228,6 +230,8 @@ class RunRegistry:
                 judge_config_path,
                 "--emit-events",
             ]
+            if judge_model.strip():
+                argv += ["--judge-model", judge_model.strip()]
             write_sentinel(
                 bundle, kind="judge", pid=-1, pack_path="", config_path=judge_config_path
             )
