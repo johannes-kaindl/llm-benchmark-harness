@@ -26,21 +26,23 @@
       </tr>
     </thead>
     <tbody>
-      {% for r in rows %}
+      {% for r, mismatch in rows %}
       <tr>
         <td>{{ r.chip }}</td>
         <td>{{ r.ram_gb }}</td>
-        <td>{{ r.machine }}</td>
+        <td>
+          {% if mismatch %}
+            <span class="muted" title="Config-Label »{{ r.machine }}« passt nicht zur erkannten Hardware – erkannte Werte gelten.">{{ r.machine }} ⚠</span>
+          {% else %}
+            {{ r.machine }}
+          {% endif %}
+        </td>
         <td>{{ r.pack }}</td>
         <td>{{ r.model }}</td>
         <td>{{ r.variant }}</td>
         <td>{{ r.quant }}</td>
         <td>
-          {% if r.quality_pct is not none %}
-            <strong>{{ "%.0f" | format(r.quality_pct) }}%</strong>
-          {% else %}
-            <span class="muted">—</span>
-          {% endif %}
+          {% if r.quality_pct is not none %}<strong>{{ "%.0f" | format(r.quality_pct) }}%</strong>{% else %}<span class="muted">—</span>{% endif %}
         </td>
         <td>{{ r.ttft_p50 }}</td>
         <td>{{ r.decode_med }}</td>

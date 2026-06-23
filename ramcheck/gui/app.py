@@ -113,9 +113,14 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
     @app.get("/compare", response_class=HTMLResponse)
     def compare_cross(request: Request) -> HTMLResponse:
+        from ramcheck.gui.hwlabel import label_mismatch
+
         rows = aggregate_mod.load_all_scores(runs_dir)
         agg = aggregate_mod.aggregate(rows) if rows else []
-        return render("compare.html", request, rows=agg, active="compare")
+        flagged = [
+            (a, label_mismatch(chip=a.chip, ram_gb=str(a.ram_gb), machine=a.machine)) for a in agg
+        ]
+        return render("compare.html", request, rows=flagged, active="compare")
 
     @app.get("/compare/{name}", response_class=HTMLResponse)
     def compare_axis(
