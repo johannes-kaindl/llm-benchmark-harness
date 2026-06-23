@@ -3,8 +3,10 @@ Templates/static are mounted from this package; routes return HTMX-friendly HTML
 
 from __future__ import annotations
 
+import io
 import json
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -244,6 +246,34 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         if not candidate.exists():
             raise HTTPException(status_code=404)
         return FileResponse(candidate)
+
+    @app.get("/export-bundle/{name}")
+    def export_bundle(name: str) -> Any:
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not (rd / "bundle.json").exists():
+            raise HTTPException(status_code=404)
+        ledger = [
+            "bundle.json",
+            "responses.jsonl",
+            "scores.csv",
+            "reports.jsonl",
+            "judgements.jsonl",
+            "scorecard.md",
+            "perf.csv",
+            "resources.jsonl",
+        ]
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in ledger:
+                p = rd / f
+                if p.exists():
+                    z.write(p, arcname=f)
+        buf.seek(0)
+        return Response(
+            buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{name}.zip"'},
+        )
 
     _register_control_routes(app, runs_dir=runs_dir, registry=registry)
     return app
