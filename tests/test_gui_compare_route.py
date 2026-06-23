@@ -73,6 +73,51 @@ def test_compare_route_renders_model_delta_row(tmp_path):
     assert "11.7 GB" in r.text  # 12000 MB / 1024 ≈ 11.7 GB (baseline cell)
 
 
+def test_compare_route_renders_thinking_row(tmp_path):
+    # a reasoning model surfaces a Thinking row with the median duration + tok/s sub-line.
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    d = tmp_path / "2026_eval_think"
+    d.mkdir(parents=True)
+    pk = load_pack(PACK)
+    (d / "bundle.json").write_text(
+        json.dumps(
+            {
+                "pack_id": pk.id,
+                "pack_path": PACK,
+                "models": [{"id": "m", "quant": "q"}],
+                "date": "2026-06-20",
+                "host": {"machine": "t"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    rb = _resp("m", "baseline", reasoning_duration_s=2.5, reasoning_tps=42.0)
+    rn = _resp("m", "none", reasoning_duration_s=4.0, reasoning_tps=30.0)
+    (d / "responses.jsonl").write_text(
+        json.dumps(rb.as_dict()) + "\n" + json.dumps(rn.as_dict()) + "\n", encoding="utf-8"
+    )
+    write_reports_jsonl(
+        d / "reports.jsonl",
+        [ModelReport("m", "baseline", dict(full), {}), ModelReport("m", "none", dict(full), {})],
+    )
+    (d / "scores.csv").write_text("metric_type\nnone\n", encoding="utf-8")
+    (d / "judgements.jsonl").write_text("", encoding="utf-8")
+    r = _client(tmp_path).get(f"/compare/{d.name}?axis=variant")
+    assert r.status_code == 200
+    assert "Thinking-Dauer" in r.text  # the new ui.mlabel row header
+    assert "2.50 s" in r.text  # baseline median duration
+    assert "42 tok/s" in r.text  # baseline median reasoning tok/s sub-line
+
+
+def test_compare_route_thinking_row_na_for_non_reasoning(tmp_path):
+    # a non-reasoning model (zero timing) shows the row but with 'n. v.', no '0.00 s'.
+    d = _two_variant_bundle(tmp_path)
+    r = _client(tmp_path).get(f"/compare/{d.name}?axis=variant")
+    assert r.status_code == 200
+    assert "Thinking-Dauer" in r.text  # row always present
+    assert "0.00 s" not in r.text  # zero reasoning duration is not rendered as a time
+
+
 def test_compare_route_model_axis_shows_projection(tmp_path):
     d = _two_model_bundle(tmp_path)
     r = _client(tmp_path).get(f"/compare/{d.name}?axis=model")

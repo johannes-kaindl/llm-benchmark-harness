@@ -161,6 +161,35 @@ def test_per_answer_perf_suppresses_nan_metrics(tmp_path):
     assert "10→5 tok" in r.text
 
 
+def test_per_answer_shows_reasoning_timing_when_present(tmp_path):
+    # a reasoning model carries reasoning_duration_s / reasoning_tps → both surface as metrics.
+    d = tmp_path / "2026_eval_rtime"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {q: 4 for q in DIMS}},
+        perf={"reasoning_duration_s": 2.50, "reasoning_tps": 42.0},
+    )
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    assert "2.50 s" in r.text  # reasoning duration metric
+    assert "42 tok/s" in r.text  # reasoning tok/s metric
+    assert "Zeit im Reasoning-Kanal" in r.text  # glossary tooltip for reasoning_duration
+
+
+def test_per_answer_hides_reasoning_timing_when_zero(tmp_path):
+    # a non-reasoning model (default 0.0 timing) must not render a "0.00 s" thinking metric.
+    d = tmp_path / "2026_eval_nortime"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {q: 4 for q in DIMS}},
+    )
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    assert "0.00 s" not in r.text  # zero reasoning duration is suppressed
+
+
 def test_per_answer_reasoning_block_renders_when_text_present(tmp_path):
     # reasoning_text is persisted only on content_empty; when present the collapsible
     # block (header + affordance + the text itself) must render.

@@ -104,6 +104,8 @@ class CompareCell:
     mem_pressure_max: str = "normal"
     cpu_max: float | None = None
     cpu_avg: float | None = None
+    reasoning_duration_med: float | None = None  # median "thinking" time (s); None if no reasoning
+    reasoning_tps_med: float | None = None  # median reasoning tok/s; None if no reasoning
     n_ok: int = 0
 
 
@@ -134,6 +136,13 @@ def _med_or_none(values: list[float]) -> float | None:
 def _p50_or_none(values: list[float]) -> float | None:
     vals = [v for v in values if not math.isnan(v)]
     return percentile(vals, 50.0) if vals else None
+
+
+def _med_positive_or_none(values: list[float]) -> float | None:
+    """Median over strictly-positive, non-nan values — so a non-reasoning model
+    (all-zero reasoning timing) yields None ('—') instead of a noisy 0.0."""
+    vals = [v for v in values if not math.isnan(v) and v > 0]
+    return median(vals) if vals else None
 
 
 def _cell_metrics(
@@ -172,6 +181,8 @@ def _cell_metrics(
         mem_pressure_max=pressure_max(levels),
         cpu_max=cpu_max,
         cpu_avg=cpu_avg,
+        reasoning_duration_med=_med_positive_or_none([r.reasoning_duration_s for r in ok]),
+        reasoning_tps_med=_med_positive_or_none([r.reasoning_tps for r in ok]),
         n_ok=len(ok),
     )
 

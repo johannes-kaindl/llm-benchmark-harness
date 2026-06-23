@@ -209,6 +209,26 @@ def test_cpu_for_window_empty_samples():
     assert compare._cpu_for_window([], [_resp("m", "baseline")]) == (None, None)
 
 
+def test_cell_metrics_reasoning_medians_over_ok_responses():
+    # reasoning duration/tps medians come from ok, non-cold responses (nan-safe like the others).
+    responses = [
+        _resp("m", "baseline", reasoning_duration_s=2.0, reasoning_tps=30.0),
+        _resp("m", "baseline", reasoning_duration_s=4.0, reasoning_tps=50.0),
+        _resp("m", "baseline", is_cold_start=True, reasoning_duration_s=99.0, reasoning_tps=1.0),
+    ]
+    cell = compare._cell_metrics("baseline", "m", "baseline", responses, None, {}, {}, [])
+    assert cell.reasoning_duration_med == 3.0  # median(2,4); cold-start excluded
+    assert cell.reasoning_tps_med == 40.0  # median(30,50)
+
+
+def test_cell_metrics_reasoning_medians_none_when_absent():
+    # all-zero reasoning (non-reasoning model) → no median surfaced.
+    responses = [_resp("m", "baseline"), _resp("m", "baseline")]
+    cell = compare._cell_metrics("baseline", "m", "baseline", responses, None, {}, {}, [])
+    assert cell.reasoning_duration_med is None
+    assert cell.reasoning_tps_med is None
+
+
 def test_compare_detail_variant_axis_quality_and_speed():
     d = _two_variant_bundle(pathlib.Path(_mk_runs(tempfile.mkdtemp())))
     detail = compare.compare_detail(d, "variant")
