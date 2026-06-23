@@ -82,3 +82,28 @@ So bleibt die Kette *Urteil → K.-o./gewichtete Master-Scorecard (Σ Score×Gew
 Begründung → einzelne Antwort* durchgängig — obwohl die Bewertung holistisch ist. Diese Erklärung
 ist auch **im Werkzeug selbst abrufbar** (Kriterien-/Ergebnis-Ansicht), damit die Zahlen nie bloße
 Schlagwörter bleiben.
+
+## Warum reasoning-only nicht als 1 zählt — und ein Pre-Flight davor warnt
+
+Ein „Thinking"-Modell kann sein ganzes Token-Budget ins `reasoning`-Feld schreiben, bevor je
+sichtbarer `content` kommt — die Antwort ist dann leer, obwohl das Modell „gearbeitet" hat. Das
+früher verdrahtete „leerer content → 1/5" war hier **unfair**: die Ursache ist meist ein zu kleines
+`max_tokens`, also *unser* Test-Setup, nicht die Qualität des Modells. Deshalb trennen wir zwei Fälle:
+reasoning-only (leerer content, aber Reasoning vorhanden) wird **`unscored`** — aus dem Mittel genommen
+und klar als Setup-Hinweis markiert, statt als stille 1 das Ergebnis zu verfälschen; eine wirklich leere
+Ausgabe (auch kein Reasoning) bleibt 1 = unbrauchbar. Das Denken selbst wird bei leerem content
+persistiert (`reasoning_text`), bleibt also einsehbar.
+
+Die „faire Chance" für ein Thinking-Modell ist bewusst **opt-in**, nicht automatisch: Ein kleines
+Token-Budget ist ein **legitimes Test-Setup** (kleine Maschine), und der Harness darf die Mess-Bedingung
+nie heimlich verändern. Wer einem Modell mehr Denk-Raum geben will, setzt pro Modell
+`reasoning_headroom_tokens` (ein Aufschlag aufs Gesamt-Budget — das *sichtbare* Antwort-Budget bleibt
+`pack.prompt.max_tokens`, damit der Modellvergleich fair bleibt) oder schaltet Thinking via `extra_body`
+ab, wo der Endpoint das kann. Das Default-Verhalten ist identisch zu vorher, nur transparenter.
+
+Damit man das nicht erst nach einem 30-Minuten-Lauf merkt, prüft ein **Pre-Flight-Smoke** vor der Matrix
+einmal pro Modell, ob das gewählte Setup sichtbaren content liefert. Er nutzt bewusst das **großzügigste**
+Budget des Packs: liefert ein Modell selbst dann nur Reasoning, ist die Warnung sicher korrekt; enge
+Einzel-Budgets, die nur manche Zellen leer lassen, fängt die per-Zelle-`unscored`-Logik. Der Smoke
+**warnt** nur (er misst nichts und bricht nichts ab — ein falsch-negativer Smoke darf keinen validen Lauf
+verhindern); allein `--strict-preflight` bricht hart ab.

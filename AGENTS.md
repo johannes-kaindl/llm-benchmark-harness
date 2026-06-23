@@ -132,9 +132,31 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
 - **Reasoning ("thinking") models are captured, not dropped.** `client.py` reads the separate
   `delta.reasoning_content` / `delta.reasoning` field into `StreamEvent.reasoning_text`; `stream_once`
   accumulates it (separately from content, so it never triggers content-TTFT) and `run_eval` records
-  its length as `EvalResponse.reasoning_chars`. A reasoning-only answer (e.g. ollama `gemma4:e4b`) still
-  has `content_empty=True` but now carries a non-zero `reasoning_chars` instead of looking like a silent
-  failure. The monitor shows a 💭 marker per such cell.
+  its length as `EvalResponse.reasoning_chars`. A reasoning-only answer (e.g. ollama `gemma4:e4b`) has
+  `content_empty=True` with a non-zero `reasoning_chars`; the monitor shows a 💭 marker per such cell.
+- **Reasoning-only is scored `unscored`, not a silent 1/5.** `judge.py:score_response` splits the
+  empty-content path on `reasoning_chars`: reasoning-only (content empty *and* reasoning present) →
+  `unscored` (excluded from the mean, `REASONING_ONLY_RATIONALE`) — it is *our* token-starvation, not a
+  verdict on the model; a genuinely empty answer (no reasoning either) still scores 1 (`EMPTY_RATIONALE`).
+  `EvalResponse.reasoning_text` is persisted **only when `content_empty`** (keeps `responses.jsonl` slim)
+  so the thinking stays inspectable, and `scorecard.reasoning_only_counts` surfaces the per-(model,variant)
+  count in the tech-specs table.
+- **Pre-flight smoke runs before the matrix.** `preflight.preflight_models` sends one small request per
+  model with that model's *effective* budget (`max(pack prompt max_tokens) + ModelSpec.reasoning_headroom_tokens`)
+  after `iter_eval_cells` but **before** `sampler.start()` (never inside the measured window) and classifies
+  `ok | reasoning_only | empty | error`. It **never raises** and never measures. Default **warns** (CLI print
+  + a `preflight` event in `events.jsonl` → folded by `events.build_view` → GUI live banner / webmon banner);
+  `eval --strict-preflight` raises before the matrix (no run-dir garbage). `resume` skips it.
+- **Thinking knobs on `ModelSpec` are opt-in and default-neutral.** `reasoning_headroom_tokens` adds extra
+  *total* budget for THAT model so a thinker can still reach visible content — the *visible* answer budget
+  stays `pack.prompt.max_tokens` (fair cross-model compare); a small budget is a legitimate test setup, so
+  the harness never inflates it silently. `extra_body` is forwarded verbatim to `chat.completions.create`
+  (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}`) — engine-agnostic, no engine branch outside
+  `client.py`, forwarded only when non-empty. The judge backend never disables thinking.
+- **Judge model is pickable like the eval model.** `gui/configs.discover_models` is the shared discovery
+  core; `discover_judge_endpoint_models` + `GET /judge-endpoint-models` (never-500, `judge*.yaml` path-guard)
+  feed a GUI dropdown; `judge --judge-model <id>` overrides the YAML model for one run (no write-back),
+  mirroring eval's `--models-json`.
 - **The live monitor never tails `responses.jsonl`.** It is rewritten wholesale at finalize
   (`qualrun._write_responses`). Live progress comes from the append-only `events.jsonl`
   (fed by `run_eval`'s `on_cell_*` callbacks); live host-load from `resources.jsonl`.
