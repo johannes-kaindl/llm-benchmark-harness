@@ -83,8 +83,9 @@ GLOSSARY: dict[str, Glossary] = {
     ),
     "reasoning_duration": Glossary(
         "Thinking-Dauer",
-        "Zeit im Reasoning-Kanal (s), bevor der erste Content-Token kommt.",
-        "Getrennt von der Antwortzeit gemessen.",
+        "Spanne im Reasoning-Kanal (s): vom ersten bis zum letzten Thinking-Chunk.",
+        "Getrennt von der Antwortzeit gemessen — die Zeit, in der das Modell sichtbar "
+        "»denkt«. 0 s, wenn das Reasoning in einem einzigen Chunk ankommt.",
     ),
     "reasoning_tps": Glossary(
         "Thinking-Tempo",

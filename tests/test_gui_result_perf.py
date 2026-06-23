@@ -174,7 +174,7 @@ def test_per_answer_shows_reasoning_timing_when_present(tmp_path):
     assert r.status_code == 200
     assert "2.50 s" in r.text  # reasoning duration metric
     assert "42 tok/s" in r.text  # reasoning tok/s metric
-    assert "Zeit im Reasoning-Kanal" in r.text  # glossary tooltip for reasoning_duration
+    assert "Spanne im Reasoning-Kanal" in r.text  # glossary tooltip for reasoning_duration
 
 
 def test_per_answer_hides_reasoning_timing_when_zero(tmp_path):
