@@ -23,11 +23,14 @@ document.addEventListener("alpine:init", () => {
     },
     syncFromConfig() {
       const list = this.byConfig[this.config] || [];
-      // copy + default-checked; never mutate byConfig
+      // copy + default-checked; never mutate byConfig. Keep the thinking knobs so a config
+      // model's reasoning_headroom_tokens / extra_body survive into the start request.
       this.models = list.map((m) => ({
         id: m.id,
         quant: m.quant || "",
         max_tokens_default: m.max_tokens_default || 400,
+        reasoning_headroom_tokens: m.reasoning_headroom_tokens || 0,
+        extra_body: m.extra_body || {},
         on: true,
       }));
       this.adhoc = [];
@@ -85,7 +88,13 @@ document.addEventListener("alpine:init", () => {
       const out = [];
       for (const m of this.models) {
         if (m.on) {
-          out.push({ id: m.id, quant: m.quant, max_tokens_default: m.max_tokens_default });
+          out.push({
+            id: m.id,
+            quant: m.quant,
+            max_tokens_default: m.max_tokens_default,
+            reasoning_headroom_tokens: m.reasoning_headroom_tokens || 0,
+            extra_body: m.extra_body || {},
+          });
         }
       }
       for (const a of this.adhoc) {

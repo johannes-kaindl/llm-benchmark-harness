@@ -20,6 +20,18 @@ def test_config_models_parses_models(tmp_path):
     assert specs[1].max_tokens_default == 400
 
 
+def test_models_by_config_carries_thinking_fields(tmp_path):
+    # the picker template embeds models_by_config as JSON; the thinking knobs must travel with it
+    # so the JS can forward them into models_json (GUI eval start).
+    cfg = _write(
+        tmp_path / "config.thinking.yaml",
+        "models:\n  - {id: g, reasoning_headroom_tokens: 4000, extra_body: {a: 1}}\n",
+    )
+    [m] = configs.models_by_config([cfg])[cfg]
+    assert m["reasoning_headroom_tokens"] == 4000
+    assert m["extra_body"] == {"a": 1}
+
+
 def test_config_models_defensive_on_missing_file(tmp_path):
     assert configs.config_models(tmp_path / "nope.yaml") == []
 
