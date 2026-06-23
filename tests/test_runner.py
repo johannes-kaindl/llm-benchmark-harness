@@ -122,6 +122,7 @@ def test_stream_once_captures_reasoning_separately():
             yield StreamEvent(delta_text="Answer")
             yield StreamEvent(prompt_tokens=5, completion_tokens=2)
 
+    # t0=0, reasoning ticks 0.1/0.2, content-ttft=0.3, e2e=1.0
     out = stream_once(
         ReasoningClient(),
         messages=[],
@@ -129,7 +130,7 @@ def test_stream_once_captures_reasoning_separately():
         max_tokens=10,
         temperature=0.0,
         seed=1,
-        clock=SeqClock([0.0, 0.3, 1.0]),
+        clock=SeqClock([0.0, 0.1, 0.2, 0.3, 1.0]),
         wall=SeqClock([0.0, 1.0]),
     )
     assert out.text == "Answer"
@@ -159,6 +160,53 @@ def test_stream_once_reasoning_only_leaves_content_empty():
     assert out.text == ""
     assert out.reasoning_text == "thinking..."
     assert math.isnan(out.ttft_s)  # no content token → no content TTFT
+
+
+def test_stream_once_captures_reasoning_duration_and_tps():
+    class ReasoningClient:
+        engine = "x"
+        engine_version = "0"
+
+        def stream(self, **kwargs):
+            yield StreamEvent(reasoning_text="let me think ")
+            yield StreamEvent(reasoning_text="hard")
+            yield StreamEvent(delta_text="Answer")
+            yield StreamEvent(prompt_tokens=5, completion_tokens=2)
+
+    # t0=0, reasoning-start=0.2, reasoning-last=0.5, content-ttft=1.0, e2e=2.0
+    out = stream_once(
+        ReasoningClient(),
+        messages=[],
+        model="m",
+        max_tokens=10,
+        temperature=0.0,
+        seed=1,
+        clock=SeqClock([0.0, 0.2, 0.5, 1.0, 2.0]),
+        wall=SeqClock([0.0, 2.0]),
+    )
+    assert out.ttft_s == 1.0  # reasoning does not move TTFT
+    assert math.isclose(out.reasoning_duration_s, 0.3)  # 0.5 - 0.2
+    assert out.reasoning_completion_tokens > 0
+    assert math.isclose(
+        out.reasoning_tps, out.reasoning_completion_tokens / out.reasoning_duration_s
+    )
+
+
+def test_stream_once_reasoning_timing_nan_without_reasoning():
+    client = FakeClient(["Hallo", " Welt"], prompt_tokens=1000, completion_tokens=100)
+    out = stream_once(
+        client,
+        messages=[],
+        model="m",
+        max_tokens=100,
+        temperature=0.0,
+        seed=42,
+        clock=SeqClock([0.0, 0.5, 2.0]),
+        wall=SeqClock([100.0, 102.0]),
+    )
+    assert math.isnan(out.reasoning_duration_s)
+    assert math.isnan(out.reasoning_tps)
+    assert out.reasoning_completion_tokens == 0
 
 
 def test_resolve_engine_by_port():

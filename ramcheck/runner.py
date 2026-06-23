@@ -73,6 +73,9 @@ class RequestOutcome:
     t_end: float
     text: str = ""
     reasoning_text: str = ""  # "thinking" tokens (separate channel; not counted toward TTFT)
+    reasoning_duration_s: float = math.nan  # time spent in the reasoning channel (s); nan if none
+    reasoning_completion_tokens: int = 0  # heuristic reasoning-token count
+    reasoning_tps: float = math.nan  # reasoning tokens / reasoning_duration_s; nan-safe
     ok: bool = True
     error: str = ""
 
@@ -109,6 +112,8 @@ def stream_once(
     ttft: float | None = None
     text_parts: list[str] = []
     reasoning_parts: list[str] = []
+    t_reasoning_start: float | None = None
+    t_reasoning_last: float | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     error = ""
@@ -128,6 +133,10 @@ def stream_once(
                     ttft = clock() - t0
                 text_parts.append(ev.delta_text)
             if ev.reasoning_text:
+                t_reasoning = clock() - t0
+                if t_reasoning_start is None:
+                    t_reasoning_start = t_reasoning
+                t_reasoning_last = t_reasoning
                 reasoning_parts.append(ev.reasoning_text)
             if ev.prompt_tokens is not None:
                 prompt_tokens = ev.prompt_tokens
@@ -150,6 +159,19 @@ def stream_once(
     if prompt_tokens is None:
         prompt_tokens = 0
 
+    if t_reasoning_start is not None and t_reasoning_last is not None:
+        reasoning_duration_s = t_reasoning_last - t_reasoning_start
+    else:
+        reasoning_duration_s = math.nan
+    reasoning_completion_tokens = (
+        (counter or prompts_mod.HeuristicCounter()).count(reasoning) if reasoning else 0
+    )
+    reasoning_tps = (
+        reasoning_completion_tokens / reasoning_duration_s
+        if not math.isnan(reasoning_duration_s) and reasoning_duration_s > 0
+        else math.nan
+    )
+
     return RequestOutcome(
         ttft_s=ttft,
         e2e_s=e2e,
@@ -159,6 +181,9 @@ def stream_once(
         t_end=wall_end,
         text=text,
         reasoning_text=reasoning,
+        reasoning_duration_s=reasoning_duration_s,
+        reasoning_completion_tokens=reasoning_completion_tokens,
+        reasoning_tps=reasoning_tps,
         ok=ok,
         error=error,
     )
