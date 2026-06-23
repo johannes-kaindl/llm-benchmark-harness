@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -274,6 +274,54 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             media_type="application/zip",
             headers={"Content-Disposition": f'attachment; filename="{name}.zip"'},
         )
+
+    @app.post("/import-bundle")
+    def import_bundle(file: UploadFile = File(...)) -> Any:
+        """Accept a zipped bundle from another machine, validate it, and land it under
+        runs_dir under a collision-safe name. Multi-machine aggregation: a bundle is
+        bundle.json + responses.jsonl + scores.csv — portable, self-contained."""
+        import shutil
+        import tempfile
+
+        rdir = runs_dir.resolve()
+        with tempfile.TemporaryDirectory() as tmp:
+            extracted = Path(tmp) / "extracted"
+            extracted.mkdir()
+            try:
+                with zipfile.ZipFile(io.BytesIO(file.file.read())) as z:
+                    # Reject any member that would escape the extraction root.
+                    for member in z.namelist():
+                        dest = (extracted / member).resolve()
+                        if not dest.is_relative_to(extracted.resolve()):
+                            raise HTTPException(status_code=400, detail="unsafe zip entry")
+                    z.extractall(extracted)
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400, detail="not a zip file") from None
+
+            if not (extracted / "bundle.json").exists():
+                raise HTTPException(status_code=400, detail="missing bundle.json")
+            try:
+                json.loads((extracted / "bundle.json").read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raise HTTPException(status_code=400, detail="invalid bundle.json") from None
+            resp = extracted / "responses.jsonl"
+            if not resp.exists():
+                raise HTTPException(status_code=400, detail="missing responses.jsonl")
+            try:
+                for line in resp.read_text(encoding="utf-8").splitlines():
+                    if line.strip():
+                        json.loads(line)
+            except (json.JSONDecodeError, OSError):
+                raise HTTPException(status_code=400, detail="invalid responses.jsonl") from None
+
+            stem = Path(file.filename or "bundle").stem or "bundle"
+            name = stem
+            n = 2
+            while (rdir / name).exists():
+                name = f"{stem}__{n}"
+                n += 1
+            shutil.move(str(extracted), str(rdir / name))
+        return {"run_dir": name}
 
     _register_control_routes(app, runs_dir=runs_dir, registry=registry)
     return app

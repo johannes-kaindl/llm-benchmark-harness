@@ -143,4 +143,23 @@
     <button type="submit" class="btn btn-primary">Judge starten</button>
   </form>
 </div>
+
+<div class="card">
+  <div class="card-title">Bundle importieren</div>
+  <p class="muted text-xs" style="margin-bottom:0.6rem">
+    Lädt ein von einer anderen Maschine exportiertes Bundle-.zip ins lokale
+    <code>runs/</code>-Verzeichnis. Ein Bundle ist <code>bundle.json</code> +
+    <code>responses.jsonl</code> + <code>scores.csv</code> — portabel und in sich
+    geschlossen. Der <code>pack_path</code> aus <code>bundle.json</code> muss lokal
+    existieren, damit die Kriterien angezeigt werden können. Bei Namenskollision wird
+    das importierte Verzeichnis mit <code>__2</code> usw. eindeutig benannt.
+  </p>
+  <form method="post" action="/import-bundle" enctype="multipart/form-data">
+    <div class="form-group">
+      <label class="form-label" for="import_file">Bundle-.zip</label>
+      <input class="form-input" type="file" id="import_file" name="file" accept=".zip" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Importieren</button>
+  </form>
+</div>
 {% endblock %}

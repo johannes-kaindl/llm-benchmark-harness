@@ -9,6 +9,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from ramcheck.gui import app as gui_app
+from ramcheck.gui import bundles
 from ramcheck.gui.control import RunRegistry
 
 PACK = "packs/ndassist.yaml"
@@ -138,3 +139,78 @@ def test_export_bundle_rejects_path_traversal(tmp_path):
     (sensitive / "bundle.json").write_text("{}", encoding="utf-8")
     r = _client(tmp_path).get("/export-bundle/..%2Fsensitive")
     assert r.status_code in {404, 422}
+
+
+def test_config_page_renders_import_card(tmp_path):
+    r = _client(tmp_path).get("/config")
+    assert r.status_code == 200
+    assert 'action="/import-bundle"' in r.text
+    assert 'enctype="multipart/form-data"' in r.text
+
+
+def _zip_bundle(d, *, files=("bundle.json", "responses.jsonl", "scores.csv")):
+    """Zip the named ledger files of a built bundle dir into in-memory bytes."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in files:
+            p = d / f
+            if p.exists():
+                z.write(p, arcname=f)
+    return buf.getvalue()
+
+
+def _judged_zip(tmp_path, name="2026_eval_nd"):
+    """Build a judged bundle in a scratch dir (outside runs_dir) and return its zip bytes."""
+    from ramcheck.pack import load_pack
+
+    src = tmp_path / "_scratch" / name
+    dims = load_pack(PACK).dimensions
+    _write_bundle(
+        src,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {dim.id: 4 for dim in dims}},
+    )
+    return _zip_bundle(src), src.name
+
+
+def test_import_bundle_lands_judged_dir(tmp_path):
+    payload, name = _judged_zip(tmp_path)
+    r = _client(tmp_path).post(
+        "/import-bundle", files={"file": (f"{name}.zip", payload, "application/zip")}
+    )
+    assert r.status_code == 200
+    new_name = r.json()["run_dir"]
+    new_dir = tmp_path / new_name
+    assert new_dir.is_dir()
+    summary = bundles.classify(new_dir)
+    assert summary is not None and summary.status == "judged"
+
+
+def test_import_bundle_missing_bundle_json_is_400(tmp_path):
+    payload, _name = _judged_zip(tmp_path)
+    # strip bundle.json out of the zip → invalid bundle
+    with zipfile.ZipFile(io.BytesIO(payload)) as z:
+        keep = [n for n in z.namelist() if n != "bundle.json"]
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as out:
+            for n in keep:
+                out.writestr(n, z.read(n))
+    r = _client(tmp_path).post(
+        "/import-bundle", files={"file": ("broken.zip", buf.getvalue(), "application/zip")}
+    )
+    assert r.status_code == 400
+
+
+def test_import_bundle_name_collision_is_suffixed(tmp_path):
+    payload, name = _judged_zip(tmp_path)
+    client = _client(tmp_path)
+    first = client.post(
+        "/import-bundle", files={"file": (f"{name}.zip", payload, "application/zip")}
+    )
+    second = client.post(
+        "/import-bundle", files={"file": (f"{name}.zip", payload, "application/zip")}
+    )
+    assert first.status_code == 200 and second.status_code == 200
+    n1, n2 = first.json()["run_dir"], second.json()["run_dir"]
+    assert n1 != n2
+    assert (tmp_path / n1).is_dir() and (tmp_path / n2).is_dir()
