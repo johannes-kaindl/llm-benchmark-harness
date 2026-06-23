@@ -205,6 +205,15 @@ def test_judge_web_writes_full_event_stream(tmp_path, monkeypatch):
     assert (bundle / "scorecard.md").exists()
 
 
+def test_judge_model_override_replaces_config_model():
+    from ramcheck.judge import JudgeConfig, JudgeEndpoint
+
+    jc = JudgeConfig(endpoint=JudgeEndpoint(base_url="http://x/v1"), model="qwen", temperature=0.0)
+    overridden = jc.model_copy(update={"model": "gemma"}) if "gemma" else jc
+    assert overridden.model == "gemma"
+    assert overridden.endpoint.base_url == "http://x/v1"  # endpoint untouched
+
+
 def test_judge_web_truncates_stale_events(tmp_path, monkeypatch):
     bundle = _write_min_bundle(tmp_path)
     _patch_monitor(monkeypatch)

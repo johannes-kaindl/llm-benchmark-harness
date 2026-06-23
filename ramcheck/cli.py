@@ -657,6 +657,9 @@ def judge(
     judge_config: Path | None = typer.Option(
         None, "--judge-config", help="judge endpoint YAML (omit → leave unscored)"
     ),
+    judge_model: str = typer.Option(
+        "", "--judge-model", help="override the judge model id from the config (GUI picker)"
+    ),
     web: bool = typer.Option(False, "--web", help="live browser monitor for this judging run"),
     port: int = typer.Option(0, "--port", help="monitor port (0 = auto)"),
     no_open: bool = typer.Option(False, "--no-open", help="don't auto-open the browser"),
@@ -675,6 +678,8 @@ def judge(
         raise typer.Exit(code=1)
 
     jc = load_judge_config(judge_config)
+    if judge_model.strip():
+        jc = jc.model_copy(update={"model": judge_model.strip()})
     backend = OpenAIJudgeBackend(
         jc.endpoint.base_url, jc.endpoint.api_key, jc.model, jc.temperature
     )
