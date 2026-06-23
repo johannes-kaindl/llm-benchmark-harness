@@ -50,7 +50,9 @@
     {% else %}
     <div x-data='modelPicker({{ models_by_config | tojson }}, {{ configs | tojson }})'>
       <div class="form-group">
-        <label class="form-label" for="config_path">Config</label>
+        <label class="form-label" for="config_path">Config
+          <a class="text-xs" :href="'/config-view/' + config" target="_blank" rel="noopener" title="Config ansehen">ⓘ</a>
+        </label>
         <select class="form-select" id="config_path" name="config_path"
                 x-model="config" @change="syncFromConfig()">
           {% for c in configs %}

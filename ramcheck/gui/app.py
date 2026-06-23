@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ramcheck import aggregate as aggregate_mod
-from ramcheck.config import models_from_json
+from ramcheck.config import load_config, models_from_json
 from ramcheck.gui import bundles, compare
 from ramcheck.gui import configs as configs_mod
 from ramcheck.gui import glossary as _glossary
@@ -87,6 +87,19 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         except (FileNotFoundError, OSError):
             raise HTTPException(status_code=404) from None
         return render("pack.html", request, pack=pk, active="pack")
+
+    @app.get("/config-view/{config_path:path}", response_class=HTMLResponse)
+    def config_view(request: Request, config_path: str) -> HTMLResponse:
+        candidate = Path(config_path)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise HTTPException(status_code=404)
+        if config_path not in {str(p) for p in Path(".").glob("config*.yaml")}:
+            raise HTTPException(status_code=404)
+        try:
+            cfg = load_config(config_path)
+        except (FileNotFoundError, OSError):
+            raise HTTPException(status_code=404) from None
+        return render("config_view.html", request, cfg=cfg, path=config_path, active="config")
 
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(request: Request, name: str) -> HTMLResponse:
