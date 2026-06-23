@@ -11,8 +11,8 @@
 {# running run card — shown when at least one bundle is running. Native EventSource (the htmx
    SSE extension isn't bundled), see live_progress.js. #}
 {% for b in bundles if b.status == "running" %}
-<div class="run-card" x-data="liveProgress('{{ b.run_dir.name }}', 'eval')" x-init="start()">
-  <div class="run-card-title">⏳ {{ b.run_dir.name }}</div>
+<div class="run-card" x-data="liveProgress('{{ b.run_dir.name }}', '{{ b.run_kind }}')" x-init="start()">
+  <div class="run-card-title">⏳ {{ b.run_dir.name }}{% if b.run_kind == "judge" %} · Judge läuft{% endif %}</div>
   <div class="run-card-progress">
     <span class="text-xs" x-text="done + ' / ' + total + ' (' + pct + '%)'"></span>
     <div class="progress-bar-wrap">

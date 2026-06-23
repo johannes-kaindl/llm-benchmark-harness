@@ -50,6 +50,27 @@ def test_classify_crashed(tmp_path):
     assert bundles.classify(d).status == "crashed"
 
 
+def test_classify_running_judge_sets_run_kind(tmp_path):
+    # a finalized eval bundle with a JUDGE running on it → the live card must tail the judge stream
+    d = tmp_path / "2026_eval_nd"
+    _mk(d, bundle=True, responses=True)
+    (d / "run.json").write_text(
+        json.dumps({"kind": "judge", "pid": 1, "state": "running", "run_dir": str(d)}),
+        encoding="utf-8",
+    )
+    s = bundles.classify(d)
+    assert s.status == "running"
+    assert s.run_kind == "judge"
+
+
+def test_classify_running_eval_defaults_run_kind_eval(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _mk(d, responses=True, sentinel_state="running")  # _mk writes kind="eval"
+    s = bundles.classify(d)
+    assert s.status == "running"
+    assert s.run_kind == "eval"
+
+
 def test_legacy_run_dir_ignored(tmp_path):
     d = tmp_path / "2026_plainrun"
     d.mkdir()

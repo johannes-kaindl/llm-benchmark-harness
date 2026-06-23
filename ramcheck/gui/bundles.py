@@ -22,6 +22,7 @@ class BundleSummary:
     recommendation: str | None = None  # only when judged
     safety_passed: bool | None = None
     pack_rel: str = ""  # cwd-relative pack path for the /packs/<rel> link
+    run_kind: str = "eval"  # 'eval' | 'judge' — which live stream the running card should tail
 
 
 def _pack_rel(pack_path: str | None, pack_id: str) -> str:
@@ -84,6 +85,7 @@ def _summary(run_dir: Path, status: str, sentinel: dict[str, Any] | None) -> Bun
         models=[mm["id"] for mm in m.get("models", [])],
         date=str(m.get("date", "")),
         pack_rel=_pack_rel(m.get("pack_path"), pack_id),
+        run_kind=str(sentinel.get("kind", "eval")) if sentinel else "eval",
     )
 
 
