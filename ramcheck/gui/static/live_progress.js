@@ -15,6 +15,7 @@ document.addEventListener("alpine:init", () => {
     pct: 0,
     ok: 0,
     failed: 0,
+    preflight: [],
     _es: null,
     start() {
       try {
@@ -35,6 +36,8 @@ document.addEventListener("alpine:init", () => {
         this.done = d.done || 0;
         this.ok = d.ok || 0;
         this.failed = d.failed || 0;
+        // preflight is folded into the view by build_view (Task 8); show only non-ok models
+        this.preflight = (d.preflight || []).filter((p) => p.status !== "ok");
         this.pct = this.total ? Math.round((this.done / this.total) * 100) : 0;
         if (d.finished && this._es) this._es.close();
       });

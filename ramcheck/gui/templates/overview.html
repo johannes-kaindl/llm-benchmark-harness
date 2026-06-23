@@ -19,6 +19,12 @@
       <div class="progress-bar-fill" :style="'width:' + pct + '%'"></div>
     </div>
   </div>
+  <div class="run-card-preflight" x-show="preflight.length"
+       style="margin-top:0.5rem;padding:0.4rem 0.7rem;border-radius:6px;background:#5a3a1a;color:#fc9;font-size:0.8rem">
+    <template x-for="p in preflight" :key="p.model">
+      <div>⚠ Pre-Flight: <strong x-text="p.model"></strong> — <span x-text="p.status"></span> · <span class="muted" x-text="p.detail"></span></div>
+    </template>
+  </div>
   <div class="run-card-stop">
     <form method="post" action="/runs/stop" style="display:inline">
       <input type="hidden" name="name" value="{{ b.run_dir.name }}">
