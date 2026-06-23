@@ -102,12 +102,14 @@ def _perf_summary(group: list[EvalResponse]) -> dict[str, object]:
     ok = [r for r in group if r.ok and not r.is_cold_start]
     ttfts = [r.ttft_s for r in ok if not math.isnan(r.ttft_s)]
     decodes = [r.decode_tps for r in ok if not math.isnan(r.decode_tps)]
+    e2es = [r.e2e_s for r in ok if not math.isnan(r.e2e_s)]
     sys_used = [r.sys_used_mb for r in ok if r.sys_used_mb is not None]
     peak_ram_gb = (max(sys_used) / 1024.0) if sys_used else None
     return {
         "ttft_p50": percentile(ttfts, 50.0),
         "ttft_p95": percentile(ttfts, 95.0),
         "decode_med": median(decodes),
+        "e2e_med": median(e2es),
         "peak_ram_gb": peak_ram_gb,
         "battery": any(r.power_source == "battery" for r in ok),
     }
@@ -304,6 +306,7 @@ def scores_csv_rows(
             "variant": variant,
             "ttft_p50": _num(p["ttft_p50"] if isinstance(p["ttft_p50"], float) else None),
             "decode_med": _num(p["decode_med"] if isinstance(p["decode_med"], float) else None),
+            "e2e_med": _num(p["e2e_med"] if isinstance(p["e2e_med"], float) else None),
             "peak_ram_gb": _num(p["peak_ram_gb"] if isinstance(p["peak_ram_gb"], float) else None),
             "power": "battery" if p["battery"] else "ac",
         }

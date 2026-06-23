@@ -13,6 +13,7 @@ HEADER = [
     "variant",
     "ttft_p50",
     "decode_med",
+    "e2e_med",
     "peak_ram_gb",
     "power",
     "metric_type",

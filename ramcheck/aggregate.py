@@ -51,6 +51,7 @@ class AggRow:
     n_dims: int
     ttft_p50: str
     decode_med: str
+    e2e_med: str
     peak_ram_gb: str
     power: str
     dim_scores: dict[str, int] = field(default_factory=dict)
@@ -119,6 +120,7 @@ def aggregate(rows: list[dict[str, str]]) -> list[AggRow]:
                 n_dims=len(dim_scores),
                 ttft_p50=first.get("ttft_p50", ""),
                 decode_med=first.get("decode_med", ""),
+                e2e_med=first.get("e2e_med", ""),
                 peak_ram_gb=first.get("peak_ram_gb", ""),
                 power=first.get("power", ""),
                 dim_scores=dim_scores,
