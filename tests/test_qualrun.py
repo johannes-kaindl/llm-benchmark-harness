@@ -300,6 +300,52 @@ def test_run_eval_runs_preflight_and_calls_callback(tmp_path):
     assert seen["results"][0].status == "ok"
 
 
+def test_run_eval_preflight_uses_longest_real_pack_prompt(tmp_path):
+    # A reasoning model thinks proportionally to task complexity — a trivial synthetic smoke
+    # ("2+2") would pass while the real prompts starve the budget (verified against gemma-4-12b-qat).
+    # The pre-flight must smoke with a REAL pack prompt (the longest, worst case), not SMOKE_PROMPT.
+    from ramcheck.preflight import SMOKE_PROMPT
+    from ramcheck.runner import StreamEvent
+
+    captured: list[str] = []
+
+    class _PromptCapture:
+        engine = "fake"
+        engine_version = "0"
+
+        def stream(self, *, messages, model, max_tokens, temperature, seed, extra_body=None):
+            captured.append(messages[-1]["content"])
+            yield StreamEvent(delta_text="ok")
+            yield StreamEvent(prompt_tokens=1, completion_tokens=1)
+
+    longest = "das ist der deutlich laengste und anspruchsvollste prompt im pack"
+    pack = Pack.model_validate(
+        {
+            "id": "demo",
+            "title": "D",
+            "scale": {1: "a", 2: "b", 3: "c", 4: "d", 5: "e"},
+            "dimensions": [{"id": "Q1", "name": "K", "weight": 1}],
+            "ko_rule": {"dimension": "Q1", "threshold": 2},
+            "categories": [
+                {
+                    "id": "A",
+                    "name": "A",
+                    "prompts": [
+                        {"id": "A1", "title": "t", "prompt": "kurz"},
+                        {"id": "A2", "title": "t", "prompt": longest},
+                    ],
+                }
+            ],
+        }
+    )
+    run_eval(
+        _config_with({"id": "m1"}), pack, _PromptCapture(), run_dir=tmp_path, sampler=NoopSampler()
+    )
+    # the FIRST stream call is the pre-flight (one model, before the matrix)
+    assert captured[0] == longest
+    assert captured[0] != SMOKE_PROMPT
+
+
 def test_run_eval_strict_preflight_aborts_on_reasoning_only(tmp_path):
     client = CapturingClient()  # reasoning-only
     with pytest.raises(RuntimeError, match=r"Pre-Flight.*m1.*reasoning_only"):

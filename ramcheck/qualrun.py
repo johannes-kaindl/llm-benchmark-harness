@@ -25,7 +25,7 @@ from ramcheck import prompts as prompts_mod
 from ramcheck.config import Config, ModelSpec
 from ramcheck.models import RAW_CSV_COLUMNS
 from ramcheck.pack import Category, Pack, PackPrompt, PromptVariant
-from ramcheck.preflight import PreflightResult, preflight_models
+from ramcheck.preflight import SMOKE_PROMPT, PreflightResult, preflight_models
 from ramcheck.results import EvalResponse
 from ramcheck.runner import Sampler, StreamClient, derive_rates, resolve_engine, stream_once
 
@@ -113,12 +113,18 @@ def run_eval(
 
     cells = iter_eval_cells(config, pack)
     if not resume:
-        max_prompt_budget = max((p.max_tokens for _, p in pack.all_prompts()), default=0)
+        prompts = [p for _, p in pack.all_prompts()]
+        max_prompt_budget = max((p.max_tokens for p in prompts), default=0)
+        # A reasoning model thinks proportionally to task complexity, so a trivial synthetic smoke
+        # would pass while the real prompts starve the budget (verified against gemma-4-12b-qat:
+        # "2+2" → ok, real ndassist prompt → reasoning-only). Smoke with the LONGEST real prompt
+        # (worst case) so the warning actually fires before a 30-min run into the void.
+        smoke_prompt = max((p.prompt for p in prompts), key=len, default=SMOKE_PROMPT)
 
         def _budget_for(m: ModelSpec) -> int:
             return max_prompt_budget + m.reasoning_headroom_tokens
 
-        pf = preflight_models(client, config.models, budget_for=_budget_for)
+        pf = preflight_models(client, config.models, budget_for=_budget_for, prompt=smoke_prompt)
         if on_preflight is not None:
             on_preflight(pf)
         bad = [r for r in pf if r.status != "ok"]
