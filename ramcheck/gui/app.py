@@ -176,6 +176,14 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             raise HTTPException(status_code=404)
         return configs_mod.discover_endpoint_models(config)
 
+    @app.get("/judge-endpoint-models")
+    def judge_endpoint_models(judge_config: str) -> dict[str, Any]:
+        """Models the selected judge config's endpoint advertises. Never 500s. Same path guard
+        as /endpoint-models: only the judge*.yaml files the picker actually offers."""
+        if judge_config not in {str(p) for p in Path(".").glob("judge*.yaml")}:
+            raise HTTPException(status_code=404)
+        return configs_mod.discover_judge_endpoint_models(judge_config)
+
     @app.get("/export/{name}/{fname}")
     def export(name: str, fname: str) -> Any:
         # Only ledger files are exportable (transient event/sentinel files excluded — G10).

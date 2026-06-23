@@ -77,3 +77,18 @@ def test_config_page_has_endpoint_dropdown(tmp_path):
 def test_config_page_endpoint_dropdown_hidden_on_resume(tmp_path):
     body = _client(tmp_path).get("/config?resume=foo").text
     assert "endpointPick" not in body
+
+
+def test_judge_endpoint_models_guards_path_and_never_500(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "judge.yaml").write_text(
+        "endpoint:\n  base_url: http://x/v1\nmodel: qwen\n", encoding="utf-8"
+    )
+    client = _client(tmp_path)
+
+    # unknown / traversal path → 404
+    assert client.get("/judge-endpoint-models?judge_config=/etc/passwd").status_code == 404
+    # known judge config → 200, never 500 even if endpoint is dead
+    r = client.get("/judge-endpoint-models?judge_config=judge.yaml")
+    assert r.status_code == 200
+    assert "models" in r.json() and "error" in r.json()
