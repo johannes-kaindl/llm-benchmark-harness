@@ -30,6 +30,7 @@ from touchstone.config import Config, apply_models_override, load_config
 from touchstone.embed import render_embed_md, run_embed
 from touchstone.judge import (
     JudgeBackend,
+    JudgeConfig,
     OpenAIJudgeBackend,
     judge_bundle,
     load_judge_config,
@@ -478,13 +479,32 @@ def _finalize_run_report(records: list[RunRecord], run_dir: Path) -> None:
 
 
 def _finalize_eval_bundle(
-    run_dir: Path, pack: Path, cfg: Config, pk: Pack, responses: list[EvalResponse]
+    run_dir: Path,
+    pack: Path,
+    cfg: Config,
+    pk: Pack,
+    responses: list[EvalResponse],
+    client: OpenAIStreamClient,
 ) -> None:
-    """Write manifest + scorecard for a finished eval and print the summary line."""
+    """Write manifest + scorecard + result.json for a finished eval and print the summary line."""
+    from touchstone.result_schema import build_result_doc
+
     host = hostinfo.summary()
     _write_bundle_manifest(run_dir, pack, cfg, host)
     md = scorecard_mod.render_scorecard_md(pk, responses, [], [], host=host, date_str=_today())
     (run_dir / "scorecard.md").write_text(md, encoding="utf-8")
+    build_meta = client.probe_build_metadata()
+    doc = build_result_doc(
+        pk,
+        responses,
+        [],
+        [],
+        host={**host, "date": _today(), "engine": cfg.engine or client.engine},
+        build_meta=build_meta,
+        judge=None,
+        sampling={"seed": pk.sampling.seed, "temperature": pk.sampling.temperature},
+    )
+    (run_dir / "result.json").write_text(doc.model_dump_json(indent=2), encoding="utf-8")
     errors = sum(1 for r in responses if not r.ok)
     console.print(
         f"[green]✓[/] {len(responses)} Antworten ({errors} Fehler) · "
@@ -563,7 +583,7 @@ def eval_cmd(
             on_preflight=_print_preflight,
             strict_preflight=strict_preflight,
         )
-        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
+        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses, client)
         return
 
     run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl is opened before run_eval
@@ -596,7 +616,7 @@ def eval_cmd(
             )
         finally:
             run_done(responses)
-        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses)
+        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses, client)
         if web and monitor is not None:
             _hold_monitor(monitor, url)
 
@@ -650,6 +670,54 @@ def _render_judge_scorecard(
     write_reports_jsonl(bundle / "reports.jsonl", reports)
 
 
+def _write_result_json_after_judge(
+    bundle: Path,
+    pk: Pack,
+    responses: list[EvalResponse],
+    verdicts: list[Verdict],
+    reports: list[ModelReport],
+    host: dict[str, str],
+    jc: JudgeConfig,
+) -> None:
+    """Rewrite result.json after judging, preserving eval provenance from the prior file."""
+    from touchstone.client import BuildMetadata
+    from touchstone.result_schema import build_result_doc
+
+    rj = bundle / "result.json"
+    prior = json.loads(rj.read_text(encoding="utf-8")) if rj.exists() else None
+    if prior:
+        bm: BuildMetadata | None = BuildMetadata(
+            engine_version=prior["provenance"].get("engine_version"),
+            runtime=prior["provenance"].get("runtime"),
+            quant_by_model={c["model"]: c["quant"] for c in prior["cells"] if c.get("quant")},
+        )
+    else:
+        bm = None
+    judge_info = {
+        "model": jc.model,
+        "version": None,
+        "temperature": jc.temperature,
+        "seed": getattr(jc, "seed", None),
+    }
+    # Enrich host with date (required by Provenance) and engine from prior if available.
+    enriched_host: dict[str, str] = {**host, "date": _today()}
+    if prior:
+        prov = prior.get("provenance", {})
+        if prov.get("engine") and "engine" not in host:
+            enriched_host["engine"] = prov["engine"]
+    doc = build_result_doc(
+        pk,
+        responses,
+        verdicts,
+        reports,
+        host=enriched_host,
+        build_meta=bm,
+        judge=judge_info,
+        sampling={"seed": pk.sampling.seed, "temperature": pk.sampling.temperature},
+    )
+    rj.write_text(doc.model_dump_json(indent=2), encoding="utf-8")
+
+
 @app.command()
 def judge(
     bundle: Path = typer.Option(..., "--bundle", exists=True, help="an eval bundle dir"),
@@ -701,6 +769,7 @@ def judge(
     if not emit:
         verdicts, reports = _judge_and_persist(backend, responses, pk, prior, jpath)
         _render_judge_scorecard(bundle, pk, responses, verdicts, reports, host)
+        _write_result_json_after_judge(bundle, pk, responses, verdicts, reports, host, jc)
         scored = sum(1 for v in verdicts if not v.unscored)
         console.print(
             f"[green]✓[/] {scored}/{len(verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
@@ -727,6 +796,7 @@ def judge(
         finally:
             judge_done(len(emit_verdicts), sum(1 for v in emit_verdicts if not v.unscored))
         _render_judge_scorecard(bundle, pk, responses, emit_verdicts, emit_reports, host)
+        _write_result_json_after_judge(bundle, pk, responses, emit_verdicts, emit_reports, host, jc)
         scored = sum(1 for v in emit_verdicts if not v.unscored)
         console.print(
             f"[green]✓[/] {scored}/{len(emit_verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
