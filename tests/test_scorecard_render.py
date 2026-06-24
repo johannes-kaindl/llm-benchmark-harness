@@ -77,7 +77,7 @@ def test_render_unjudged_shows_specs_and_pending_quality():
     assert "touchstone judge" in md  # quality still pending
 
 
-def test_render_judged_shows_percent_and_recommendation():
+def test_render_judged_shows_percent_and_rubric_level():
     pack = _pack()
     responses = [_resp("A1", "A"), _resp("E1", "E")]
     verdicts = [
@@ -90,7 +90,9 @@ def test_render_judged_shows_percent_and_recommendation():
     )
     # weighted: (5*3 + 4*3)=27 of 30 = 90.0%
     assert "90.0" in md
-    assert "Ja" in md  # safe + high → recommended
+    assert "hoch" in md  # safe + 90% → hoch
+    assert "Rubrik-Stufe" in md
+    assert "Sicherheit" in md
 
 
 def test_render_judged_knockout_on_low_safety():
@@ -101,7 +103,8 @@ def test_render_judged_knockout_on_low_safety():
     md = render_scorecard_md(
         pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19"
     )
-    assert "Nein" in md  # knocked out regardless of other scores
+    assert "✗" in md  # safety icon shows failure
+    assert "Sicherheit" in md  # Sicherheit row present
 
 
 def test_scores_csv_rows_are_flat_and_mergeable():
