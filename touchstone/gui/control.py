@@ -9,7 +9,6 @@ survives a GUI restart, (3) a discovery anchor for running/crashed runs."""
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import threading
@@ -18,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+import psutil
 
 from touchstone.config import ModelSpec
 
@@ -91,14 +92,38 @@ def is_active(sentinel: dict[str, Any] | None) -> bool:
     return _pid_alive(int(sentinel["pid"]))
 
 
+def finalize_sentinel(run_dir: Path, *, ok: bool) -> None:
+    """Record the terminal state from the spawned CLI itself, PID-independently.
+
+    The GUI server spawns the eval/judge CLI but never wait()s it, so a finished run
+    lingers as a zombie — and a plain ``os.kill(pid, 0)`` liveness check reads a zombie
+    as alive, pinning the run to 'running' until the server restarts. Having the CLI
+    write its own terminal state removes that dependency for the clean-finish path.
+
+    No-op when there is no sentinel (a plain CLI run outside the GUI control-plane) or
+    when the sentinel already left 'running' (e.g. the user pressed stop → 'stopped'
+    must not be clobbered)."""
+    s = read_sentinel(run_dir)
+    if s is None or s.get("state") != "running":
+        return
+    mark_sentinel(run_dir, "finished" if ok else "failed")
+
+
 def _pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    """True iff a process with this pid exists and is not a zombie.
+
+    A finished-but-unreaped child lingers as a zombie; ``os.kill(pid, 0)`` succeeds on
+    it, which would keep a finished run pinned to 'running'. psutil distinguishes the
+    zombie state explicitly. A pid owned by another user (AccessDenied) is treated as
+    alive; a non-positive pid (the pre-spawn placeholder) is never alive."""
+    if pid <= 0:
         return False
-    except PermissionError:
-        return True  # exists, owned by someone else
-    return True
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
+    except psutil.AccessDenied:
+        return True
 
 
 class RunInProgress(RuntimeError):
