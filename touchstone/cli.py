@@ -467,6 +467,22 @@ def _run_event_writers(
     return on_run_start, on_cell_start, on_cell_done, run_done
 
 
+def _finalize_run_sentinel(run_dir: Path, *, ok: bool) -> None:
+    """Best-effort: let a GUI-spawned run record its own terminal sentinel state.
+
+    The GUI server spawns this CLI but never wait()s it, so a finished child lingers as a
+    zombie that a naive liveness probe reads as 'running'. Writing the terminal state here
+    makes the clean-finish path PID-independent. No-op outside the GUI control-plane (no
+    run.json). The import is lazy + guarded so the harness core never hard-depends on the
+    optional gui package and a broken gui never crashes a plain CLI run."""
+    try:
+        from touchstone.gui.control import finalize_sentinel
+
+        finalize_sentinel(run_dir, ok=ok)
+    except Exception:
+        pass
+
+
 def _finalize_run_report(records: list[RunRecord], run_dir: Path) -> None:
     """Write report.md + raw.csv for a finished benchmark run and print the summary."""
     md_path, raw_path = report.write_report(
@@ -572,53 +588,62 @@ def eval_cmd(
         if not bad:
             console.print("[green]✓ Pre-Flight[/] alle Modelle liefern sichtbaren Content")
 
-    emit = web or emit_events
-    if not emit:
-        responses = run_eval(
-            cfg,
-            pk,
-            client,
-            run_dir=run_dir,
-            resume=resume is not None,
-            on_preflight=_print_preflight,
-            strict_preflight=strict_preflight,
-        )
-        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses, client)
-        return
-
-    run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl is opened before run_eval
-    monitor_cm = (
-        _live_monitor(run_dir, port, no_open) if web else contextlib.nullcontext((None, None))
-    )
-    with monitor_cm as (monitor, url):
-        # --web keeps append (resume semantics); GUI --emit-events truncates (fresh stream).
-        on_run_start, on_cell_start, on_cell_done, on_preflight_evt, run_done = _eval_event_writers(
-            run_dir / "events.jsonl", append=web
-        )
-
-        def _on_preflight(results: list[PreflightResult]) -> None:
-            _print_preflight(results)
-            on_preflight_evt(results)
-
-        responses = []
-        try:
+    # Wrap the whole run so a GUI-spawned eval records its terminal sentinel state itself
+    # (finished/failed) — the overview must not depend on reaping the zombie child.
+    try:
+        emit = web or emit_events
+        if not emit:
             responses = run_eval(
                 cfg,
                 pk,
                 client,
                 run_dir=run_dir,
                 resume=resume is not None,
-                on_run_start=on_run_start,
-                on_cell_start=on_cell_start,
-                on_cell_done=on_cell_done,
-                on_preflight=_on_preflight,
+                on_preflight=_print_preflight,
                 strict_preflight=strict_preflight,
             )
-        finally:
-            run_done(responses)
-        _finalize_eval_bundle(run_dir, pack, cfg, pk, responses, client)
-        if web and monitor is not None:
-            _hold_monitor(monitor, url)
+            _finalize_eval_bundle(run_dir, pack, cfg, pk, responses, client)
+        else:
+            run_dir.mkdir(parents=True, exist_ok=True)  # events.jsonl opened before run_eval
+            monitor_cm = (
+                _live_monitor(run_dir, port, no_open)
+                if web
+                else contextlib.nullcontext((None, None))
+            )
+            with monitor_cm as (monitor, url):
+                # --web keeps append (resume); GUI --emit-events truncates (fresh stream).
+                (on_run_start, on_cell_start, on_cell_done, on_preflight_evt, run_done) = (
+                    _eval_event_writers(run_dir / "events.jsonl", append=web)
+                )
+
+                def _on_preflight(results: list[PreflightResult]) -> None:
+                    _print_preflight(results)
+                    on_preflight_evt(results)
+
+                responses = []
+                try:
+                    responses = run_eval(
+                        cfg,
+                        pk,
+                        client,
+                        run_dir=run_dir,
+                        resume=resume is not None,
+                        on_run_start=on_run_start,
+                        on_cell_start=on_cell_start,
+                        on_cell_done=on_cell_done,
+                        on_preflight=_on_preflight,
+                        strict_preflight=strict_preflight,
+                    )
+                finally:
+                    run_done(responses)
+                _finalize_eval_bundle(run_dir, pack, cfg, pk, responses, client)
+                if web and monitor is not None:
+                    _hold_monitor(monitor, url)
+    except BaseException:
+        _finalize_run_sentinel(run_dir, ok=False)
+        raise
+    else:
+        _finalize_run_sentinel(run_dir, ok=True)
 
 
 def _judge_and_persist(
@@ -765,44 +790,55 @@ def judge(
     )
 
     jpath = bundle / "judgements.jsonl"
-    emit = web or emit_events
-    if not emit:
-        verdicts, reports = _judge_and_persist(backend, responses, pk, prior, jpath)
-        _render_judge_scorecard(bundle, pk, responses, verdicts, reports, host)
-        _write_result_json_after_judge(bundle, pk, responses, verdicts, reports, host, jc)
-        scored = sum(1 for v in verdicts if not v.unscored)
-        console.print(
-            f"[green]✓[/] {scored}/{len(verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
-        )
-        return
-
-    monitor_cm = (
-        _live_monitor(bundle, port, no_open, events_name="judge_events.jsonl", view="judge")
-        if web
-        else contextlib.nullcontext((None, None))
-    )
-    with monitor_cm as (monitor, url):
-        on_judge_start, on_verdict, write_masters, judge_done = _judge_event_writers(
-            bundle / "judge_events.jsonl"
-        )
-        emit_verdicts: list[Verdict] = []
-        emit_reports: list[ModelReport] = []
-        try:
-            on_judge_start(len(responses), prior)
-            emit_verdicts, emit_reports = _judge_and_persist(
-                backend, responses, pk, prior, jpath, on_verdict=on_verdict
+    # Wrap so a GUI-spawned judge records its terminal sentinel state itself — the reported
+    # bug was a dead judge process leaving the card pinned to 'Judge läuft' forever.
+    try:
+        emit = web or emit_events
+        if not emit:
+            verdicts, reports = _judge_and_persist(backend, responses, pk, prior, jpath)
+            _render_judge_scorecard(bundle, pk, responses, verdicts, reports, host)
+            _write_result_json_after_judge(bundle, pk, responses, verdicts, reports, host, jc)
+            scored = sum(1 for v in verdicts if not v.unscored)
+            console.print(
+                f"[green]✓[/] {scored}/{len(verdicts)} bewertet · "
+                f"[bold]{bundle / 'scorecard.md'}[/]"
             )
-            write_masters(_master_rows(pk, responses, emit_verdicts, emit_reports))
-        finally:
-            judge_done(len(emit_verdicts), sum(1 for v in emit_verdicts if not v.unscored))
-        _render_judge_scorecard(bundle, pk, responses, emit_verdicts, emit_reports, host)
-        _write_result_json_after_judge(bundle, pk, responses, emit_verdicts, emit_reports, host, jc)
-        scored = sum(1 for v in emit_verdicts if not v.unscored)
-        console.print(
-            f"[green]✓[/] {scored}/{len(emit_verdicts)} bewertet · [bold]{bundle / 'scorecard.md'}[/]"
-        )
-        if web and monitor is not None:
-            _hold_monitor(monitor, url)
+        else:
+            monitor_cm = (
+                _live_monitor(bundle, port, no_open, events_name="judge_events.jsonl", view="judge")
+                if web
+                else contextlib.nullcontext((None, None))
+            )
+            with monitor_cm as (monitor, url):
+                on_judge_start, on_verdict, write_masters, judge_done = _judge_event_writers(
+                    bundle / "judge_events.jsonl"
+                )
+                emit_verdicts: list[Verdict] = []
+                emit_reports: list[ModelReport] = []
+                try:
+                    on_judge_start(len(responses), prior)
+                    emit_verdicts, emit_reports = _judge_and_persist(
+                        backend, responses, pk, prior, jpath, on_verdict=on_verdict
+                    )
+                    write_masters(_master_rows(pk, responses, emit_verdicts, emit_reports))
+                finally:
+                    judge_done(len(emit_verdicts), sum(1 for v in emit_verdicts if not v.unscored))
+                _render_judge_scorecard(bundle, pk, responses, emit_verdicts, emit_reports, host)
+                _write_result_json_after_judge(
+                    bundle, pk, responses, emit_verdicts, emit_reports, host, jc
+                )
+                scored = sum(1 for v in emit_verdicts if not v.unscored)
+                console.print(
+                    f"[green]✓[/] {scored}/{len(emit_verdicts)} bewertet · "
+                    f"[bold]{bundle / 'scorecard.md'}[/]"
+                )
+                if web and monitor is not None:
+                    _hold_monitor(monitor, url)
+    except BaseException:
+        _finalize_run_sentinel(bundle, ok=False)
+        raise
+    else:
+        _finalize_run_sentinel(bundle, ok=True)
 
 
 @app.command()

@@ -3,8 +3,97 @@ import types
 from typer.testing import CliRunner
 
 from touchstone.cli import _eval_event_writers, app
+from touchstone.gui import control
 
 runner = CliRunner()
+
+
+def _judge_mocks(monkeypatch):
+    monkeypatch.setattr("touchstone.cli.load_responses_jsonl", lambda p: [])
+    monkeypatch.setattr("touchstone.cli._render_judge_scorecard", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli._write_result_json_after_judge", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", lambda *a, **k: object())
+    monkeypatch.setattr(
+        "touchstone.cli.load_judge_config",
+        lambda p: types.SimpleNamespace(
+            endpoint=types.SimpleNamespace(base_url="x", api_key="y"),
+            model="m",
+            temperature=0.0,
+        ),
+    )
+
+
+def _judge_bundle(tmp_path):
+    b = tmp_path / "bundle"
+    (b / "run.json").parent.mkdir(parents=True, exist_ok=True)
+    (b / "bundle.json").write_text(
+        '{"pack_path":"packs/ndassist.yaml","host":{}}', encoding="utf-8"
+    )
+    (b / "responses.jsonl").write_text("", encoding="utf-8")
+    return b
+
+
+def test_eval_finalizes_sentinel_finished_on_success(tmp_path, monkeypatch):
+    """A GUI-spawned eval writes its own terminal sentinel state so the overview
+    no longer depends on reaping the (zombie) child to leave 'running'."""
+    monkeypatch.setattr("touchstone.cli.run_eval", lambda *a, **k: [])
+    monkeypatch.setattr("touchstone.cli._finalize_eval_bundle", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli._make_client", lambda cfg: object())
+    target = tmp_path / "run1"
+    control.write_sentinel(target, kind="eval", pid=99, pack_path="p", config_path="c")
+    res = runner.invoke(
+        app,
+        ["eval", "--pack", "packs/ndassist.yaml", "--config", "config.example.yaml",
+         "--run-dir", str(target), "--emit-events"],
+    )
+    assert res.exit_code == 0, res.output
+    assert control.read_sentinel(target)["state"] == "finished"
+
+
+def test_eval_finalizes_sentinel_failed_on_error(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("endpoint down")
+
+    monkeypatch.setattr("touchstone.cli.run_eval", boom)
+    monkeypatch.setattr("touchstone.cli._make_client", lambda cfg: object())
+    target = tmp_path / "run2"
+    control.write_sentinel(target, kind="eval", pid=99, pack_path="p", config_path="c")
+    res = runner.invoke(
+        app,
+        ["eval", "--pack", "packs/ndassist.yaml", "--config", "config.example.yaml",
+         "--run-dir", str(target), "--emit-events"],
+    )
+    assert res.exit_code != 0
+    assert control.read_sentinel(target)["state"] == "failed"
+
+
+def test_judge_finalizes_sentinel_finished_on_success(tmp_path, monkeypatch):
+    _judge_mocks(monkeypatch)
+    monkeypatch.setattr("touchstone.cli._judge_and_persist", lambda *a, **k: ([], []))
+    b = _judge_bundle(tmp_path)
+    control.write_sentinel(b, kind="judge", pid=99, pack_path="", config_path="c")
+    res = runner.invoke(
+        app, ["judge", "--bundle", str(b), "--judge-config", "judge.yaml", "--emit-events"]
+    )
+    assert res.exit_code == 0, res.output
+    assert control.read_sentinel(b)["state"] == "finished"
+
+
+def test_judge_finalizes_sentinel_failed_on_error(tmp_path, monkeypatch):
+    """The reported bug: a judge process died mid-run and the card stayed 'Judge läuft'."""
+    _judge_mocks(monkeypatch)
+
+    def boom(*a, **k):
+        raise RuntimeError("judge process died")
+
+    monkeypatch.setattr("touchstone.cli._judge_and_persist", boom)
+    b = _judge_bundle(tmp_path)
+    control.write_sentinel(b, kind="judge", pid=99, pack_path="", config_path="c")
+    res = runner.invoke(
+        app, ["judge", "--bundle", str(b), "--judge-config", "judge.yaml", "--emit-events"]
+    )
+    assert res.exit_code != 0
+    assert control.read_sentinel(b)["state"] == "failed"
 
 
 def test_eval_run_dir_option_pins_exact_dir(tmp_path, monkeypatch):
