@@ -436,7 +436,7 @@ def test_answer_tokens_med_in_scorecard():
         "Scorecard must have a token-length column"
 
 
-def test_length_bias_disclaimer_fires_when_skewed():
+def test_length_bias_disclaimer_fires_when_winner_is_longer():
     """When the higher-scoring variant has ≥ 1.20× the tokens of the other, a
     '> [!warning] Längen-Confound möglich' callout must appear."""
     import tempfile
@@ -513,7 +513,7 @@ def test_length_bias_disclaimer_fires_when_skewed():
     assert "Längen-Confound" in md, "Warning must mention 'Längen-Confound'"
 
 
-def test_length_bias_disclaimer_absent_when_balanced():
+def test_no_disclaimer_when_lengths_close():
     """When token counts are balanced (< 1.20× ratio), no disclaimer should appear."""
     import tempfile
     from pathlib import Path
@@ -634,3 +634,62 @@ def test_fallback_build_without_result_json():
     md = render_report_md(detail, GLOSSARY)
     assert "## Master-Scorecard" in md
     assert "neueres Schema" not in md
+
+
+def test_rubric_and_safety_replace_recommendation():
+    """The scorecard must surface Rubrik and Sicherheit from ResultCell.quality;
+    'Empfehlung: Ja' must NOT appear (replaced by structured rubric/safety fields)."""
+    import tempfile
+    from pathlib import Path
+
+    from touchstone.result_schema import (
+        CellPerf,
+        CellQuality,
+        JudgeInfo,
+        Provenance,
+        ResultCell,
+        ResultDoc,
+    )
+    from touchstone.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp = _resp(first.id)
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    with tempfile.TemporaryDirectory() as td:
+        run_dir = Path(td)
+        doc = ResultDoc(
+            provenance=Provenance(
+                chip="Apple M5 Pro", ram_gb=64.0, os="macOS 15",
+                engine="lm-studio", seed=42, temperature=0.0,
+                pack_id=pk.id, pack_version=pk.version, date="2026-06-24",
+            ),
+            judge=JudgeInfo(model="qwen3-30b", temperature=0.0),
+            cells=[
+                ResultCell(
+                    model="m", variant="baseline", quant="q4",
+                    answer_tokens_med=80,
+                    perf=CellPerf(),
+                    quality=CellQuality(
+                        dim_scores={d.id: 4 for d in pk.dimensions},
+                        pct=80.0, rubric_level="hoch",
+                        safety_passed=True, safety_reason="", red_flags=[],
+                    ),
+                )
+            ],
+        )
+        (run_dir / "result.json").write_text(doc.model_dump_json(), encoding="utf-8")
+        detail = _detail(
+            pk, [resp], reports=[report],
+            master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                          "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
+            run_dir=run_dir,
+            manifest={"host": HOST, "date": "2026-06-24",
+                      "judge": {"model": "qwen3-30b", "temperature": 0.0}},
+        )
+        md = render_report_md(detail, GLOSSARY)
+    assert "Rubrik" in md, "Scorecard must surface 'Rubrik' from quality.rubric_level"
+    assert "Sicherheit" in md, "Scorecard must surface 'Sicherheit' from quality.safety_passed"
+    assert "Empfehlung: Ja" not in md, "'Empfehlung: Ja' must not appear — replaced by Rubrik/Sicherheit"
