@@ -13,7 +13,7 @@ dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/) (Tags **
 ## [0.1.0] — 2026-06-15
 
 ### Added
-- Erstes Gerüst des Benchmark-Harness `llm-ramcheck`.
+- Erstes Gerüst des Benchmark-Harness `llm-touchstone`.
 - Latenz-Runner über OpenAI-kompatibles Streaming: TTFT, Prefill-tok/s, Decode-tok/s
   aus dem `usage`-Feld; ein Warmup pro Zelle verworfen, Cold-Start separat ausgewiesen.
 - Entkoppelter Host-Sampler (eigener Prozess): `psutil` + `powermetrics` (Throttle) +
@@ -29,7 +29,7 @@ dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/) (Tags **
 - Validitätsgrenze sichtbar gemacht: Zellen mit < 7 gewerteten Läufen werden im Report mit `⚠️ n=<k>`
   markiert (fängt auch zu viele throttled/Akku-Ausschlüsse ab); CLI warnt bei `runs_per_cell < 8`.
 - `context_buckets` wird validiert (nicht leer, alle Werte positiv).
-- pre-commit-mypy-Hook auf `ramcheck/` korrigiert (zeigte auf nicht-existentes `src/`); stale pytest-`--ignore` entfernt.
+- pre-commit-mypy-Hook auf `touchstone/` korrigiert (zeigte auf nicht-existentes `src/`); stale pytest-`--ignore` entfernt.
 
 ### Aus dem ersten Real-Lauf (M5, mlx_lm.server, Qwen3.6-35B-A3B-4bit)
 - **Peak-RAM-Spalte** führt jetzt das Spitzen-**System-Memory** (engine-agnostisch, maßgeblich für

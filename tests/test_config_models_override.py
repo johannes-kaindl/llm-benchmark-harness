@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ramcheck.config import ModelSpec, apply_models_override, load_config, models_from_json
+from touchstone.config import ModelSpec, apply_models_override, load_config, models_from_json
 
 
 def test_models_from_json_valid():

@@ -1,4 +1,4 @@
-from ramcheck import sampler
+from touchstone import sampler
 
 
 def test_parse_pmset_ac():

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Startet die ramcheck-Steuerzentrale (lokales Web-UI) im Browser.
+# Startet die touchstone-Steuerzentrale (lokales Web-UI) im Browser.
 #
 # Installiert bei Bedarf das optionale [gui]-Extra (FastAPI/uvicorn/Jinja) und
-# reicht alle Argumente an `ramcheck gui` durch.
+# reicht alle Argumente an `touchstone gui` durch.
 #
 #   ./start-gui.sh                # Auto-Port, öffnet den Browser
 #   ./start-gui.sh --port 8000    # fester Port
@@ -28,6 +28,6 @@ if ! curl -s -o /dev/null --max-time 1 http://127.0.0.1:1234/v1/models 2>/dev/nu
   echo "   Übersicht/Ergebnisse anschauen geht auch ohne."
 fi
 
-echo "→ Starte ramcheck gui  (installiert [gui]-Extra bei Bedarf) …"
+echo "→ Starte touchstone gui  (installiert [gui]-Extra bei Bedarf) …"
 # `uv run --extra gui` stellt das optionale Extra sicher und startet dann den Server.
-exec uv run --extra gui ramcheck gui "$@"
+exec uv run --extra gui touchstone gui "$@"

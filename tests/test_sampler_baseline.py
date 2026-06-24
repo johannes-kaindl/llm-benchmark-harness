@@ -1,8 +1,8 @@
 import json
 import threading
 
-from ramcheck.models import ResourceSample
-from ramcheck.sampler import HostSampler
+from touchstone.models import ResourceSample
+from touchstone.sampler import HostSampler
 
 
 class _StubSampler(HostSampler):

@@ -2,8 +2,8 @@ import json
 
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
 
 PACK = "packs/ndassist.yaml"
 DIMS = ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]
@@ -26,7 +26,7 @@ def _client(tmp_path):
 
 
 def _resp_dict(model, variant, perf=None):
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     base = EvalResponse(
         pack_id="ndassist",
@@ -68,7 +68,7 @@ def _resp_dict(model, variant, perf=None):
 
 def _write_bundle(d, *, groups, scores_by_group, blank_dims=(), perf=None):
     """Build a self-contained judged bundle under d using the real in-repo pack."""
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     d.mkdir(parents=True, exist_ok=True)
     pk = load_pack(PACK)

@@ -1,4 +1,4 @@
-# llm-ramcheck
+# llm-touchstone
 
 > [🇬🇧 English](README.md) · 🇩🇪 Deutsch
 
@@ -19,18 +19,18 @@ nur die Config wird getauscht.
 ```bash
 uv sync
 # Latenz-Benchmark — M1 → LM Studio (:1234), M5 → mlx_lm.server (:8080):
-uv run ramcheck run    --config config.m1.yaml
-uv run ramcheck embed  --config config.m5.yaml   # Embedding-Durchsatz (separat)
-uv run ramcheck report --runs ./runs             # report.md aus raw.csv (neu) erzeugen
+uv run touchstone run    --config config.m1.yaml
+uv run touchstone embed  --config config.m5.yaml   # Embedding-Durchsatz (separat)
+uv run touchstone report --runs ./runs             # report.md aus raw.csv (neu) erzeugen
 
 # Qualitäts-Eval — ein Use-Case-Pack laufen lassen, dann bewerten:
-uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml
-uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml
-uv run ramcheck aggregate --runs ./runs          # Cross-Machine Hardware×Qualität-Tabelle
+uv run touchstone eval   --pack packs/ndassist.yaml --config config.m5.yaml
+uv run touchstone judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml
+uv run touchstone aggregate --runs ./runs          # Cross-Machine Hardware×Qualität-Tabelle
 
 # Web-Steuerzentrale (optionales [gui]-Extra):
 uv sync --extra gui
-uv run ramcheck gui                              # konfigurieren → starten → zusehen → auswerten → vergleichen → exportieren
+uv run touchstone gui                              # konfigurieren → starten → zusehen → auswerten → vergleichen → exportieren
 ```
 
 ## Nutzung
@@ -56,11 +56,11 @@ einer gewichteten Scorecard (`aggregate` rollt viele Bundles in eine Hardware×Q
 Generierung und Bewertung sind **zwei entkoppelte Phasen**, beide inkrementell und fortsetzbar.
 Ein neuer Use-Case ist ein neues YAML, kein neuer Code.
 
-**Web-Steuerzentrale (`ramcheck gui`).** Ein optionaler lokaler FastAPI-Server (das `[gui]`-Extra
+**Web-Steuerzentrale (`touchstone gui`).** Ein optionaler lokaler FastAPI-Server (das `[gui]`-Extra
 — build-freies HTMX/Alpine, vom Mess-Kern isoliert) bringt den ganzen Ablauf in den Browser:
 sehen, was ein Pack nach welchen Kriterien testet, Läufe konfigurieren und **starten/stoppen**,
 live zusehen, Ergebnisse ansehen, über Maschinen vergleichen und exportieren. Es ist ein
-**out-of-process Control-Plane** — es spawnt dieselben `ramcheck eval/judge`-Subprozesse wie die
+**out-of-process Control-Plane** — es spawnt dieselben `touchstone eval/judge`-Subprozesse wie die
 CLI, sodass der Mess-Loop entkoppelt bleibt und `runs/` die Single Source of Truth bleibt. An
 127.0.0.1 gebunden, nur ein Mess-Lauf gleichzeitig.
 

@@ -1,11 +1,11 @@
-# Design — Qualitative Use-Case Evaluation for `ramcheck`
+# Design — Qualitative Use-Case Evaluation for `touchstone`
 
 **Status:** approved (brainstorming, 2026-06-19) · **Increment:** 1 of N
 **Author:** Johannes + Claude Code (Opus 4.8)
 
 ## 1. Context & goal
 
-`ramcheck` today is a *performance* harness: it drives a fixed prompt set through an
+`touchstone` today is a *performance* harness: it drives a fixed prompt set through an
 OpenAI-compatible endpoint and records TTFT / decode-tok/s / prefill / peak-RAM with
 their distribution, plus macOS memory pressure & throttling — deterministically, with
 auto-detected host specs (chip, RAM). Output is Markdown + CSV. The whole point: the
@@ -36,7 +36,7 @@ optional second pass. This separation is what makes everything else fall out:
 
 1. **First increment** = qualitative-run capability + the ND pack + auto perf-specs, with
    LLM-judge as a separate step. (Not a throwaway script; not the full framework up front.)
-2. **Approach A** = extend `ramcheck` in-repo with `eval` + `judge` subcommands and four new
+2. **Approach A** = extend `touchstone` in-repo with `eval` + `judge` subcommands and four new
    modules, reusing the existing client/sampler/merge/hostinfo/stats machinery.
 3. **Judging** = pluggable; default a strong (cloud) judge for reliable scores; a local judge
    selectable for fully-offline runs; or skip judging and fill the scorecard manually.
@@ -51,7 +51,7 @@ optional second pass. This separation is what makes everything else fall out:
   but combining M1+M5 into one table is a later step).
 - Additional packs (office-assistant, …) — only the ND pack ships now.
 - HTML/web output; publish polish (README for external runners, CI matrix, etc.).
-- No engine-specific code outside `client.py` (unchanged ramcheck rule).
+- No engine-specific code outside `client.py` (unchanged touchstone rule).
 
 ## 4. Architecture
 
@@ -72,13 +72,13 @@ Two subcommands, four new modules, maximal reuse.
 
 ```
 pack.yaml ─┐
-           ├─► ramcheck eval ─► runs/<ts>_eval/
+           ├─► touchstone eval ─► runs/<ts>_eval/
 config.yaml┘     (generation +      ├─ responses.jsonl   (every answer, raw + per-request perf)
                   perf sampling)     ├─ perf.csv          (TTFT/decode/RAM per prompt)
                                      ├─ bundle.json       (run manifest: pack id+ver, models, host, config)
                                      └─ scorecard.md      (tech-specs filled, quality blank)
                                             │
-              judge.yaml ─► ramcheck judge ─┤
+              judge.yaml ─► touchstone judge ─┤
             (default cloud,                 ├─ scorecard.md   (quality cells filled)
              local optional)                ├─ judgements.jsonl (per-response score + red-flag + rationale)
                                             └─ scores.csv     (machine-readable, mergeable)
@@ -162,7 +162,7 @@ categories A–E, the 7 weighted dimensions, the K.-o. rule, the baseline system
 
 ## 6. `eval` — the deterministic run
 
-`ramcheck eval --pack packs/ndassist.yaml --config config.m5.yaml [--out ./runs]`
+`touchstone eval --pack packs/ndassist.yaml --config config.m5.yaml [--out ./runs]`
 
 - **Matrix:** `models (config) × prompt_variants (pack) × prompts (pack) × repeats (prompt)`.
   Iterate model-outer so each model loads once on the endpoint.
@@ -184,14 +184,14 @@ categories A–E, the 7 weighted dimensions, the K.-o. rule, the baseline system
 - `responses.jsonl` — one record per generation: `{pack_id, pack_version, model, variant,
   category, prompt_id, repeat, response_text, content_empty, ttft_s, decode_tps, prefill_tps,
   prompt_tokens, completion_tokens, is_cold_start, power_source, throttled, ...}`.
-- `perf.csv` — the existing-style per-request perf rows (so `ramcheck report` keeps working).
+- `perf.csv` — the existing-style per-request perf rows (so `touchstone report` keeps working).
 - `bundle.json` — run manifest: pack id+version, models + setup (size/quant/ctx), host
   (chip/RAM via `hostinfo`), endpoint/engine, sampling — everything needed to reproduce/merge.
 - `scorecard.md` — rendered with **tech-specs filled, quality blank** (the fill-in artifact).
 
 ## 7. `judge` — the optional scoring pass
 
-`ramcheck judge --bundle runs/<ts>_eval [--judge-config judge.yaml]`
+`touchstone judge --bundle runs/<ts>_eval [--judge-config judge.yaml]`
 
 - **Judge client:** an OpenAI-compatible endpoint (reuse `client`), configured via
   `judge.yaml` (`endpoint`, `model`, `temperature: 0`). Default config points at a strong
@@ -237,7 +237,7 @@ After `eval` (no judge yet) the quality cells render as blank/`—`; after `judg
 - **Pack invalid:** fail fast with a precise message before any request (like `config.py`).
 - **Battery/throttle:** recorded, not fatal (quality is power-independent).
 
-## 10. Testing (ramcheck convention: pure logic unit-tested, I/O dependency-injected)
+## 10. Testing (touchstone convention: pure logic unit-tested, I/O dependency-injected)
 
 - `pack.py`: load/validate happy path + each validation failure (bad ko ref, dup ids, empty
   variants, bad scale).

@@ -1,6 +1,6 @@
 # tests/test_gui_live.py
-from ramcheck import events as ev
-from ramcheck.gui import live
+from touchstone import events as ev
+from touchstone.gui import live
 
 
 def test_eval_stream_folds_events(tmp_path):
@@ -24,7 +24,7 @@ def test_stream_tolerates_missing_file(tmp_path):
 
 
 def test_judge_stream_uses_judge_view(tmp_path):
-    from ramcheck import judge_events as je
+    from touchstone import judge_events as je
 
     p = tmp_path / "judge_events.jsonl"
     p.write_text(je.dumps(je.judge_start_event(1.0, 3)) + "\n", encoding="utf-8")
@@ -38,7 +38,7 @@ def test_truncation_clears_stale_events(tmp_path):
     The stale events must be dropped so the view reflects only the new stream,
     not a mix that keeps total stuck at the larger stale value (MAJOR 3).
     """
-    from ramcheck import judge_events as je
+    from touchstone import judge_events as je
 
     p = tmp_path / "judge_events.jsonl"
     # First stream: total=5 plus four verdicts.

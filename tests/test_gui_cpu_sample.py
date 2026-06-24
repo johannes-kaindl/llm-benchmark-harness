@@ -1,8 +1,8 @@
 # tests/test_gui_cpu_sample.py
-import ramcheck.sampler as sampler_mod
-from ramcheck.merge import load_samples_jsonl
-from ramcheck.models import ResourceSample
-from ramcheck.sampler import HostSampler
+import touchstone.sampler as sampler_mod
+from touchstone.merge import load_samples_jsonl
+from touchstone.models import ResourceSample
+from touchstone.sampler import HostSampler
 
 
 def test_resource_sample_has_cpu_pct_defaulting_none():

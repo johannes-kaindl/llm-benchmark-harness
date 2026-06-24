@@ -13,11 +13,11 @@ from test_gui_compare import (
     _write_compare_bundle,
 )
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
-from ramcheck.judge import write_reports_jsonl
-from ramcheck.pack import load_pack
-from ramcheck.results import ModelReport
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
+from touchstone.judge import write_reports_jsonl
+from touchstone.pack import load_pack
+from touchstone.results import ModelReport
 
 
 class _FakeLauncher:

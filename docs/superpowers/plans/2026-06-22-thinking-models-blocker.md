@@ -11,9 +11,9 @@
 **Spec:** `docs/superpowers/specs/2026-06-22-thinking-models-blocker-design.md`
 
 **Konventionen (gelten für JEDEN Task):**
-- Nach jeder Änderung: `uv run pytest -q` (relevante Datei zuerst), `uv run ruff check . && uv run ruff format .`, `uv run mypy ramcheck/`.
+- Nach jeder Änderung: `uv run pytest -q` (relevante Datei zuerst), `uv run ruff check . && uv run ruff format .`, `uv run mypy touchstone/`.
 - Commits klein, eine Aufgabe pro Commit. Commit-Trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
-- `mypy` prüft nur `ramcheck/` — Test-FakeClients müssen nicht protocol-konform sein.
+- `mypy` prüft nur `touchstone/` — Test-FakeClients müssen nicht protocol-konform sein.
 - GUI-Tasks: Server nach jeder Änderung neu starten, JS headless verifizieren (Seiten mit offener SSE können NICHT per `--dump-dom` gesnapshottet werden → dort Server-SSE + Markup prüfen).
 
 ---
@@ -23,14 +23,14 @@
 ### Task 1: `ModelSpec` — `reasoning_headroom_tokens` + `extra_body`
 
 **Files:**
-- Modify: `ramcheck/config.py:34-37` (`ModelSpec`)
+- Modify: `touchstone/config.py:34-37` (`ModelSpec`)
 - Test: `tests/test_config.py`
 
 - [ ] **Step 1: Failing test** — in `tests/test_config.py` ergänzen:
 
 ```python
 def test_modelspec_thinking_defaults_are_neutral():
-    from ramcheck.config import ModelSpec
+    from touchstone.config import ModelSpec
 
     m = ModelSpec(id="x")
     assert m.reasoning_headroom_tokens == 0
@@ -38,7 +38,7 @@ def test_modelspec_thinking_defaults_are_neutral():
 
 
 def test_modelspec_thinking_fields_roundtrip_through_models_json():
-    from ramcheck.config import models_from_json
+    from touchstone.config import models_from_json
 
     specs = models_from_json(
         '[{"id": "gemma", "reasoning_headroom_tokens": 2000,'
@@ -53,7 +53,7 @@ def test_modelspec_thinking_fields_roundtrip_through_models_json():
 Run: `uv run pytest tests/test_config.py -k thinking -v`
 Expected: FAIL (`ModelSpec` has no field `reasoning_headroom_tokens`).
 
-- [ ] **Step 3: Implement** — `ramcheck/config.py`, `ModelSpec` erweitern:
+- [ ] **Step 3: Implement** — `touchstone/config.py`, `ModelSpec` erweitern:
 
 ```python
 class ModelSpec(BaseModel):
@@ -66,12 +66,12 @@ class ModelSpec(BaseModel):
     # call (e.g. disable thinking) — engine-agnostic; the harness never branches on engine here
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_config.py -k thinking -v` → PASS. Dann `uv run mypy ramcheck/` (sauber, da additive Felder mit Defaults).
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_config.py -k thinking -v` → PASS. Dann `uv run mypy touchstone/` (sauber, da additive Felder mit Defaults).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/config.py tests/test_config.py
+git add touchstone/config.py tests/test_config.py
 git commit -m "feat(config): ModelSpec reasoning_headroom_tokens + extra_body (opt-in, default-neutral)"
 ```
 
@@ -80,15 +80,15 @@ git commit -m "feat(config): ModelSpec reasoning_headroom_tokens + extra_body (o
 ### Task 2: `extra_body` durch `stream`/`stream_once` reichen
 
 **Files:**
-- Modify: `ramcheck/runner.py:43-55` (`StreamClient` Protocol), `ramcheck/runner.py:87-122` (`stream_once`)
-- Modify: `ramcheck/client.py:49-68` (`OpenAIStreamClient.stream`)
+- Modify: `touchstone/runner.py:43-55` (`StreamClient` Protocol), `touchstone/runner.py:87-122` (`stream_once`)
+- Modify: `touchstone/client.py:49-68` (`OpenAIStreamClient.stream`)
 - Test: `tests/test_client.py`, `tests/test_runner.py`
 
 - [ ] **Step 1: Failing test (client)** — in `tests/test_client.py` ergänzen. Spy auf die SDK-`create`-Call-Kwargs:
 
 ```python
 def test_stream_forwards_extra_body_only_when_set(monkeypatch):
-    from ramcheck.client import OpenAIStreamClient
+    from touchstone.client import OpenAIStreamClient
 
     captured = {}
 
@@ -121,7 +121,7 @@ def test_stream_forwards_extra_body_only_when_set(monkeypatch):
 Run: `uv run pytest tests/test_client.py -k extra_body -v`
 Expected: FAIL (`stream()` got an unexpected keyword argument `extra_body`).
 
-- [ ] **Step 3: Implement** — `ramcheck/runner.py`, `StreamClient.stream` Signatur erweitern:
+- [ ] **Step 3: Implement** — `touchstone/runner.py`, `StreamClient.stream` Signatur erweitern:
 
 ```python
     def stream(
@@ -136,7 +136,7 @@ Expected: FAIL (`stream()` got an unexpected keyword argument `extra_body`).
     ) -> Iterator[StreamEvent]: ...
 ```
 
-`ramcheck/client.py`, `OpenAIStreamClient.stream`:
+`touchstone/client.py`, `OpenAIStreamClient.stream`:
 
 ```python
     def stream(
@@ -166,7 +166,7 @@ Expected: FAIL (`stream()` got an unexpected keyword argument `extra_body`).
 
 (Rest der Methode unverändert.)
 
-`ramcheck/runner.py`, `stream_once` — Signatur + Forwarding. Nach `seed: int,` einfügen:
+`touchstone/runner.py`, `stream_once` — Signatur + Forwarding. Nach `seed: int,` einfügen:
 
 ```python
     extra_body: dict[str, object] | None = None,
@@ -191,7 +191,7 @@ und den `client.stream(...)`-Aufruf (Zeile ~116) ändern zu:
 
 ```python
 def test_stream_once_forwards_extra_body():
-    from ramcheck.runner import StreamEvent, stream_once
+    from touchstone.runner import StreamEvent, stream_once
 
     seen = {}
 
@@ -212,12 +212,12 @@ def test_stream_once_forwards_extra_body():
 
 - [ ] **Step 5: Run both, expect PASS**
 
-Run: `uv run pytest tests/test_client.py tests/test_runner.py -k extra_body -v` → PASS. Dann `uv run mypy ramcheck/`.
+Run: `uv run pytest tests/test_client.py tests/test_runner.py -k extra_body -v` → PASS. Dann `uv run mypy touchstone/`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ramcheck/runner.py ramcheck/client.py tests/test_client.py tests/test_runner.py
+git add touchstone/runner.py touchstone/client.py tests/test_client.py tests/test_runner.py
 git commit -m "feat(client): forward extra_body through stream/stream_once (engine-agnostic thinking switch)"
 ```
 
@@ -226,14 +226,14 @@ git commit -m "feat(client): forward extra_body through stream/stream_once (engi
 ### Task 3: `EvalResponse.reasoning_text`
 
 **Files:**
-- Modify: `ramcheck/results.py:54` (nach `reasoning_chars`)
+- Modify: `touchstone/results.py:54` (nach `reasoning_chars`)
 - Test: `tests/test_results.py` (oder, falls nicht vorhanden, in `tests/test_qualrun.py` mitabgedeckt durch Task 4)
 
 - [ ] **Step 1: Failing test** — in `tests/test_results.py` ergänzen (falls Datei fehlt, neu anlegen mit Standard-Imports):
 
 ```python
 def test_evalresponse_reasoning_text_defaults_empty():
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     r = EvalResponse(
         pack_id="p", pack_version=1, machine="M", model="m", quant="", engine="e",
@@ -249,18 +249,18 @@ def test_evalresponse_reasoning_text_defaults_empty():
 
 - [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_results.py -k reasoning_text -v` → FAIL.
 
-- [ ] **Step 3: Implement** — `ramcheck/results.py`, in `EvalResponse` direkt nach `reasoning_chars: int = 0`:
+- [ ] **Step 3: Implement** — `touchstone/results.py`, in `EvalResponse` direkt nach `reasoning_chars: int = 0`:
 
 ```python
     reasoning_text: str = ""  # the "thinking" text — persisted ONLY when content_empty (else "")
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_results.py -k reasoning_text -v` → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_results.py -k reasoning_text -v` → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/results.py tests/test_results.py
+git add touchstone/results.py tests/test_results.py
 git commit -m "feat(results): EvalResponse.reasoning_text (persisted on content_empty)"
 ```
 
@@ -269,7 +269,7 @@ git commit -m "feat(results): EvalResponse.reasoning_text (persisted on content_
 ### Task 4: `run_eval` — effektives Budget + `extra_body` + `reasoning_text`-Persistenz
 
 **Files:**
-- Modify: `ramcheck/qualrun.py:127-135` (`stream_once`-Call), `ramcheck/qualrun.py:151-170` (`EvalResponse`-Bau)
+- Modify: `touchstone/qualrun.py:127-135` (`stream_once`-Call), `touchstone/qualrun.py:151-170` (`EvalResponse`-Bau)
 - Test: `tests/test_qualrun.py`
 
 - [ ] **Step 1: Failing test** — in `tests/test_qualrun.py` ergänzen. FakeClient, der `max_tokens`/`extra_body` fängt und reasoning emittiert:
@@ -285,7 +285,7 @@ class CapturingClient:
     def stream(self, *, messages, model, max_tokens, temperature, seed, extra_body=None):
         self.seen.append({"max_tokens": max_tokens, "extra_body": extra_body})
         # reasoning-only: no delta_text, but reasoning present
-        from ramcheck.runner import StreamEvent
+        from touchstone.runner import StreamEvent
         yield StreamEvent(reasoning_text="denke nach…")
         yield StreamEvent(prompt_tokens=10, completion_tokens=5)
 
@@ -324,7 +324,7 @@ def test_run_eval_persists_reasoning_text_only_when_empty(tmp_path):
 
 - [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_qualrun.py -k "headroom or reasoning_text" -v` → FAIL (budget 400, reasoning_text leer).
 
-- [ ] **Step 3: Implement** — `ramcheck/qualrun.py`, `stream_once`-Call (Zeile 127-135):
+- [ ] **Step 3: Implement** — `touchstone/qualrun.py`, `stream_once`-Call (Zeile 127-135):
 
 ```python
                 outcome = stream_once(
@@ -357,12 +357,12 @@ Im `EvalResponse(...)`-Bau (nach `content_empty=...` Zeile 152): `content_empty`
 
 (Den bestehenden Inline-Ausdruck `content_empty=outcome.ok and not outcome.text.strip()` durch `content_empty=content_empty` ersetzen.)
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_qualrun.py -v` (alle, inkl. der bestehenden) → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_qualrun.py -v` (alle, inkl. der bestehenden) → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/qualrun.py tests/test_qualrun.py
+git add touchstone/qualrun.py tests/test_qualrun.py
 git commit -m "feat(qualrun): effective budget (prompt+headroom), forward extra_body, persist reasoning_text on empty"
 ```
 
@@ -373,14 +373,14 @@ git commit -m "feat(qualrun): effective budget (prompt+headroom), forward extra_
 ### Task 5: reasoning-only → `unscored` statt stiller 1/5
 
 **Files:**
-- Modify: `ramcheck/judge.py:30-33` (`EMPTY_CONTENT_RATIONALE` splitten), `ramcheck/judge.py:192-200` (`score_response`)
+- Modify: `touchstone/judge.py:30-33` (`EMPTY_CONTENT_RATIONALE` splitten), `touchstone/judge.py:192-200` (`score_response`)
 - Test: `tests/test_judge.py`
 
 - [ ] **Step 1: Failing test** — in `tests/test_judge.py` ergänzen. Der `_resp`-Helper (Zeile 56) braucht `reasoning_chars`; ergänze ihn um einen Default und nutze ihn:
 
 ```python
 def test_score_response_reasoning_only_is_unscored(_pack):
-    from ramcheck.judge import score_response
+    from touchstone.judge import score_response
     prompt = _pack.all_prompts()[0][1]
 
     class _NoBackend:
@@ -396,7 +396,7 @@ def test_score_response_reasoning_only_is_unscored(_pack):
 
 
 def test_score_response_truly_empty_still_scores_one(_pack):
-    from ramcheck.judge import score_response
+    from touchstone.judge import score_response
     prompt = _pack.all_prompts()[0][1]
 
     class _NoBackend:
@@ -414,7 +414,7 @@ def test_score_response_truly_empty_still_scores_one(_pack):
 
 - [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_judge.py -k "reasoning_only or truly_empty" -v` → FAIL (heute score=1, unscored=False für beide).
 
-- [ ] **Step 3: Implement** — `ramcheck/judge.py`. `EMPTY_CONTENT_RATIONALE` (Zeile 30-33) ersetzen durch zwei Konstanten:
+- [ ] **Step 3: Implement** — `touchstone/judge.py`. `EMPTY_CONTENT_RATIONALE` (Zeile 30-33) ersetzen durch zwei Konstanten:
 
 ```python
 REASONING_ONLY_RATIONALE = (
@@ -449,12 +449,12 @@ EMPTY_RATIONALE = (
         )
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_judge.py -v` → PASS (auch bestehende). Falls ein bestehender Test gegen `EMPTY_CONTENT_RATIONALE` oder das alte 1/5-Verhalten bei reasoning prüft: anpassen (reasoning-only erwartet jetzt `unscored`). `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_judge.py -v` → PASS (auch bestehende). Falls ein bestehender Test gegen `EMPTY_CONTENT_RATIONALE` oder das alte 1/5-Verhalten bei reasoning prüft: anpassen (reasoning-only erwartet jetzt `unscored`). `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/judge.py tests/test_judge.py
+git add touchstone/judge.py tests/test_judge.py
 git commit -m "feat(judge): reasoning-only -> unscored (not silent 1/5); truly-empty stays 1"
 ```
 
@@ -463,18 +463,18 @@ git commit -m "feat(judge): reasoning-only -> unscored (not silent 1/5); truly-e
 ### Task 6: Scorecard zeigt die reasoning-only-Quote
 
 **Files:**
-- Modify: `ramcheck/scorecard.py` (Tech-Specs-Tabelle in `render_scorecard_md`, ~144-162)
+- Modify: `touchstone/scorecard.py` (Tech-Specs-Tabelle in `render_scorecard_md`, ~144-162)
 - Test: `tests/test_scorecard.py`
 
 - [ ] **Step 1: Failing test** — in `tests/test_scorecard.py` ergänzen. Eine Hilfsfunktion zählt reasoning-only pro Gruppe; sie soll im Markdown erscheinen:
 
 ```python
 def test_scorecard_surfaces_reasoning_only_count():
-    from ramcheck.scorecard import reasoning_only_counts
+    from touchstone.scorecard import reasoning_only_counts
 
     # build two responses, one reasoning-only
     def _r(pid, empty, rchars):
-        from ramcheck.results import EvalResponse
+        from touchstone.results import EvalResponse
         return EvalResponse(
             pack_id="demo", pack_version=1, machine="M", model="m", quant="", engine="e",
             engine_version="0", variant="none", category="A", prompt_id=pid, repeat=0,
@@ -489,7 +489,7 @@ def test_scorecard_surfaces_reasoning_only_count():
 
 - [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_scorecard.py -k reasoning_only -v` → FAIL (`reasoning_only_counts` undefined).
 
-- [ ] **Step 3: Implement** — `ramcheck/scorecard.py`, pure Helper neben `mean_score` (nach `red_flagged_prompts`, ~Zeile 63):
+- [ ] **Step 3: Implement** — `touchstone/scorecard.py`, pure Helper neben `mean_score` (nach `red_flagged_prompts`, ~Zeile 63):
 
 ```python
 def reasoning_only_counts(responses: list[EvalResponse]) -> dict[tuple[str, str], int]:
@@ -532,12 +532,12 @@ Vor der Schleife `ro = reasoning_only_counts(responses)` setzen; in der Zeilen-A
         )
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_scorecard.py -v` → PASS (auch bestehende Render-Tests; falls einer die Spaltenzahl der Tech-Specs-Tabelle hart prüft, anpassen). `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_scorecard.py -v` → PASS (auch bestehende Render-Tests; falls einer die Spaltenzahl der Tech-Specs-Tabelle hart prüft, anpassen). `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/scorecard.py tests/test_scorecard.py
+git add touchstone/scorecard.py tests/test_scorecard.py
 git commit -m "feat(scorecard): surface reasoning-only count in tech-specs table"
 ```
 
@@ -548,15 +548,15 @@ git commit -m "feat(scorecard): surface reasoning-only count in tech-specs table
 ### Task 7: `preflight_models` (pure, DI-testbar)
 
 **Files:**
-- Create: `ramcheck/preflight.py`
+- Create: `touchstone/preflight.py`
 - Test: `tests/test_preflight.py`
 
 - [ ] **Step 1: Failing test** — `tests/test_preflight.py` neu:
 
 ```python
-from ramcheck.config import ModelSpec
-from ramcheck.preflight import PreflightResult, preflight_models
-from ramcheck.runner import StreamEvent
+from touchstone.config import ModelSpec
+from touchstone.preflight import PreflightResult, preflight_models
+from touchstone.runner import StreamEvent
 
 
 class _FakeClient:
@@ -602,9 +602,9 @@ def test_preflight_never_raises_on_error():
     assert "not found" in r.detail
 ```
 
-- [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_preflight.py -v` → FAIL (no module `ramcheck.preflight`).
+- [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_preflight.py -v` → FAIL (no module `touchstone.preflight`).
 
-- [ ] **Step 3: Implement** — `ramcheck/preflight.py`:
+- [ ] **Step 3: Implement** — `touchstone/preflight.py`:
 
 ```python
 """Pre-flight smoke: before the matrix, send ONE small request per model with that model's
@@ -618,8 +618,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from ramcheck.config import ModelSpec
-from ramcheck.runner import StreamClient, stream_once
+from touchstone.config import ModelSpec
+from touchstone.runner import StreamClient, stream_once
 
 SMOKE_PROMPT = "Antworte in genau einem Satz: Was ist 2 + 2?"
 
@@ -683,12 +683,12 @@ def preflight_models(
     return out
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_preflight.py -v` → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_preflight.py -v` → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/preflight.py tests/test_preflight.py
+git add touchstone/preflight.py tests/test_preflight.py
 git commit -m "feat(preflight): preflight_models — per-model smoke classification (pure, never raises)"
 ```
 
@@ -697,14 +697,14 @@ git commit -m "feat(preflight): preflight_models — per-model smoke classificat
 ### Task 8: `PREFLIGHT`-Event + `build_view`-Fold
 
 **Files:**
-- Modify: `ramcheck/events.py` (Konstante, Event-Builder, `RunView`, `build_view`, `INDEX_HTML`)
+- Modify: `touchstone/events.py` (Konstante, Event-Builder, `RunView`, `build_view`, `INDEX_HTML`)
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Failing test** — in `tests/test_events.py` ergänzen:
 
 ```python
 def test_build_view_folds_preflight():
-    from ramcheck.events import build_view, preflight_event
+    from touchstone.events import build_view, preflight_event
 
     ev = preflight_event(1.0, [
         {"model": "gemma", "status": "reasoning_only", "text_chars": 0,
@@ -717,7 +717,7 @@ def test_build_view_folds_preflight():
 
 - [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_events.py -k preflight -v` → FAIL.
 
-- [ ] **Step 3: Implement** — `ramcheck/events.py`:
+- [ ] **Step 3: Implement** — `touchstone/events.py`:
 
 Konstante neben den anderen (Zeile 16-19): `PREFLIGHT = "preflight"`.
 
@@ -762,12 +762,12 @@ und im HTML-Body direkt nach `<h1>…</h1>` ein Element ergänzen:
 <div id="pf" style="display:none;background:#5a3a1a;color:#fc9;padding:.4rem .7rem;border-radius:6px;margin:.4rem 0"></div>
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_events.py -v` → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_events.py -v` → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/events.py tests/test_events.py
+git add touchstone/events.py tests/test_events.py
 git commit -m "feat(events): preflight event + build_view fold + monitor warning banner"
 ```
 
@@ -776,7 +776,7 @@ git commit -m "feat(events): preflight event + build_view fold + monitor warning
 ### Task 9: `run_eval` — Pre-Flight-Integration
 
 **Files:**
-- Modify: `ramcheck/qualrun.py:70-82` (Signatur), `ramcheck/qualrun.py:111-115` (vor `sampler.start()`)
+- Modify: `touchstone/qualrun.py:70-82` (Signatur), `touchstone/qualrun.py:111-115` (vor `sampler.start()`)
 - Test: `tests/test_qualrun.py`
 
 - [ ] **Step 1: Failing test** — in `tests/test_qualrun.py` ergänzen:
@@ -814,7 +814,7 @@ def test_run_eval_resume_skips_preflight(tmp_path):
 
 - [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_qualrun.py -k preflight -v` → FAIL (`run_eval` has no `on_preflight`).
 
-- [ ] **Step 3: Implement** — `ramcheck/qualrun.py`. Signatur (Zeile 79-81) um zwei Parameter ergänzen:
+- [ ] **Step 3: Implement** — `touchstone/qualrun.py`. Signatur (Zeile 79-81) um zwei Parameter ergänzen:
 
 ```python
     on_run_start: Callable[[int], None] | None = None,
@@ -824,7 +824,7 @@ def test_run_eval_resume_skips_preflight(tmp_path):
     strict_preflight: bool = False,
 ```
 
-Import oben ergänzen: `from ramcheck.preflight import PreflightResult, preflight_models`.
+Import oben ergänzen: `from touchstone.preflight import PreflightResult, preflight_models`.
 
 Pre-Flight-Block nach `cells = iter_eval_cells(config, pack)` (Zeile 111), VOR `if on_run_start…` einfügen:
 
@@ -851,12 +851,12 @@ Pre-Flight-Block nach `cells = iter_eval_cells(config, pack)` (Zeile 111), VOR `
         on_run_start(len(cells))
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_qualrun.py -v` → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_qualrun.py -v` → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/qualrun.py tests/test_qualrun.py
+git add touchstone/qualrun.py tests/test_qualrun.py
 git commit -m "feat(qualrun): run preflight before matrix (callback + strict abort; resume skips)"
 ```
 
@@ -865,15 +865,15 @@ git commit -m "feat(qualrun): run preflight before matrix (callback + strict abo
 ### Task 10: CLI `--strict-preflight` + Surfacing (Print + Event)
 
 **Files:**
-- Modify: `ramcheck/cli.py:244-310` (`_eval_event_writers` → 5. Closure `on_preflight`), `ramcheck/cli.py:492-567` (`eval_cmd`)
+- Modify: `touchstone/cli.py:244-310` (`_eval_event_writers` → 5. Closure `on_preflight`), `touchstone/cli.py:492-567` (`eval_cmd`)
 - Test: `tests/test_cli_eval.py` (oder die vorhandene CLI-Test-Datei)
 
 - [ ] **Step 1: Failing test** — die `_eval_event_writers` gibt künftig 5 statt 4 Closures zurück; teste, dass ein `preflight`-Event geschrieben wird. In der CLI-Test-Datei ergänzen:
 
 ```python
 def test_eval_event_writers_emits_preflight(tmp_path):
-    from ramcheck.cli import _eval_event_writers
-    from ramcheck.preflight import PreflightResult
+    from touchstone.cli import _eval_event_writers
+    from touchstone.preflight import PreflightResult
     import json
 
     ep = tmp_path / "events.jsonl"
@@ -888,7 +888,7 @@ def test_eval_event_writers_emits_preflight(tmp_path):
 
 - [ ] **Step 2: Run, expect FAIL** — FAIL (`_eval_event_writers` returns 4 values).
 
-- [ ] **Step 3: Implement** — `ramcheck/cli.py`, `_eval_event_writers`:
+- [ ] **Step 3: Implement** — `touchstone/cli.py`, `_eval_event_writers`:
 
 Rückgabetyp-Tuple (Zeile 248-253) um eine Closure erweitern (zwischen `on_cell_done` und `run_done`):
 
@@ -896,7 +896,7 @@ Rückgabetyp-Tuple (Zeile 248-253) um eine Closure erweitern (zwischen `on_cell_
     Callable[[list[PreflightResult]], None],
 ```
 
-(Import oben in cli.py ergänzen: `from ramcheck.preflight import PreflightResult`.)
+(Import oben in cli.py ergänzen: `from touchstone.preflight import PreflightResult`.)
 
 Closure definieren (vor `def run_done`):
 
@@ -930,7 +930,7 @@ Eine kleine Print-Closure definieren (nach `client = _make_client(cfg)`, Zeile 5
             console.print("[green]✓ Pre-Flight[/] alle Modelle liefern sichtbaren Content")
 ```
 
-(Import `from ramcheck.preflight import PreflightResult` oben in cli.py — schon in Step 3.)
+(Import `from touchstone.preflight import PreflightResult` oben in cli.py — schon in Step 3.)
 
 Non-emit-Pfad (Zeile 539-542):
 
@@ -958,12 +958,12 @@ Emit-Pfad: die Writer-Entpackung (Zeile 550-552) auf 5 Werte erweitern und ein k
 
 und der `run_eval(...)`-Aufruf (Zeile 555-564) bekommt `on_preflight=_on_preflight, strict_preflight=strict_preflight,`.
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/ -k "preflight" -v` → PASS. `uv run mypy ramcheck/`. (Beachte: `_run_event_writers` für den Chat-`run` bleibt unverändert — der Pre-Flight ist eval-only.)
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/ -k "preflight" -v` → PASS. `uv run mypy touchstone/`. (Beachte: `_run_event_writers` für den Chat-`run` bleibt unverändert — der Pre-Flight ist eval-only.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/
+git add touchstone/cli.py tests/
 git commit -m "feat(cli): eval --strict-preflight + preflight surfacing (console + events.jsonl)"
 ```
 
@@ -972,19 +972,19 @@ git commit -m "feat(cli): eval --strict-preflight + preflight surfacing (console
 ### Task 11: GUI-Live-Karte zeigt den Pre-Flight-Befund
 
 **Files:**
-- Read first: `ramcheck/gui/live.py` (fold/SSE-Pfad der GUI), `ramcheck/gui/templates/*` (Live-Karte), zugehöriges JS
+- Read first: `touchstone/gui/live.py` (fold/SSE-Pfad der GUI), `touchstone/gui/templates/*` (Live-Karte), zugehöriges JS
 - Modify: das GUI-Live-Template + sein EventSource-JS-Handler (analog zur `INDEX_HTML`-Änderung aus Task 8)
 - Verify: headless Chrome SSE-Smoke
 
-- [ ] **Step 1: Read the GUI live path** — `ramcheck/gui/live.py` lesen: ob es `events.build_view` wiederverwendet (dann trägt das `view`-JSON bereits `preflight`) oder ein eigenes Fold hat. Falls eigenes Fold: den `preflight`-Schlüssel analog zu Task 8 durchreichen.
+- [ ] **Step 1: Read the GUI live path** — `touchstone/gui/live.py` lesen: ob es `events.build_view` wiederverwendet (dann trägt das `view`-JSON bereits `preflight`) oder ein eigenes Fold hat. Falls eigenes Fold: den `preflight`-Schlüssel analog zu Task 8 durchreichen.
 
 - [ ] **Step 2: Implement the banner** — im GUI-Live-Template (die Progress-Karte, die in der letzten Session auf natives `EventSource` umgestellt wurde) ein verstecktes Warn-`<div id="pf">` ergänzen und im `view`-Event-Handler füllen — exakt das Muster aus Task 8 (`v.preflight.filter(p=>p.status!=='ok')`).
 
 - [ ] **Step 3: Restart + headless verify** — Server neu starten (Routen-Code lädt sonst nicht):
 
 ```bash
-pkill -f "ramcheck gui" 2>/dev/null; sleep 1
-uv run ramcheck gui --no-open --port 8765 &
+pkill -f "touchstone gui" 2>/dev/null; sleep 1
+uv run touchstone gui --no-open --port 8765 &
 sleep 2
 ```
 
@@ -999,7 +999,7 @@ Erwartung: im `event: view`-`data:` taucht `"preflight":[{...,"status":"reasonin
 - [ ] **Step 4: Commit**
 
 ```bash
-git add ramcheck/gui/
+git add touchstone/gui/
 git commit -m "feat(gui): live preflight warning banner in the progress card"
 ```
 
@@ -1010,14 +1010,14 @@ git commit -m "feat(gui): live preflight warning banner in the progress card"
 ### Task 12: Discovery generisch + Judge-Variante
 
 **Files:**
-- Modify: `ramcheck/gui/configs.py` (Kern-Helper `discover_models` + `discover_judge_endpoint_models`)
+- Modify: `touchstone/gui/configs.py` (Kern-Helper `discover_models` + `discover_judge_endpoint_models`)
 - Test: `tests/test_gui_configs.py`
 
 - [ ] **Step 1: Failing test** — in `tests/test_gui_configs.py` ergänzen:
 
 ```python
 def test_discover_models_generic_dedupes_and_never_raises():
-    from ramcheck.gui.configs import discover_models
+    from touchstone.gui.configs import discover_models
 
     out = discover_models("http://x/v1", "k", lister=lambda: ["a", "a", "b"])
     assert out == {"models": ["a", "b"], "error": None}
@@ -1027,7 +1027,7 @@ def test_discover_models_generic_dedupes_and_never_raises():
 
 
 def test_discover_judge_endpoint_models(tmp_path):
-    from ramcheck.gui.configs import discover_judge_endpoint_models
+    from touchstone.gui.configs import discover_judge_endpoint_models
 
     jc = tmp_path / "judge.yaml"
     jc.write_text("endpoint:\n  base_url: http://x/v1\nmodel: qwen\n", encoding="utf-8")
@@ -1037,7 +1037,7 @@ def test_discover_judge_endpoint_models(tmp_path):
 
 - [ ] **Step 2: Run, expect FAIL** — `uv run pytest tests/test_gui_configs.py -k "discover_models or judge_endpoint" -v` → FAIL.
 
-- [ ] **Step 3: Implement** — `ramcheck/gui/configs.py`. Kern-Helper extrahieren und `discover_endpoint_models` darauf umstellen:
+- [ ] **Step 3: Implement** — `touchstone/gui/configs.py`. Kern-Helper extrahieren und `discover_endpoint_models` darauf umstellen:
 
 ```python
 def discover_models(
@@ -1050,7 +1050,7 @@ def discover_models(
     if lister is None:
 
         def lister() -> list[str]:
-            from ramcheck.client import OpenAIStreamClient
+            from touchstone.client import OpenAIStreamClient
 
             client = OpenAIStreamClient(base_url, api_key, timeout=3.0, max_retries=0)
             return client.list_models()
@@ -1089,7 +1089,7 @@ def discover_judge_endpoint_models(
 ) -> dict[str, Any]:
     """Judge-config variant: load the JudgeConfig, discover its endpoint's models."""
     if lister is None:
-        from ramcheck.judge import load_judge_config
+        from touchstone.judge import load_judge_config
 
         try:
             jc = load_judge_config(judge_config_path)
@@ -1101,12 +1101,12 @@ def discover_judge_endpoint_models(
 
 (Bestehende `discover_endpoint_models`-Aufrufer bleiben kompatibel — gleiche Signatur, gleicher Rückgabe-Kontrakt.)
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_gui_configs.py -v` → PASS (auch der bestehende `discover_endpoint_models`-Test). `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_gui_configs.py -v` → PASS (auch der bestehende `discover_endpoint_models`-Test). `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/configs.py tests/test_gui_configs.py
+git add touchstone/gui/configs.py tests/test_gui_configs.py
 git commit -m "refactor(gui): generic discover_models + discover_judge_endpoint_models"
 ```
 
@@ -1115,7 +1115,7 @@ git commit -m "refactor(gui): generic discover_models + discover_judge_endpoint_
 ### Task 13: Route `GET /judge-endpoint-models`
 
 **Files:**
-- Modify: `ramcheck/gui/app.py:168-177` (neben `/endpoint-models`)
+- Modify: `touchstone/gui/app.py:168-177` (neben `/endpoint-models`)
 - Test: `tests/test_gui_app.py` (FastAPI TestClient)
 
 - [ ] **Step 1: Failing test** — in `tests/test_gui_app.py` ergänzen (Muster des bestehenden `/endpoint-models`-Tests spiegeln):
@@ -1123,7 +1123,7 @@ git commit -m "refactor(gui): generic discover_models + discover_judge_endpoint_
 ```python
 def test_judge_endpoint_models_guards_path_and_never_500(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from ramcheck.gui.app import create_app
+    from touchstone.gui.app import create_app
 
     monkeypatch.chdir(tmp_path)
     (tmp_path / "judge.yaml").write_text(
@@ -1144,7 +1144,7 @@ def test_judge_endpoint_models_guards_path_and_never_500(tmp_path, monkeypatch):
 
 - [ ] **Step 2: Run, expect FAIL** — FAIL (404 für die noch fehlende Route bzw. Route nicht registriert).
 
-- [ ] **Step 3: Implement** — `ramcheck/gui/app.py`, direkt nach der `/endpoint-models`-Route (Zeile 177):
+- [ ] **Step 3: Implement** — `touchstone/gui/app.py`, direkt nach der `/endpoint-models`-Route (Zeile 177):
 
 ```python
     @app.get("/judge-endpoint-models")
@@ -1156,12 +1156,12 @@ def test_judge_endpoint_models_guards_path_and_never_500(tmp_path, monkeypatch):
         return configs_mod.discover_judge_endpoint_models(judge_config)
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_gui_app.py -k judge_endpoint -v` → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_gui_app.py -k judge_endpoint -v` → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/app.py tests/test_gui_app.py
+git add touchstone/gui/app.py tests/test_gui_app.py
 git commit -m "feat(gui): /judge-endpoint-models route (never-500, path-guarded)"
 ```
 
@@ -1170,14 +1170,14 @@ git commit -m "feat(gui): /judge-endpoint-models route (never-500, path-guarded)
 ### Task 14: CLI `judge --judge-model` override
 
 **Files:**
-- Modify: `ramcheck/cli.py:621-647` (`judge` command)
+- Modify: `touchstone/cli.py:621-647` (`judge` command)
 - Test: CLI-Test-Datei
 
 - [ ] **Step 1: Failing test** — die Override-Logik ist pur testbar über `JudgeConfig.model_copy`. Test in der CLI-Test-Datei:
 
 ```python
 def test_judge_model_override_replaces_config_model():
-    from ramcheck.judge import JudgeConfig, JudgeEndpoint
+    from touchstone.judge import JudgeConfig, JudgeEndpoint
 
     jc = JudgeConfig(endpoint=JudgeEndpoint(base_url="http://x/v1"), model="qwen", temperature=0.0)
     overridden = jc.model_copy(update={"model": "gemma"}) if "gemma" else jc
@@ -1189,7 +1189,7 @@ def test_judge_model_override_replaces_config_model():
 
 - [ ] **Step 2: Run, expect FAIL/PASS** — Falls `JudgeEndpoint` nicht exportiert: Import anpassen. Test soll grün das Muster zeigen.
 
-- [ ] **Step 3: Implement** — `ramcheck/cli.py`, `judge`-command. Flag nach `--judge-config` (Zeile 626) ergänzen:
+- [ ] **Step 3: Implement** — `touchstone/cli.py`, `judge`-command. Flag nach `--judge-config` (Zeile 626) ergänzen:
 
 ```python
     judge_model: str = typer.Option(
@@ -1208,12 +1208,12 @@ Nach `jc = load_judge_config(judge_config)` (Zeile 644) override anwenden:
     )
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/ -k judge_model -v` → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/ -k judge_model -v` → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/
+git add touchstone/cli.py tests/
 git commit -m "feat(cli): judge --judge-model overrides the config model (no write-back)"
 ```
 
@@ -1222,7 +1222,7 @@ git commit -m "feat(cli): judge --judge-model overrides the config model (no wri
 ### Task 15: `start_judge` argv + `POST /runs/judge` `judge_model`
 
 **Files:**
-- Modify: `ramcheck/gui/control.py:220-236` (`start_judge`), `ramcheck/gui/app.py:253-260` (`POST /runs/judge`)
+- Modify: `touchstone/gui/control.py:220-236` (`start_judge`), `touchstone/gui/app.py:253-260` (`POST /runs/judge`)
 - Test: `tests/test_gui_control.py`, `tests/test_gui_app.py`
 
 - [ ] **Step 1: Failing test (control)** — in `tests/test_gui_control.py` ergänzen (Spy-Launcher-Muster der bestehenden Tests nutzen):
@@ -1239,7 +1239,7 @@ def test_start_judge_appends_judge_model_to_argv(tmp_path):
 
 - [ ] **Step 2: Run, expect FAIL** — FAIL (`start_judge` has no `judge_model`).
 
-- [ ] **Step 3: Implement** — `ramcheck/gui/control.py`, `start_judge`:
+- [ ] **Step 3: Implement** — `touchstone/gui/control.py`, `start_judge`:
 
 ```python
     def start_judge(
@@ -1265,7 +1265,7 @@ def test_start_judge_appends_judge_model_to_argv(tmp_path):
             return RunHandle("judge", bundle, pid)
 ```
 
-`ramcheck/gui/app.py`, `POST /runs/judge` (Zeile 253-260):
+`touchstone/gui/app.py`, `POST /runs/judge` (Zeile 253-260):
 
 ```python
     @app.post("/runs/judge")
@@ -1284,12 +1284,12 @@ def test_start_judge_appends_judge_model_to_argv(tmp_path):
         return {"run_dir": h.run_dir.name, "kind": h.kind}
 ```
 
-- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_gui_control.py tests/test_gui_app.py -k judge -v` → PASS. `uv run mypy ramcheck/`.
+- [ ] **Step 4: Run, expect PASS** — `uv run pytest tests/test_gui_control.py tests/test_gui_app.py -k judge -v` → PASS. `uv run mypy touchstone/`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/control.py ramcheck/gui/app.py tests/
+git add touchstone/gui/control.py touchstone/gui/app.py tests/
 git commit -m "feat(gui): thread judge_model through /runs/judge -> start_judge -> --judge-model"
 ```
 
@@ -1298,10 +1298,10 @@ git commit -m "feat(gui): thread judge_model through /runs/judge -> start_judge 
 ### Task 16: Judge-Form Modell-Dropdown + `judgeModelPicker` JS
 
 **Files:**
-- Modify: `ramcheck/gui/app.py:153-166` (`config_get` Kontext: `judge_models_by_config`), `ramcheck/gui/templates/config.html:119-127` (Judge-Form), `ramcheck/gui/static/model_picker.js` (neue Komponente)
+- Modify: `touchstone/gui/app.py:153-166` (`config_get` Kontext: `judge_models_by_config`), `touchstone/gui/templates/config.html:119-127` (Judge-Form), `touchstone/gui/static/model_picker.js` (neue Komponente)
 - Verify: headless Chrome `--dump-dom`
 
-- [ ] **Step 1: Implement template + JS** — `ramcheck/gui/static/model_picker.js`, am Ende (vor dem schließenden `});` der `alpine:init`-Registrierung) eine zweite Komponente registrieren:
+- [ ] **Step 1: Implement template + JS** — `touchstone/gui/static/model_picker.js`, am Ende (vor dem schließenden `});` der `alpine:init`-Registrierung) eine zweite Komponente registrieren:
 
 ```javascript
   Alpine.data("judgeModelPicker", () => ({
@@ -1335,7 +1335,7 @@ git commit -m "feat(gui): thread judge_model through /runs/judge -> start_judge 
   }));
 ```
 
-`ramcheck/gui/templates/config.html`, die Judge-Config-`<select>` (Zeile 121) um `@change` ergänzen und einen Picker-Block einhängen. Das umgebende `<form>` (Zeile 107) bekommt `x-data="judgeModelPicker()"`. Die Judge-Config-Select:
+`touchstone/gui/templates/config.html`, die Judge-Config-`<select>` (Zeile 121) um `@change` ergänzen und einen Picker-Block einhängen. Das umgebende `<form>` (Zeile 107) bekommt `x-data="judgeModelPicker()"`. Die Judge-Config-Select:
 
 ```html
       <select class="form-select" id="judge_config_path" name="judge_config_path"
@@ -1368,8 +1368,8 @@ Nach dieser `form-group` einen Modell-Picker einfügen:
 - [ ] **Step 2: Restart + headless verify** — Server neu starten, dann die Config-Seite mit headless Chrome `--dump-dom` rendern und prüfen, dass das Judge-Modell-`<select>` existiert und der Picker bei Config-Wechsel `/judge-endpoint-models` abfragt:
 
 ```bash
-pkill -f "ramcheck gui" 2>/dev/null; sleep 1
-uv run ramcheck gui --no-open --port 8765 &
+pkill -f "touchstone gui" 2>/dev/null; sleep 1
+uv run touchstone gui --no-open --port 8765 &
 sleep 2
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --dump-dom \
   "http://127.0.0.1:8765/config" 2>/dev/null | grep -c 'name="judge_model"'
@@ -1386,7 +1386,7 @@ Erwartung: `{"models": [...], "error": ...}` (bei totem Endpoint leere Liste + e
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ramcheck/gui/static/model_picker.js ramcheck/gui/templates/config.html ramcheck/gui/app.py
+git add touchstone/gui/static/model_picker.js touchstone/gui/templates/config.html touchstone/gui/app.py
 git commit -m "feat(gui): judge-model picker dropdown (reuses /judge-endpoint-models)"
 ```
 
@@ -1399,7 +1399,7 @@ git commit -m "feat(gui): judge-model picker dropdown (reuses /judge-endpoint-mo
 **Files:**
 - Modify: `AGENTS.md` (Gotchas-Abschnitt)
 - Modify: `docs/explanation/design-decisions.md`
-- Modify: `ramcheck/gui/templates/_method_explainer.html`
+- Modify: `touchstone/gui/templates/_method_explainer.html`
 
 - [ ] **Step 1: AGENTS.md** — im Gotchas-Block den „Reasoning models"-Eintrag aktualisieren/ergänzen:
   - reasoning-only-Antworten → `unscored` (nicht mehr stilles 1/5); echt-leer bleibt 1/5.
@@ -1411,10 +1411,10 @@ git commit -m "feat(gui): judge-model picker dropdown (reuses /judge-endpoint-mo
 
 - [ ] **Step 3: _method_explainer.html** — die reasoning-only/`unscored`-Behandlung im UI-abrufbaren Methoden-Text erklären (eine Zeile/Absatz: leere Antworten von Reasoning-Modellen werden als „reasoning-only" markiert und aus dem Mittel genommen, nicht als 1/5 gewertet).
 
-- [ ] **Step 4: Verify + Commit** — `uv run pytest -q` (alles grün), `uv run ruff check . && uv run mypy ramcheck/`. Falls ein `tests/test_config.py`-Guard die geshippten `config.*.yaml` validiert: unberührt (additive Felder). 
+- [ ] **Step 4: Verify + Commit** — `uv run pytest -q` (alles grün), `uv run ruff check . && uv run mypy touchstone/`. Falls ein `tests/test_config.py`-Guard die geshippten `config.*.yaml` validiert: unberührt (additive Felder). 
 
 ```bash
-git add AGENTS.md docs/explanation/design-decisions.md ramcheck/gui/templates/_method_explainer.html
+git add AGENTS.md docs/explanation/design-decisions.md touchstone/gui/templates/_method_explainer.html
 git commit -m "docs: thinking-models handling, pre-flight, budget opt-in, judge picker"
 ```
 
@@ -1422,7 +1422,7 @@ git commit -m "docs: thinking-models handling, pre-flight, budget opt-in, judge 
 
 ## Abschluss
 
-- [ ] **Voll-Suite + Lint + Typen:** `uv run pytest -q && uv run ruff check . && uv run ruff format . && uv run mypy ramcheck/` — alles grün.
+- [ ] **Voll-Suite + Lint + Typen:** `uv run pytest -q && uv run ruff check . && uv run ruff format . && uv run mypy touchstone/` — alles grün.
 - [ ] **End-to-End-Smoke (manuell, falls ein echtes Modell läuft):** gemma-4-12b-qat (LM Studio :1234) ohne Headroom → Pre-Flight warnt „reasoning_only", Scorecard zeigt reasoning-only-Quote, Verdicts `unscored` statt 1/5. Dann `reasoning_headroom_tokens: 2000` oder `extra_body` Thinking-aus → Pre-Flight `ok`, echte Antworten.
 - [ ] **Merge:** Feature-Branch `feat/thinking-models-blocker` → `main` (Solo-Repo: direkt mergen + nach Codeberg pushen, kein PR).
 ```

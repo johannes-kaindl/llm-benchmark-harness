@@ -3,8 +3,8 @@ import json
 import threading
 from http.server import ThreadingHTTPServer
 
-from ramcheck import webmon
-from ramcheck.runner import _WebMonitorProcess
+from touchstone import webmon
+from touchstone.runner import _WebMonitorProcess
 
 
 def _bundle(tmp_path):

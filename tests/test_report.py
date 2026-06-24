@@ -1,5 +1,5 @@
-from ramcheck import report
-from ramcheck.models import RunRecord
+from touchstone import report
+from touchstone.models import RunRecord
 
 
 def _rec(**kw):
@@ -109,4 +109,4 @@ def test_raw_csv_roundtrip(tmp_path):
 def test_write_report_creates_both_files(tmp_path):
     md_path, raw_path = report.write_report([_rec()], tmp_path, date_str="2026-06-15")
     assert md_path.exists() and raw_path.exists()
-    assert "ramcheck" in md_path.read_text(encoding="utf-8")
+    assert "touchstone" in md_path.read_text(encoding="utf-8")

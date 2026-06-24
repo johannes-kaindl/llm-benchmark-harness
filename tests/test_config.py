@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ramcheck.config import Config, load_config
+from touchstone.config import Config, load_config
 
 
 def _base(**kw):
@@ -73,7 +73,7 @@ def test_example_configs_parse():
 
 
 def test_modelspec_thinking_defaults_are_neutral():
-    from ramcheck.config import ModelSpec
+    from touchstone.config import ModelSpec
 
     m = ModelSpec(id="x")
     assert m.reasoning_headroom_tokens == 0
@@ -81,7 +81,7 @@ def test_modelspec_thinking_defaults_are_neutral():
 
 
 def test_modelspec_thinking_fields_roundtrip_through_models_json():
-    from ramcheck.config import models_from_json
+    from touchstone.config import models_from_json
 
     specs = models_from_json(
         '[{"id": "gemma", "reasoning_headroom_tokens": 2000,'

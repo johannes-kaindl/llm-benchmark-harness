@@ -1,4 +1,4 @@
-from ramcheck.gui.glossary import GLOSSARY, describe
+from touchstone.gui.glossary import GLOSSARY, describe
 
 
 def test_every_entry_has_term_short_long():
@@ -23,7 +23,7 @@ def test_every_template_metric_key_is_in_glossary():
     import re
     from pathlib import Path
 
-    tdir = Path("ramcheck/gui/templates")
+    tdir = Path("touchstone/gui/templates")
     patterns = [
         re.compile(r"""mlabel\(\s*["']([a-z_]+)["']"""),
         re.compile(r"""metric\([^,]+,\s*["']([a-z_]+)["']"""),

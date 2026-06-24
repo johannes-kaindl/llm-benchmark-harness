@@ -12,9 +12,9 @@ Das Tool ist Johannes' Labor: „Modell X auf HW Y mit Settings Z taugt für Auf
 
 ## 2 · Verifizierte Ausgangslage (Code-fundiert)
 
-- **`ramcheck/client.py`** — `OpenAIStreamClient(base_url: str, api_key: str = "not-needed", *, engine=…, engine_version=…)` kapselt `self._client = OpenAI(base_url=…, api_key=…)`. Die OpenAI-SDK bietet `self._client.models.list().data` (jedes Element hat `.id`). Dies ist die **einzige engine-bewusste Datei** (Architektur-Regel) — die Modell-Liste gehört hierher.
-- **`ramcheck/config.py`** — `Endpoint(base_url: str, api_key: str = "not-needed")`; `Config.endpoint: Endpoint`; `load_config(path) -> Config`.
-- **`ramcheck/gui/configs.py`** — pure Picker-Quelle (`config_models`, `models_by_config`), importiert bereits `ramcheck.config`.
+- **`touchstone/client.py`** — `OpenAIStreamClient(base_url: str, api_key: str = "not-needed", *, engine=…, engine_version=…)` kapselt `self._client = OpenAI(base_url=…, api_key=…)`. Die OpenAI-SDK bietet `self._client.models.list().data` (jedes Element hat `.id`). Dies ist die **einzige engine-bewusste Datei** (Architektur-Regel) — die Modell-Liste gehört hierher.
+- **`touchstone/config.py`** — `Endpoint(base_url: str, api_key: str = "not-needed")`; `Config.endpoint: Endpoint`; `load_config(path) -> Config`.
+- **`touchstone/gui/configs.py`** — pure Picker-Quelle (`config_models`, `models_by_config`), importiert bereits `touchstone.config`.
 - **`/config`-Route** (`app.py`) — `config_files = sorted(str(p) for p in Path(".").glob("config*.yaml"))`; reicht u. a. `configs`, `models_by_config` an `config.html`. Confine-Muster für cwd-Pfade: `_confine_cwd` (lehnt absolute/`..`-Pfade ab).
 - **`model_picker.js`** — Alpine-Komponente `modelPicker(byConfig)`; Default-Config = `Object.keys(byConfig)[0]` (= alphabetisch erste = `config.embed.yaml`). **Lädt nicht-deferred** (vor Alpine).
 
@@ -44,17 +44,17 @@ config <select> @change  ──►  model_picker.js: syncFromConfig()
 
 ## 5 · Komponenten (Verantwortung · Schnittstelle · Abhängigkeit)
 
-- **`ramcheck/client.py`** — neue Methode:
+- **`touchstone/client.py`** — neue Methode:
   - `list_models(self) -> list[str]`: `return [m.id for m in self._client.models.list().data]`.
   - `__init__` erhält optional `timeout: float | None = None` → `OpenAI(base_url=…, api_key=…, timeout=timeout)` (None = SDK-Default; bestehende Aufrufer unverändert).
-- **`ramcheck/gui/configs.py`** — neu:
+- **`touchstone/gui/configs.py`** — neu:
   - `discover_endpoint_models(config_path: str | Path, *, lister: Callable[[], list[str]] | None = None) -> dict[str, Any]`: ohne `lister` baut der Default-Lister `load_config(config_path)` + `OpenAIStreamClient(cfg.endpoint.base_url, cfg.endpoint.api_key, timeout=3.0).list_models()`. **Fängt jede Exception** → `{"models": [], "error": f"Endpoint nicht erreichbar: {e}"}`; Erfolg → `{"models": lister(), "error": None}`. Dedupliziert/erhält Reihenfolge der ids.
   - `order_configs(paths: list[str]) -> list[str]`: stabil sortiert, `*embed*`/`*vlm*` (Dateiname, case-insensitive) ans Ende.
-- **`ramcheck/gui/app.py`**:
+- **`touchstone/gui/app.py`**:
   - `/config`-Route: `config_files = configs_mod.order_configs([str(p) for p in Path(".").glob("config*.yaml")])` (statt nur `sorted`).
   - neue Route `@app.get("/endpoint-models")` `def endpoint_models(config: str) -> dict`: `_confine_cwd(config)` → `return configs_mod.discover_endpoint_models(config)`. Confine wirft 404 bei bösem Pfad; sonst immer 200 (Fehler im `error`-Feld).
-- **`ramcheck/gui/static/model_picker.js`** — Komponente erweitern: State `endpointModels: []`, `endpointError: ""`, `endpointLoading: false`, `endpointPick: ""`. `syncFromConfig()` ruft am Ende `fetchEndpointModels()` (async, fire-and-forget). `fetchEndpointModels()`: `fetch('/endpoint-models?config='+encodeURIComponent(this.config))` → `endpointModels`/`endpointError`; eigener `try/catch`. `addFromEndpoint()`: bei gewähltem `endpointPick` → `adhoc.push({id, quant:"", k:_nextK++})`, dann `endpointPick=""`.
-- **`ramcheck/gui/templates/config.html`** — im Modelle-Block (nur `{% if not resume %}`): ein `<select x-model="endpointPick">` mit `<template x-for="mid in endpointModels">`, ein „Hinzufügen"-Button (`@click="addFromEndpoint()"`, `:disabled="!endpointPick"`) und Status (`endpointLoading` / `endpointError`).
+- **`touchstone/gui/static/model_picker.js`** — Komponente erweitern: State `endpointModels: []`, `endpointError: ""`, `endpointLoading: false`, `endpointPick: ""`. `syncFromConfig()` ruft am Ende `fetchEndpointModels()` (async, fire-and-forget). `fetchEndpointModels()`: `fetch('/endpoint-models?config='+encodeURIComponent(this.config))` → `endpointModels`/`endpointError`; eigener `try/catch`. `addFromEndpoint()`: bei gewähltem `endpointPick` → `adhoc.push({id, quant:"", k:_nextK++})`, dann `endpointPick=""`.
+- **`touchstone/gui/templates/config.html`** — im Modelle-Block (nur `{% if not resume %}`): ein `<select x-model="endpointPick">` mit `<template x-for="mid in endpointModels">`, ein „Hinzufügen"-Button (`@click="addFromEndpoint()"`, `:disabled="!endpointPick"`) und Status (`endpointLoading` / `endpointError`).
 
 ## 6 · Error-Handling
 
@@ -83,11 +83,11 @@ config <select> @change  ──►  model_picker.js: syncFromConfig()
 
 | Datei | Änderung |
 |---|---|
-| `ramcheck/client.py` | `list_models()` + optionaler `timeout` im Konstruktor |
-| `ramcheck/gui/configs.py` | `discover_endpoint_models` (DI-Lister) + `order_configs` |
-| `ramcheck/gui/app.py` | Route `GET /endpoint-models` (confined); `/config` nutzt `order_configs` |
-| `ramcheck/gui/static/model_picker.js` | Endpoint-Discovery-State + `fetchEndpointModels` + `addFromEndpoint` |
-| `ramcheck/gui/templates/config.html` | Endpoint-Dropdown + „Hinzufügen" + Status im Picker |
+| `touchstone/client.py` | `list_models()` + optionaler `timeout` im Konstruktor |
+| `touchstone/gui/configs.py` | `discover_endpoint_models` (DI-Lister) + `order_configs` |
+| `touchstone/gui/app.py` | Route `GET /endpoint-models` (confined); `/config` nutzt `order_configs` |
+| `touchstone/gui/static/model_picker.js` | Endpoint-Discovery-State + `fetchEndpointModels` + `addFromEndpoint` |
+| `touchstone/gui/templates/config.html` | Endpoint-Dropdown + „Hinzufügen" + Status im Picker |
 | `tests/` | Tests je §7 |
 | `AGENTS.md` | Notiz: Endpoint-Modell-Discovery (`/endpoint-models`, `/v1/models`, Timeout, nie 500) |
 

@@ -1,5 +1,5 @@
 [project]
-name = "llm-ramcheck"
+name = "llm-touchstone"
 version = "0.1.0"
 description = "Thin benchmark harness for local LLM endpoints: correlates TTFT/prefill/decode latency with macOS memory pressure and thermal throttling."
 readme = "README.md"
@@ -31,7 +31,7 @@ dependencies = [
 tokenizer = [
     "transformers>=4.44",
 ]
-# Local control-center web UI (ramcheck gui). Build-free: vendored Alpine asset.
+# Local control-center web UI (touchstone gui). Build-free: vendored Alpine asset.
 gui = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
@@ -40,7 +40,7 @@ gui = [
 ]
 
 [project.scripts]
-ramcheck = "ramcheck.cli:app"
+touchstone = "touchstone.cli:app"
 
 [project.urls]
 Homepage = "https://codeberg.org/jkaindl/llm-benchmark-harness"
@@ -52,7 +52,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ramcheck"]
+packages = ["touchstone"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

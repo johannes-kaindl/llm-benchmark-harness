@@ -1,0 +1,302 @@
+"""Event contract for the live monitor.
+
+The eval loop fires callbacks (run_eval's on_run_start/on_cell_start/on_cell_done);
+the CLI's --web wiring turns them into lines of an append-only events.jsonl. The
+monitor subprocess reads those lines back and aggregates them with build_view().
+Pure: no I/O beyond (de)serialising dicts.
+It also serves as the eval *view module* for webmon (INDEX_HTML, TAILS_RESOURCES, parse_line, build_view).
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Iterable
+from dataclasses import dataclass, field
+
+RUN_START = "run_start"
+CELL_START = "cell_start"
+CELL_DONE = "cell_done"
+RUN_DONE = "run_done"
+PREFLIGHT = "preflight"
+
+TAILS_RESOURCES = True
+
+INDEX_HTML = """<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>touchstone monitor</title>
+<style>
+ body{font-family:system-ui,sans-serif;margin:1.5rem;background:#111;color:#eee}
+ h1{font-size:1.1rem} .bar{background:#333;border-radius:4px;height:1.2rem;overflow:hidden}
+ .bar>div{background:#3a7;height:100%;width:0;transition:width .3s}
+ .grid{display:flex;gap:1.5rem;margin:1rem 0;flex-wrap:wrap}
+ .card{background:#1b1b1b;padding:.7rem 1rem;border-radius:6px;min-width:7rem}
+ .num{font-size:1.3rem;font-weight:600}
+ table{border-collapse:collapse;width:100%;font-size:.85rem;margin-top:.5rem}
+ td,th{padding:.25rem .5rem;border-bottom:1px solid #2a2a2a;text-align:left}
+ .ok{color:#5c5} .fail{color:#e66} .muted{color:#999}
+</style></head>
+<body>
+<h1>touchstone — live eval monitor</h1>
+<div id="pf" style="display:none;background:#5a3a1a;color:#fc9;padding:.4rem .7rem;border-radius:6px;margin:.4rem 0"></div>
+<div class="bar"><div id="barfill"></div></div>
+<div class="grid">
+ <div class="card"><div class="muted">Fortschritt</div><div class="num"><span id="done">0</span>/<span id="total">0</span></div></div>
+ <div class="card"><div class="muted">ok / Fehler</div><div class="num"><span class="ok" id="ok">0</span> / <span class="fail" id="failed">0</span></div></div>
+ <div class="card"><div class="muted">ETA</div><div class="num" id="eta">–</div></div>
+ <div class="card"><div class="muted">RAM</div><div class="num" id="ram">–</div></div>
+ <div class="card"><div class="muted">Pressure</div><div class="num" id="pressure">–</div></div>
+ <div class="card"><div class="muted">Throttle</div><div class="num" id="throttle">–</div></div>
+</div>
+<table><thead><tr><th>#</th><th>Modell</th><th>Variante</th><th>Prompt</th><th>Status</th><th>TTFT</th><th>tok/s</th></tr></thead>
+<tbody id="rows"></tbody></table>
+<script>
+function fmtEta(s){if(s==null)return '–';s=Math.round(s);return Math.floor(s/60)+'m '+(s%60)+'s';}
+const es=new EventSource('/events');
+es.addEventListener('view',e=>{let v;try{v=JSON.parse(e.data)}catch(_){return}
+ done.textContent=v.done; total.textContent=v.total; ok.textContent=v.ok; failed.textContent=v.failed;
+ eta.textContent=v.finished?'fertig':fmtEta(v.eta_s);
+ barfill.style.width=(v.total?100*v.done/v.total:0)+'%';
+ const pf=(v.preflight||[]).filter(p=>p.status!=='ok');
+ let pfEl=document.getElementById('pf');
+ if(pf.length){pfEl.innerHTML='⚠ Pre-Flight: '+pf.map(p=>p.model+' ('+p.status+')').join(', ');pfEl.style.display='block';}
+ else if(pfEl){pfEl.style.display='none';}
+ rows.innerHTML=v.cells.slice().reverse().map(c=>{
+  const st=c.status==='done'?(c.ok?'<span class="ok">✓</span>':'<span class="fail">✗</span>'):'<span class="muted">…</span>';
+  const tt=c.ttft_s!=null?c.ttft_s.toFixed(2)+'s':''; const dc=c.decode_tps!=null?c.decode_tps.toFixed(1):'';
+  const th=c.reasoning_chars>0?` <span class="muted" title="${c.reasoning_chars} reasoning chars">💭</span>`:'';
+  return `<tr><td>${c.i}</td><td>${c.model}</td><td>${c.variant}</td><td>${c.prompt_id}${th}</td><td>${st}</td><td>${tt}</td><td>${dc}</td></tr>`;
+ }).join('');});
+es.addEventListener('load',e=>{let l;try{l=JSON.parse(e.data)}catch(_){return}
+ ram.textContent=l.sys_used_mb!=null?Math.round(l.sys_used_mb)+' MB':'–';
+ pressure.textContent=l.mem_pressure||'–';
+ throttle.textContent=l.throttled?'JA':(l.any_throttle_seen?'nein':'n/v');});
+es.onerror=()=>{document.title='touchstone monitor (offline)';};
+</script></body></html>"""
+
+
+def run_start_event(ts: float, total: int) -> dict[str, object]:
+    return {"ts": ts, "type": RUN_START, "total": total}
+
+
+def cell_start_event(
+    ts: float, i: int, model: str, variant: str, category: str, prompt_id: str, repeat: int
+) -> dict[str, object]:
+    return {
+        "ts": ts,
+        "type": CELL_START,
+        "i": i,
+        "model": model,
+        "variant": variant,
+        "category": category,
+        "prompt_id": prompt_id,
+        "repeat": repeat,
+    }
+
+
+def cell_done_event(
+    ts: float,
+    i: int,
+    model: str,
+    variant: str,
+    prompt_id: str,
+    repeat: int,
+    ok: bool,
+    ttft_s: float,
+    e2e_s: float,
+    decode_tps: float,
+    completion_tokens: int,
+    content_empty: bool,
+    error: str,
+    reasoning_chars: int = 0,
+) -> dict[str, object]:
+    return {
+        "ts": ts,
+        "type": CELL_DONE,
+        "i": i,
+        "model": model,
+        "variant": variant,
+        "prompt_id": prompt_id,
+        "repeat": repeat,
+        "ok": ok,
+        "ttft_s": ttft_s,
+        "e2e_s": e2e_s,
+        "decode_tps": decode_tps,
+        "completion_tokens": completion_tokens,
+        "content_empty": content_empty,
+        "error": error,
+        "reasoning_chars": reasoning_chars,
+    }
+
+
+def run_done_event(ts: float, total: int, ok: int) -> dict[str, object]:
+    return {"ts": ts, "type": RUN_DONE, "total": total, "ok": ok}
+
+
+def preflight_event(ts: float, results: list[dict[str, object]]) -> dict[str, object]:
+    return {"ts": ts, "type": PREFLIGHT, "results": results}
+
+
+def dumps(event: dict[str, object]) -> str:
+    return json.dumps(event, ensure_ascii=False)
+
+
+def parse_line(line: str) -> dict[str, object] | None:
+    """Parse one events.jsonl line; return None on empty/partial/malformed lines."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        obj = json.loads(line)
+    except Exception:
+        return None
+    if not isinstance(obj, dict) or "type" not in obj:
+        return None
+    return obj
+
+
+CellKey = tuple[str, str, str, int]
+
+
+@dataclass
+class CellView:
+    key: CellKey
+    i: int
+    model: str
+    variant: str
+    prompt_id: str
+    status: str  # "running" | "done"
+    ok: bool | None = None
+    ttft_s: float | None = None
+    e2e_s: float | None = None
+    decode_tps: float | None = None
+    content_empty: bool | None = None
+    error: str = ""
+    reasoning_chars: int = 0
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "key": list(self.key),
+            "i": self.i,
+            "model": self.model,
+            "variant": self.variant,
+            "prompt_id": self.prompt_id,
+            "status": self.status,
+            "ok": self.ok,
+            "ttft_s": self.ttft_s,
+            "e2e_s": self.e2e_s,
+            "decode_tps": self.decode_tps,
+            "content_empty": self.content_empty,
+            "error": self.error,
+            "reasoning_chars": self.reasoning_chars,
+        }
+
+
+@dataclass
+class RunView:
+    total: int = 0
+    done: int = 0
+    ok: int = 0
+    failed: int = 0
+    running: list[CellView] = field(default_factory=list)
+    cells: list[CellView] = field(default_factory=list)
+    eta_s: float | None = None
+    finished: bool = False
+    preflight: list[dict[str, object]] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "total": self.total,
+            "done": self.done,
+            "ok": self.ok,
+            "failed": self.failed,
+            "eta_s": self.eta_s,
+            "finished": self.finished,
+            "running": [c.as_dict() for c in self.running],
+            "cells": [c.as_dict() for c in self.cells],
+            "preflight": self.preflight,
+        }
+
+
+def _key(ev: dict[str, object]) -> CellKey:
+    return (str(ev["model"]), str(ev["variant"]), str(ev["prompt_id"]), _as_int(ev["repeat"]))
+
+
+def _as_int(x: object, default: int = 0) -> int:
+    return int(x) if isinstance(x, (int, float, str)) else default
+
+
+def _optf(x: object) -> float | None:
+    return float(x) if isinstance(x, (int, float)) else None
+
+
+def _optb(x: object) -> bool | None:
+    return bool(x) if isinstance(x, bool) else None
+
+
+def build_view(events: Iterable[dict[str, object]]) -> RunView:
+    """Fold an event stream into a render-ready view. Dedup by cell key (last wins),
+    so a cell that re-ran across a crash+resume counts once."""
+    total = 0
+    finished = False
+    preflight: list[dict[str, object]] = []
+    by_key: dict[CellKey, CellView] = {}
+    order: list[CellKey] = []
+    for e in events:
+        t = e.get("type")
+        if t == RUN_START:
+            total = max(total, _as_int(e.get("total", 0)))
+        elif t == RUN_DONE:
+            finished = True
+        elif t == PREFLIGHT:
+            r = e.get("results")
+            if isinstance(r, list):
+                preflight = r
+        elif t == CELL_START:
+            k = _key(e)
+            if k not in by_key:
+                order.append(k)
+            if by_key.get(k) is None or by_key[k].status != "done":
+                by_key[k] = CellView(
+                    key=k,
+                    i=_as_int(e.get("i", -1), -1),
+                    model=str(e["model"]),
+                    variant=str(e["variant"]),
+                    prompt_id=str(e["prompt_id"]),
+                    status="running",
+                )
+        elif t == CELL_DONE:
+            k = _key(e)
+            if k not in by_key:
+                order.append(k)
+            by_key[k] = CellView(
+                key=k,
+                i=_as_int(e.get("i", -1), -1),
+                model=str(e["model"]),
+                variant=str(e["variant"]),
+                prompt_id=str(e["prompt_id"]),
+                status="done",
+                ok=bool(e.get("ok")),
+                ttft_s=_optf(e.get("ttft_s")),
+                e2e_s=_optf(e.get("e2e_s")),
+                decode_tps=_optf(e.get("decode_tps")),
+                content_empty=_optb(e.get("content_empty")),
+                error=str(e.get("error", "")),
+                reasoning_chars=_as_int(e.get("reasoning_chars", 0)) or 0,
+            )
+    cells = [by_key[k] for k in order]
+    done_cells = [c for c in cells if c.status == "done"]
+    done = len(done_cells)
+    ok = sum(1 for c in done_cells if c.ok)
+    running = [c for c in cells if c.status == "running"]
+    e2es = [c.e2e_s for c in done_cells if c.e2e_s is not None]
+    eta_s = (sum(e2es) / len(e2es)) * (total - done) if (e2es and total > done) else None
+    return RunView(
+        total=total,
+        done=done,
+        ok=ok,
+        failed=done - ok,
+        running=running,
+        cells=cells,
+        eta_s=eta_s,
+        finished=finished,
+        preflight=preflight,
+    )

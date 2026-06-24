@@ -1,7 +1,7 @@
 import pytest
 
-from ramcheck import prompts
-from ramcheck.prompts import HeuristicCounter
+from touchstone import prompts
+from touchstone.prompts import HeuristicCounter
 
 
 def test_heuristic_counter_monotonic():

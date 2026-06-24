@@ -7,11 +7,11 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
-from ramcheck.gui.glossary import GLOSSARY
-from ramcheck.gui.report_md import render_report_md
-from ramcheck.pack import load_pack
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
+from touchstone.gui.glossary import GLOSSARY
+from touchstone.gui.report_md import render_report_md
+from touchstone.pack import load_pack
 
 PACK = "packs/ndassist.yaml"
 HOST = {"chip": "Apple M5 Pro", "ram_gb": "64.0 GB", "machine": "M5-64GB", "engine": "lm-studio"}
@@ -72,7 +72,7 @@ def _resp_payload(prompt_id, **over):
 
 
 def _resp(prompt_id, **over):
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     return EvalResponse(**_resp_payload(prompt_id, **over))
 
@@ -196,7 +196,7 @@ def test_render_report_md_failed_request_shows_error_not_fake_answer():
 def test_render_report_md_adversarial_answer_and_rationale_stay_contained():
     # an answer + judge rationale containing ``` / | / headings must stay inside the
     # collapsed callout and not corrupt the document (later sections must survive).
-    from ramcheck.results import Verdict
+    from touchstone.results import Verdict
 
     pk = load_pack(PACK)
     first = next(p for _, p in pk.all_prompts())
@@ -225,7 +225,7 @@ def test_render_report_md_adversarial_answer_and_rationale_stay_contained():
 
 def test_scorecard_table_escapes_breaking_rationale():
     # the VISIBLE scorecard table holds judge rationales; a '|'/newline must be escaped.
-    from ramcheck.results import ModelReport
+    from touchstone.results import ModelReport
 
     pk = load_pack(PACK)
     dim0 = pk.dimensions[0]
@@ -255,7 +255,7 @@ def test_scorecard_table_escapes_breaking_rationale():
 
 
 def test_unjudged_export_strips_judging_and_adds_eval_task():
-    from ramcheck.results import ModelReport, Verdict
+    from touchstone.results import ModelReport, Verdict
 
     pk = load_pack(PACK)
     first = next(p for _, p in pk.all_prompts())
@@ -297,7 +297,7 @@ def test_export_report_blank_route_serves_evaluation_task(tmp_path):
 
 
 def test_judge_model_and_quant_surface_when_recorded():
-    from ramcheck.results import ModelReport
+    from touchstone.results import ModelReport
 
     pk = load_pack(PACK)
     first = next(p for _, p in pk.all_prompts())
@@ -321,7 +321,7 @@ def test_judge_model_and_quant_surface_when_recorded():
 
 
 def test_judge_model_unknown_for_old_judged_bundle():
-    from ramcheck.results import ModelReport
+    from touchstone.results import ModelReport
 
     pk = load_pack(PACK)
     first = next(p for _, p in pk.all_prompts())

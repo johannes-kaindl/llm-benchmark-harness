@@ -1,8 +1,8 @@
 import json
 from types import SimpleNamespace
 
-from ramcheck import events as ev
-from ramcheck.cli import _eval_event_writers, _run_event_writers
+from touchstone import events as ev
+from touchstone.cli import _eval_event_writers, _run_event_writers
 
 
 def _cell():
@@ -71,7 +71,7 @@ def _run_rec(**kw):
 
 
 def test_eval_event_writers_emits_preflight(tmp_path):
-    from ramcheck.preflight import PreflightResult
+    from touchstone.preflight import PreflightResult
 
     ep = tmp_path / "events.jsonl"
     _, _, _, on_preflight, run_done = _eval_event_writers(ep, append=False)

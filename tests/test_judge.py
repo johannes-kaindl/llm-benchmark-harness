@@ -1,6 +1,6 @@
 import pytest
 
-from ramcheck.judge import (
+from touchstone.judge import (
     judge_bundle,
     judge_responses,
     parse_dimension_report,
@@ -9,7 +9,7 @@ from ramcheck.judge import (
     score_dimensions,
     score_response,
 )
-from ramcheck.pack import Pack
+from touchstone.pack import Pack
 
 
 def _make_pack() -> Pack:
@@ -54,7 +54,7 @@ def _pack() -> Pack:
 
 
 def _resp(prompt_id, category, text="some answer", content_empty=False):
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     return EvalResponse(
         pack_id="demo",
@@ -187,7 +187,7 @@ def test_judge_responses_skips_skip_keys_and_calls_on_verdict():
 
 
 def test_judge_bundle_resume_merges_prior_and_judges_only_new():
-    from ramcheck.results import Verdict
+    from touchstone.results import Verdict
 
     pack = _make_pack()
     backend = FakeBackend('{"score": 3, "red_flag": false, "rationale": "ok"}')
@@ -205,8 +205,8 @@ def test_judge_bundle_resume_merges_prior_and_judges_only_new():
 def test_load_judgements_jsonl_tolerates_bad_last_line(tmp_path):
     import json
 
-    from ramcheck.judge import load_judgements_jsonl
-    from ramcheck.results import Verdict
+    from touchstone.judge import load_judgements_jsonl
+    from touchstone.results import Verdict
 
     p = tmp_path / "judgements.jsonl"
     v = Verdict("m", "none", "A1", 0, "A", 4, False, "ok")
@@ -251,7 +251,7 @@ def test_parse_dimension_report_keeps_rationale_when_score_unparseable(_pack):
 
 
 def test_score_response_reasoning_only_is_unscored(_pack):
-    from ramcheck.judge import score_response
+    from touchstone.judge import score_response
 
     prompt = _pack.all_prompts()[0][1]
 
@@ -269,7 +269,7 @@ def test_score_response_reasoning_only_is_unscored(_pack):
 
 
 def test_score_response_truly_empty_still_scores_one(_pack):
-    from ramcheck.judge import score_response
+    from touchstone.judge import score_response
 
     prompt = _pack.all_prompts()[0][1]
 

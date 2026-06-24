@@ -1,4 +1,4 @@
-# ramcheck — Beispiel-Config. Kopieren nach config.m1.yaml / config.m5.yaml und anpassen.
+# touchstone — Beispiel-Config. Kopieren nach config.m1.yaml / config.m5.yaml und anpassen.
 # Designregel: Engine-agnostisch. Nur diese Datei tauschen, nie Code anfassen.
 
 endpoint:
@@ -31,7 +31,7 @@ server_process_match: "LM Studio"
 output_dir: "./runs"
 power_check: true                         # pmset (Power-Source) + powermetrics (Throttle, braucht sudo)
 
-# Embedding-Durchsatz (Sub-Command `ramcheck embed`)
+# Embedding-Durchsatz (Sub-Command `touchstone embed`)
 embed:
   model: "text-embedding-bge-m3"
   num_chunks: 200

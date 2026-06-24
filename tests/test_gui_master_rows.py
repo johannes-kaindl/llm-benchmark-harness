@@ -1,6 +1,6 @@
-from ramcheck import scorecard
-from ramcheck.pack import load_pack
-from ramcheck.results import EvalResponse, ModelReport, Verdict
+from touchstone import scorecard
+from touchstone.pack import load_pack
+from touchstone.results import EvalResponse, ModelReport, Verdict
 
 
 def _resp(model="m", variant="baseline"):

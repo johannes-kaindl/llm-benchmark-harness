@@ -1,4 +1,4 @@
-# GUI-Steuerzentrale (`ramcheck gui`) — Design (Ink. 6)
+# GUI-Steuerzentrale (`touchstone gui`) — Design (Ink. 6)
 
 **Datum:** 2026-06-21
 **Status:** ratifiziert (Brainstorming abgeschlossen) + nach adversarialer Code-Review geschärft — vor Implementierungsplan
@@ -7,13 +7,13 @@
 
 ## 1 · Ziel & Motivation
 
-Heute ist `ramcheck` ein CLI-Werkzeug: Config von Hand editieren, `uv run ramcheck eval/judge`, danach `scorecard.md` / `aggregate.md` lesen, Ergebnis ins Vault übernehmen. Drei Dinge kann dieser Workflow **genuin nicht**, und genau sie rechtfertigen ein WebUI (reine Textanzeige täte es nicht):
+Heute ist `touchstone` ein CLI-Werkzeug: Config von Hand editieren, `uv run touchstone eval/judge`, danach `scorecard.md` / `aggregate.md` lesen, Ergebnis ins Vault übernehmen. Drei Dinge kann dieser Workflow **genuin nicht**, und genau sie rechtfertigen ein WebUI (reine Textanzeige täte es nicht):
 
 1. **Verknüpfte Transparenz** — die Bewertungslogik ist über Pack-YAML, Judge-Code und drei MD-Dateien verstreut; den *Zusammenhang* („dieser Prompt → gegen diese Flags geprüft → fließt mit Gewicht ×3 in Dimension Q6 → Q6 ≤ 2 ist die K.-o.-Regel") sieht niemand. Das ist ein verlinkter Graph, kein Fließtext.
 2. **Echte Daten-Visualisierung** — `resources.jsonl` ist eine 2-Hz-Zeitreihe (Speicherdruck/Throttle über die Laufzeit = ein *Plot*); TTFT-P50/P95-Verteilungen, Score-Histogramme, die Cross-Machine-Matrix — alles heute platte Zahlen in MD-Tabellen, dabei sind es Verläufe und Verteilungen, die man *sehen* will.
 3. **Steuerung** — Läufe konfigurieren + starten/stoppen aus dem UI statt Config-Handarbeit + `uv run`-Befehle.
 
-Die **Steuerzentrale** macht aus `ramcheck` ein kohärentes Werkzeug mit einem durchgehenden Workflow:
+Die **Steuerzentrale** macht aus `touchstone` ein kohärentes Werkzeug mit einem durchgehenden Workflow:
 
 > **konfigurieren → starten → live zusehen → auswerten → vergleichen → exportieren**
 
@@ -27,20 +27,20 @@ Die **Steuerzentrale** macht aus `ramcheck` ein kohärentes Werkzeug mit einem d
 |---|---|---|
 | **G1** | **Ein kohärentes Produkt**, kein „Read- vs. Write-Hälfte". Die 7 Stationen sind ein Workflow, nicht zwei Lager. | Transparenz und Steuerung sind keine Gegensätze — ein gutes Werkzeug hat beides. Künstliche Hälften-Wahlen verworfen. |
 | **G2** | **Stack B — Python-rich, build-frei**: FastAPI/Starlette + HTMX + Alpine.js + Tailwind. Neue Deps **isoliert** in einem optionalen `[gui]`-extra. | Erfüllt #5 („best practices Frontend") ohne npm/Vite-Toolchain; bleibt Python-zentrisch (eine Sprache, eine uv-Build-Story); volle Design-Kontrolle (am besten für das publizierbare Ziel); HTMX+SSE ist die direkte Evolution des `webmon`-Patterns. |
-| **G3** | **Out-of-process Control-Plane**: die GUI **spawnt** `ramcheck eval/judge` als Subprozesse (`[sys.executable, "-m", "ramcheck", …]`), wie heute die CLI Sampler/webmon spawnt. | **Präzise Invariante** (nicht „zero-dep im Hot-Path" pauschal): der **Host-Sampler bleibt entkoppelt**, **Memory wird nie aus dem Request-Thread geschätzt**, und **GUI-Deps laden nie im Mess-Prozess**. (Der pro-Zelle Event-Write existiert schon heute bei `--web` und liegt zwischen Zellen, nicht im Token-Stream.) In-process (GUI ruft `run_eval` direkt) würde den Mess-Thread mit Webserver-Event-Loop/GC/GUI-Deps teilen → genau das, was das Tool vermeiden will. |
+| **G3** | **Out-of-process Control-Plane**: die GUI **spawnt** `touchstone eval/judge` als Subprozesse (`[sys.executable, "-m", "touchstone", …]`), wie heute die CLI Sampler/webmon spawnt. | **Präzise Invariante** (nicht „zero-dep im Hot-Path" pauschal): der **Host-Sampler bleibt entkoppelt**, **Memory wird nie aus dem Request-Thread geschätzt**, und **GUI-Deps laden nie im Mess-Prozess**. (Der pro-Zelle Event-Write existiert schon heute bei `--web` und liegt zwischen Zellen, nicht im Token-Stream.) In-process (GUI ruft `run_eval` direkt) würde den Mess-Thread mit Webserver-Event-Loop/GC/GUI-Deps teilen → genau das, was das Tool vermeiden will. |
 | **G4** | **`runs/` = SSOT** (MD/CSV/JSONL-Ledger). Die GUI persistiert **keine Mess-Wahrheit**. Ihr Steuer-Zustand lebt in einer **in-memory Lauf-Registry**, gespiegelt auf Platte als **Run-Sentinel** `run.json` im aktiven run_dir (transient, non-SSOT, siehe §6). | Wahrt „persistierter Output = nur MD/CSV". Das Sentinel ist transienter Steuer-State (kein Mess-Artefakt) — crash-/restart-robust auf Platte, damit G8/Discovery einen GUI-Neustart überleben. |
 | **G5** | **Walking Skeleton** als v1: dünner Faden durch **alle** Stationen, riskanter greenfield-Kern (Steuerung + Live-Tail, Stationen 3+4) **zuerst** durchgestochen. Read-Stationen rendern vorhandene pure Funktionen/Dateien. | Hält das Produkt kohärent, beweist die Architektur end-to-end, vermeidet die Hälften-Falle. |
 | **G6** | **`judge`-Start gleich in v1**. | Mechanisch identisch zu eval (gleiches spawn/tail). Erst mit judge ist der Workflow rund — eine Scorecard entsteht durch judge. |
 | **G7** | **Geteilte Datenschicht mit `webmon`, getrennte Präsentation.** CLI `eval --web` / `judge --web` bleibt **unangetastet**. Die GUI verwendet das **SSE-Datenmodell verbatim** (`tail.read_new` + `events/judge_events.build_view().as_dict()`). | Aggregations-Mathematik (Histogramm, ETA, Dedup) wird **nicht dupliziert**. **Aber:** die Präsentation ist **net-new** — `webmon` rendert eine hartkodierte `INDEX_HTML`-Vollseite mit Inline-JS; die HTMX/Alpine/Tailwind-Fragmente sind Neubau (siehe G11). |
 | **G8** | **Nur ein Mess-Lauf gleichzeitig** (verfassungs-relevant), durchgesetzt per **Filesystem-Lock** (das Run-Sentinel `run.json`), nicht nur durch die in-memory Registry. | Parallele Läufe streiten um RAM/CPU und verfälschen sich *gegenseitig* — Mess-Sauberkeit. Ein reiner in-memory Guard bräche bei GUI-Neustart (verwaister Subprozess + leere Registry → zweiter Lauf). Der Lock überlebt den Neustart. |
-| **G9** | **GUI ist Opt-in** über `[gui]`-extra + Befehl `ramcheck gui`. Ohne Extra läuft `ramcheck` unverändert (CLI/Tests/CI brauchen FastAPI nie); `ramcheck gui` ohne Extra → freundlicher Installations-Hinweis statt Crash. | Kern bleibt der thin harness; GUI lädt nie im Hot-Path. |
+| **G9** | **GUI ist Opt-in** über `[gui]`-extra + Befehl `touchstone gui`. Ohne Extra läuft `touchstone` unverändert (CLI/Tests/CI brauchen FastAPI nie); `touchstone gui` ohne Extra → freundlicher Installations-Hinweis statt Crash. | Kern bleibt der thin harness; GUI lädt nie im Hot-Path. |
 | **G10** | **Event-Dateien sind transient, non-SSOT.** `events.jsonl` / `judge_events.jsonl` sind Monitor-/Tail-Instrumentierung, **nicht** Teil des Bundle-Ledgers — aus Discovery & Export **ausgeschlossen**. Der GUI-gespawnte eval schreibt `events.jsonl` **truncate-per-spawn** (wie judge es schon tut), nicht append. | Verhindert, dass ein transientes File zur „Wahrheit" promotet wird (AGENTS.md). Truncate-per-spawn behebt zugleich den `finished=True`-Latch-Bug auf dem Resume-Live-Pfad (siehe §9). |
 | **G11** | **Frontend-Präsentation ist net-new Arbeit** und der eigentliche Umfang des Skeletts; wiederverwendet werden nur die **puren Daten-/Render-Funktionen** der Logikschicht. | Ehrlichkeit über den Aufwand: Templates, htmx-Swaps, Alpine-Cards, Tabellen-CSS sind neu. „Reuse" gilt für `build_view`/`scorecard_mod`/`aggregate`, nicht für UI. |
 
 ## 3 · Prozess-Topologie
 
 ```
- ramcheck gui [--port 0] [--no-open]
+ touchstone gui [--port 0] [--no-open]
  │
  │  GUI-Server (FastAPI · langlebig · [gui]-extra) — Browser: HTMX/Alpine/Tailwind über HTTP/SSE
  │
@@ -48,7 +48,7 @@ Die **Steuerzentrale** macht aus `ramcheck` ein kohärentes Werkzeug mit einem d
  ├─ Lese-/Render-Schicht           ── load_pack · scorecard_mod · aggregate · Loader       [wiederverwendet]
  ├─ Live-View-Adapter              ── tail.read_new + events/judge_events.build_view → SSE  [Datenmodell wiederverwendet, G7]
  └─ Control-Plane + Lauf-Registry  ── run_dir host-seitig wählen · Run-Sentinel · ein Lauf  [neu, G3/G4/G8]
-        │ spawn:  [sys.executable, "-m", "ramcheck", "eval",                 │ stop: SIGTERM→wait(5)→kill
+        │ spawn:  [sys.executable, "-m", "touchstone", "eval",                 │ stop: SIGTERM→wait(5)→kill
         │          "--pack", …, "--config", …, "--run-dir", <host-gewählt>,  ▼
         │          "--emit-events"]   (kein webmon-Spawn)         ┌────────────────────────────────────┐
         ▼                                                          │ runs/<ts>_eval_<pack>/  = SSOT       │
@@ -84,10 +84,10 @@ App-Shell: Sidebar-Navigation (7 Stationen) + Hardware/Endpoint-Status; laufende
 
 ## 5 · Modul-Struktur
 
-Neues Sub-Package `ramcheck/gui/` — **nur importiert, wenn der GUI-Server läuft** (das `[gui]`-extra liefert die Deps). Der Kern (`runner`, `qualrun`, `judge`, `scorecard`, …) importiert `gui` **nie**.
+Neues Sub-Package `touchstone/gui/` — **nur importiert, wenn der GUI-Server läuft** (das `[gui]`-extra liefert die Deps). Der Kern (`runner`, `qualrun`, `judge`, `scorecard`, …) importiert `gui` **nie**.
 
 ```
-ramcheck/gui/
+touchstone/gui/
   __init__.py
   app.py        FastAPI-App-Factory: Routen der 7 Stationen, mountet static/ + templates/
   control.py    Control-Plane: Lauf-Registry (Zustandsmaschine) + ProcessLauncher-Protocol
@@ -101,7 +101,7 @@ ramcheck/gui/
   static/       vendored htmx.min.js, alpine.min.js, CSS (offline-fähig, kein Build-Schritt)
 ```
 
-`cli.py` bekommt einen `gui`-Befehl (lazy import von `ramcheck.gui.app`; ImportError → „installiere `pip install -e .[gui]`"), startet uvicorn und öffnet den Browser (`--no-open` unterdrückt).
+`cli.py` bekommt einen `gui`-Befehl (lazy import von `touchstone.gui.app`; ImportError → „installiere `pip install -e .[gui]`"), startet uvicorn und öffnet den Browser (`--no-open` unterdrückt).
 
 **`pyproject.toml`:** `[project.optional-dependencies] gui = ["fastapi", "uvicorn", "jinja2", "python-multipart"]`. Markdown-Renderer **bewusst nicht** (Station 5 rendert Zahlen, nicht `.md` — §11). Vendored JS/CSS statt CDN (offline-fähig, build-frei).
 
@@ -121,7 +121,7 @@ Trägt **drei** Funktionen zugleich: (1) **run_dir-Handle**, (2) **Cross-Process
 **Lauf-Registry** (in-memory, gespiegelt aufs Sentinel): hält **höchstens einen** aktiven `RunHandle`; `state ∈ {running, finished, failed, stopped}`.
 
 **`ProcessLauncher`-Protocol** (injizierbar, wie `Sampler`) — Felder **pro kind explizit**:
-- `start_eval(pack_path, config_path, *, resume_dir: Path|None) -> RunHandle` — Popen `[sys.executable, "-m", "ramcheck", "eval", "--pack", …, "--config", …, "--run-dir", <host>, "--emit-events"]` (+ `--resume <resume_dir>`); `RunHandle{kind="eval", run_dir, pid, pack_id (aus pack), config_path}`.
+- `start_eval(pack_path, config_path, *, resume_dir: Path|None) -> RunHandle` — Popen `[sys.executable, "-m", "touchstone", "eval", "--pack", …, "--config", …, "--run-dir", <host>, "--emit-events"]` (+ `--resume <resume_dir>`); `RunHandle{kind="eval", run_dir, pid, pack_id (aus pack), config_path}`.
 - `start_judge(bundle, judge_config_path) -> RunHandle` — `[…, "judge", "--bundle", …, "--judge-config", …, "--emit-events"]`; **judge hat kein `--resume`** (Resume = erneuter Aufruf, überspringt schon bewertete Zellen) und **kein `pack_id`-Input** (Pack kommt aus `bundle.json`); `RunHandle{kind="judge", run_dir=bundle, pid, judge_config_path}`. **`--judge-config` ist Pflicht** — fehlt sie, beendet sich judge mit Exit-Code 1; die UI muss eine judge-Config wählen lassen (Station 3).
 - `stop(handle)` — SIGTERM → `wait(timeout=5)` → kill (das `_SamplerProcess`-Teardown-Muster).
 - `poll(handle)` — `proc.poll()`; `None`→running, `0`→finished, sonst→failed (Exit 1 ohne judge-Config wird als „failed: judge-config fehlt" gemeldet, nicht als stiller Crash).
@@ -169,7 +169,7 @@ Die GUI schreibt **nur** das Sentinel (transienter Steuer-State); ins Ledger sch
 - **GUI-Neustart bei laufendem Lauf:** Subprozess läuft eigenständig weiter, schreibt sauber nach `runs/`; das **Sentinel auf Platte** stellt Sicht (Discovery=running) **und** G8-Lock nach Neustart wieder her. Kein in-memory-PID-Recovery nötig.
 - **Port belegt / `--port 0`:** uvicorn auf gewähltem Port; für Auto-Port den gebundenen Port aus dem uvicorn-`Server`-Socket lesen, **bevor** der Browser geöffnet wird (in-process, kann nicht wie webmon den eigenen stdout lesen — siehe §13).
 - **SSE-Robustheit:** Browser-Close beendet den Stream sauber (wie webmon); Server-Task lebt weiter; halbe Schlusszeile beim Tail toleriert.
-- **Ohne `[gui]`-Extra:** `ramcheck gui` → freundlicher Installations-Hinweis, kein Traceback.
+- **Ohne `[gui]`-Extra:** `touchstone gui` → freundlicher Installations-Hinweis, kein Traceback.
 
 ## 10 · Teststrategie (TDD)
 
@@ -184,9 +184,9 @@ Konsistent mit der Repo-Philosophie (I/O dependency-injected, pure Logik unit-ge
 
 **Integration / Verhalten:**
 - FastAPI `TestClient`: jede Stationen-Route 200 + erwartetes Fragment; Start/Stop/Resume rufen den (Fake-)Launcher korrekt; SSE-Endpoint streamt View-Updates.
-- **Rückwärtskompat:** Kern ohne `[gui]` voll funktionsfähig; `ramcheck` ohne `gui`-Befehl unverändert.
+- **Rückwärtskompat:** Kern ohne `[gui]` voll funktionsfähig; `touchstone` ohne `gui`-Befehl unverändert.
 
-**Live-Smoke (manuell, am Ende):** `ramcheck gui` → ndassist-Pack + M5-Config wählen → eval starten; Dashboard zählt live hoch, Stop sauber (kein Zombie), Bundle erscheint; judge-Config wählen → judge starten → Scorecard in Ergebnis-Ansicht; Vergleich zeigt Aggregat; Export lädt `scorecard.md`. **Zusätzlich:** eval stoppen → „Fortsetzen" → Live zeigt **nicht** fälschlich „fertig"; GUI neu starten während Lauf → Discovery zeigt running + zweiter Start verweigert.
+**Live-Smoke (manuell, am Ende):** `touchstone gui` → ndassist-Pack + M5-Config wählen → eval starten; Dashboard zählt live hoch, Stop sauber (kein Zombie), Bundle erscheint; judge-Config wählen → judge starten → Scorecard in Ergebnis-Ansicht; Vergleich zeigt Aggregat; Export lädt `scorecard.md`. **Zusätzlich:** eval stoppen → „Fortsetzen" → Live zeigt **nicht** fälschlich „fertig"; GUI neu starten während Lauf → Discovery zeigt running + zweiter Start verweigert.
 
 ## 11 · Scope-Grenze (YAGNI)
 
@@ -198,16 +198,16 @@ Konsistent mit der Repo-Philosophie (I/O dependency-injected, pure Logik unit-ge
 
 | Datei | Änderung |
 |---|---|
-| `ramcheck/gui/__init__.py` | **neu** — Package-Marker |
-| `ramcheck/gui/app.py` | **neu** — FastAPI-App-Factory, Routen der 7 Stationen, static/templates mount |
-| `ramcheck/gui/control.py` | **neu** — Lauf-Registry + `ProcessLauncher`-Protocol + run_dir-Wahl + Run-Sentinel + G8-Lock |
-| `ramcheck/gui/bundles.py` | **neu** — Discovery/Klassifikation (§8) + Urteil-Recompute (geteilter `master_rows`-Helper) |
-| `ramcheck/gui/live.py` | **neu** — Live-View-Adapter (tail + `build_view` → SSE-Fragment), G7 |
-| `ramcheck/gui/templates/`, `ramcheck/gui/static/` | **neu** — Jinja2-Fragmente + vendored HTMX/Alpine/CSS (G11) |
-| `ramcheck/cli.py` | `gui`-Befehl (lazy import); **`--run-dir`** (eval+judge); **`--emit-events`** + Event-Writer von `_live_monitor` entkoppeln (Default byte-identisch); `_master_rows`-Helper herausfaktorisieren |
+| `touchstone/gui/__init__.py` | **neu** — Package-Marker |
+| `touchstone/gui/app.py` | **neu** — FastAPI-App-Factory, Routen der 7 Stationen, static/templates mount |
+| `touchstone/gui/control.py` | **neu** — Lauf-Registry + `ProcessLauncher`-Protocol + run_dir-Wahl + Run-Sentinel + G8-Lock |
+| `touchstone/gui/bundles.py` | **neu** — Discovery/Klassifikation (§8) + Urteil-Recompute (geteilter `master_rows`-Helper) |
+| `touchstone/gui/live.py` | **neu** — Live-View-Adapter (tail + `build_view` → SSE-Fragment), G7 |
+| `touchstone/gui/templates/`, `touchstone/gui/static/` | **neu** — Jinja2-Fragmente + vendored HTMX/Alpine/CSS (G11) |
+| `touchstone/cli.py` | `gui`-Befehl (lazy import); **`--run-dir`** (eval+judge); **`--emit-events`** + Event-Writer von `_live_monitor` entkoppeln (Default byte-identisch); `_master_rows`-Helper herausfaktorisieren |
 | `pyproject.toml` | `[gui]`-optional-dependency-Gruppe (fastapi/uvicorn/jinja2/python-multipart) |
 | `tests/` | neue Tests je §10 (Kern ohne FastAPI; GUI-Routen optional/skip ohne Extra) |
-| `AGENTS.md` | `ramcheck gui` in Befehlsliste; Architektur-Notizen: GUI = optionales `[gui]`-extra spawnt Mess-Subprozesse mit `--run-dir`/`--emit-events`; `runs/`=SSOT; Run-Sentinel `run.json` (transient, G8-Lock); event-Files non-SSOT; ein Lauf zur Zeit |
+| `AGENTS.md` | `touchstone gui` in Befehlsliste; Architektur-Notizen: GUI = optionales `[gui]`-extra spawnt Mess-Subprozesse mit `--run-dir`/`--emit-events`; `runs/`=SSOT; Run-Sentinel `run.json` (transient, G8-Lock); event-Files non-SSOT; ein Lauf zur Zeit |
 
 ## 13 · Offene Detailpunkte (für den Implementierungsplan)
 

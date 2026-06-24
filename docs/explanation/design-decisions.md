@@ -14,7 +14,7 @@ Tritt kommt. Deshalb berichten wir **P50 + P95** für TTFT und **CV%** als Konsi
 
 Speicher und Throttling aus dem Request-Thread zu schätzen wäre verfälscht: derselbe Thread,
 der auf die Antwort wartet, kann den Host-Zustand nicht neutral messen. Der **Host-Sampler**
-läuft daher als eigener Prozess (`python -m ramcheck.sampler`), tickt mit ~2 Hz und schreibt
+läuft daher als eigener Prozess (`python -m touchstone.sampler`), tickt mit ~2 Hz und schreibt
 zeitgestempeltes JSONL. Erst **`merge.py`** verbindet Latenz- und Ressourcen-Spur per
 Zeitfenster pro `run_id`. So lässt sich ein langsamer Lauf eindeutig einer Ursache zuordnen —
 thermische Drosselung, Speicherdruck oder schlicht Modellgröße.
@@ -45,8 +45,8 @@ Kontext-Bucket auf der x-Achse von der Tokenizer-Wahl abhängen statt von der Re
 Eine persistente Steuerzentrale im **selben** Prozess laufen zu lassen wie die Messung würde
 genau das Kern-Prinzip brechen, für das der Harness gebaut ist: Der Mess-Thread teilte sich
 dann Event-Loop, Garbage-Collection und die schweren Web-Deps (FastAPI etc.) mit dem Server —
-die Latenz wäre nicht mehr sauber messbar. Deshalb **spawnt** `ramcheck gui` die Messung als
-eigenen Subprozess (`python -m ramcheck eval/judge`), genau wie die CLI heute den Host-Sampler
+die Latenz wäre nicht mehr sauber messbar. Deshalb **spawnt** `touchstone gui` die Messung als
+eigenen Subprozess (`python -m touchstone eval/judge`), genau wie die CLI heute den Host-Sampler
 spawnt, und beobachtet sie nur über das Dateisystem (Tail von `events.jsonl`). Die GUI-Deps
 liegen in einem optionalen `[gui]`-Extra und laden **nie** im Mess-Prozess; der Default-Pfad
 ohne `--web`/`--emit-events` ist byte-identisch.

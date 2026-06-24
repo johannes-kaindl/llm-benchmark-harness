@@ -9,7 +9,7 @@
 
 ## 1. Problem & strategic decision
 
-The `ramcheck gui` control-center *works* but feels raw and unprofessional. A grounded
+The `touchstone gui` control-center *works* but feels raw and unprofessional. A grounded
 8-area code survey (workflow `map-gui-current-state`, 2026-06-23) classified ~38 distinct
 user complaints by root cause:
 
@@ -36,7 +36,7 @@ a few new routes, one real data-model fix, and two small instrumentation additio
 
 Two cross-cutting substrates are built first because every package consumes them.
 
-### 2.1 Jinja macro library — `ramcheck/gui/templates/macros/`
+### 2.1 Jinja macro library — `touchstone/gui/templates/macros/`
 
 A small set of reusable presentation macros so stations stop being ad-hoc:
 
@@ -51,7 +51,7 @@ A small set of reusable presentation macros so stations stop being ad-hoc:
 All 8 templates migrate to these macros incrementally as each package touches them. No
 template keeps a bespoke version of a pattern that has a macro.
 
-### 2.2 Metric glossary — `ramcheck/gui/glossary.py`
+### 2.2 Metric glossary — `touchstone/gui/glossary.py`
 
 **Single source of truth** for what every metric/label means. A pure `dict[str, Glossary]`
 mapping a stable key → `{term, short, long}` (German). Covers at minimum:
@@ -83,8 +83,8 @@ live truth collides with a stale hand-typed label in the same `scores.csv` row.
 **Fix (display, immediate):** in the compare views prefer detected `chip`/`ram_gb`; render a
 stale/mismatching `machine` label muted with a mismatch warning instead of trusting it.
 **Fix (durable):** at scorecard-write time, validate `machine` against detected chip+ram and
-warn (or auto-annotate) on mismatch. Files: `ramcheck/gui/compare.py`, `compare.html`,
-`compare_axis.html`, `ramcheck/scorecard.py`.
+warn (or auto-annotate) on mismatch. Files: `touchstone/gui/compare.py`, `compare.html`,
+`compare_axis.html`, `touchstone/scorecard.py`.
 
 **Tests:** pure-logic test for the mismatch detector (detected vs label) → expected
 display/flag state.
@@ -209,7 +209,7 @@ Unlocks multi-machine comparison.
 
 ### P0 — Tool rename *(last, target name TBD)*
 
-A broad mechanical sweep (CLI command `ramcheck`, package `llm-ramcheck`, repo
+A broad mechanical sweep (CLI command `touchstone`, package `llm-touchstone`, repo
 `llm-benchmark-harness`, docs, configs). Deferred to the very end when the surface is stable.
 **Blocked on:** the user providing the target name before execution.
 

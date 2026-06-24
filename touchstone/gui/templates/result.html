@@ -1,0 +1,478 @@
+{% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title_suffix %} · {{ run_dir.name }}{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Ergebnis › {{ run_dir.name }}</nav>
+{% endblock %}
+{% block body %}
+<script src="/static/sparkline.js" defer></script>
+
+<div class="page-header">
+  <h1 class="page-title">{{ run_dir.name }}</h1>
+  {% if summary %}
+    {% if summary.status == "running" %}
+      <span class="badge running">running</span>
+    {% elif summary.status == "crashed" %}
+      <span class="badge crashed">crashed</span>
+    {% elif summary.status == "eval-only" %}
+      <span class="badge eval-only">eval-only</span>
+    {% elif summary.status == "judged" %}
+      <span class="badge judged">judged</span>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if not summary %}
+<div class="card"><p class="muted">Kein Bundle in diesem Verzeichnis gefunden.</p></div>
+{% else %}
+
+{# ── Kopf: Metadaten + Urteil ─────────────────────────────────────────────── #}
+<div class="card">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem">
+    <div>
+      <div style="font-size:1.1rem; font-weight:700">
+        {{ summary.models | join(", ") }}
+        <span class="muted" style="font-weight:400; font-size:0.9rem">
+          · Variante: {{ detail.reports[0].variant if detail and detail.reports else "—" }}
+          {% if detail and detail.manifest and detail.manifest.host %}
+            · {{ detail.manifest.host.get("machine", "") }}
+          {% endif %}
+          · seed {{ detail.manifest.get("seed", 42) if detail and detail.manifest else 42 }}
+        </span>
+      </div>
+      <div class="muted text-sm" style="margin-top:0.25rem">
+        Aufgabe:
+        {% if detail and detail.pack %}
+          <strong>{{ detail.pack.title }}</strong>
+          — {{ detail.pack.description if detail.pack.description else detail.pack.id }}
+          <a href="/packs/{{ detail.pack_rel }}" style="margin-left:0.5rem">Kriterien →</a>
+        {% else %}
+          {{ summary.pack_id }}
+        {% endif %}
+      </div>
+    </div>
+    <div style="text-align:right; flex-shrink:0">
+      {% if detail and detail.master_rows %}
+        {% for row in detail.master_rows %}
+          <div style="margin-bottom:0.25rem">
+            {% if row.recommendation == "Ja" %}
+              <span class="badge ja" style="font-size:0.9rem; padding:0.3rem 0.7rem">✓ Empfehlenswert</span>
+            {% elif row.recommendation == "Mit Einschränkung" %}
+              <span class="badge einschr" style="font-size:0.9rem; padding:0.3rem 0.7rem">~ Mit Einschränkung</span>
+            {% elif row.recommendation == "Nein" %}
+              <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">✗ Nicht empfehlenswert</span>
+            {% endif %}
+            <span class="muted text-xs" style="margin-left:0.5rem">{{ "%.0f"|format(row.pct) }}%</span>
+            {% if not row.safety_passed %}
+              <span class="badge nein" style="font-size:0.7rem; margin-left:0.3rem">Sicherheits-K.-o.</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% elif summary.recommendation %}
+        {% if summary.recommendation == "Ja" %}
+          <span class="badge ja" style="font-size:0.9rem; padding:0.3rem 0.7rem">✓ Empfehlenswert</span>
+        {% elif summary.recommendation == "Mit Einschränkung" %}
+          <span class="badge einschr" style="font-size:0.9rem; padding:0.3rem 0.7rem">~ Mit Einschränkung</span>
+        {% elif summary.recommendation == "Nein" %}
+          <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">✗ Nicht empfehlenswert</span>
+        {% endif %}
+      {% endif %}
+      {% if compare_opts and compare_opts.comparable %}
+        <div style="margin-top:0.4rem">
+          <a class="btn btn-secondary" href="/compare/{{ run_dir.name }}?axis={{ compare_opts.default_axis }}">↔ Vergleichen ({{ compare_opts.default_label }})</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ── Bewertungs-Methode (L9, shared partial) ──────────────────────────────── #}
+{% if detail and detail.pack %}
+  {% with pack = detail.pack %}{% include "_method_explainer.html" %}{% endwith %}
+{% endif %}
+
+{# ── K.-o.-Box ─────────────────────────────────────────────────────────────── #}
+{% if detail and detail.ko %}
+<div class="card" style="border-color:var(--nein); background:var(--nein-bg, #fee2e2)">
+  <div class="card-title" style="color:var(--nein)">⛔ K.-o.-Regel ausgelöst</div>
+  {% for branch in detail.ko %}
+    <div style="margin-bottom:0.75rem">
+      <div class="text-sm" style="margin-bottom:0.25rem">
+        <strong>{{ branch.model }}</strong> / {{ branch.variant }}
+      </div>
+      {# Both roots are independent: a group can trip both. Render each sub-block on its
+         own so a both-fired group never hides the dimension-floor under the red-flag arm. #}
+      {% if branch.red_flag_prompts %}
+        {# Red-flag-branch fired #}
+        <div class="text-sm">
+          Red-Flag-Zweig: Prompt
+          {% for pid in branch.red_flag_prompts %}
+            <a href="#prompt-{{ pid }}"><strong>{{ pid }}</strong></a>{% if not loop.last %}, {% endif %}
+          {% endfor %}
+          wurde als Red-Flag markiert — direkt zur
+          {% for pid in branch.red_flag_prompts %}
+            <a href="#prompt-{{ pid }}">Antwort {{ pid }}</a>{% if not loop.last %}, {% endif %}
+          {% endfor %}
+          springen.
+        </div>
+      {% endif %}
+      {% if branch.dimension_floor_fired %}
+        {# Dimension-floor branch fired — show the holistic rationale #}
+        <div class="text-sm">
+          Dimensions-Floor: <strong>{{ branch.dimension }}</strong> ≤ {{ branch.threshold }}
+          {% if detail.reports %}
+            {% for rep in detail.reports if rep.model == branch.model and rep.variant == branch.variant %}
+              {% if rep.dim_rationales and branch.dimension in rep.dim_rationales and rep.dim_rationales[branch.dimension] %}
+                <div style="margin-top:0.4rem; padding:0.4rem 0.6rem; background:white; border-radius:6px; border-left:3px solid var(--nein)">
+                  <span class="text-xs muted">Begründung Judge:</span><br>
+                  {{ rep.dim_rationales[branch.dimension] }}
+                  {# Render cited prompt_ids as links #}
+                  {% set cited_key = rep.model + "|" + rep.variant + "|" + branch.dimension %}
+                  {% if detail.cited_ids and cited_key in detail.cited_ids %}
+                    <div class="text-xs muted" style="margin-top:0.25rem">
+                      Belege:
+                      {% for pid in detail.cited_ids[cited_key] %}
+                        <a href="#prompt-{{ pid }}">{{ pid }}</a>{% if not loop.last %}, {% endif %}
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% elif rep.dim_rationales is defined %}
+                <div class="text-xs muted" style="margin-top:0.25rem">Begründung nicht erfasst (älterer Lauf)</div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Gewichtete Master-Scorecard ──────────────────────────────────────────── #}
+{% if detail and detail.reports %}
+<div class="card">
+  <div class="card-title">Gewichtete Master-Scorecard</div>
+  {% for row in detail.master_rows %}
+    {% set ns = namespace(rep=none) %}
+    {% for r in detail.reports if r.model == row.model and r.variant == row.variant %}
+      {% set ns.rep = r %}
+    {% endfor %}
+    <div style="margin-bottom:1.25rem">
+      <div class="flex items-center gap-2 mb-1">
+        <strong>{{ row.model }}</strong>
+        <span class="muted text-xs">/ {{ row.variant }}</span>
+        {% if row.recommendation == "Ja" %}
+          <span class="badge ja">Ja</span>
+        {% elif row.recommendation == "Mit Einschränkung" %}
+          <span class="badge einschr">Mit Einschr.</span>
+        {% elif row.recommendation == "Nein" %}
+          <span class="badge nein">Nein</span>
+        {% endif %}
+        <span class="text-xs muted">{{ "%.0f"|format(row.pct) }}%</span>
+        {% if row.safety_passed %}
+          <span class="badge ja" style="font-size:0.65rem">Safety OK</span>
+        {% else %}
+          <span class="badge nein" style="font-size:0.65rem">Safety FAIL</span>
+        {% endif %}
+        {% if row.safety_reason %}
+          <span class="text-xs muted">{{ row.safety_reason }}</span>
+        {% endif %}
+      </div>
+      {# Per-dimension rows with expandable rationale #}
+      {% if ns.rep and detail.pack %}
+        <div style="margin-left:1rem">
+          {% for dim in detail.pack.dimensions %}
+            {% set score = ns.rep.dim_scores.get(dim.id) if ns.rep.dim_scores else none %}
+            {% set rationale = ns.rep.dim_rationales.get(dim.id, "") if ns.rep.dim_rationales else "" %}
+            {% set cited_key = row.model + "|" + row.variant + "|" + dim.id %}
+            <div x-data="{ open: false }" style="margin-bottom:0.2rem">
+              <div
+                class="flex items-center gap-2"
+                style="cursor:{% if rationale %}pointer{% else %}default{% endif %}; padding:0.15rem 0"
+                {% if rationale %}@click="open = !open"{% endif %}
+              >
+                <span
+                  class="dim-id{% if dim.id == detail.pack.ko_rule.dimension %} dim-ko{% endif %}"
+                  style="min-width:2.5rem"
+                >{{ dim.id }}</span>
+                <span class="text-sm">{{ dim.name }}</span>
+                <span class="muted text-xs">×{{ dim.weight }}</span>
+                {% if score is not none %}
+                  <span class="text-sm" style="{% if dim.id == detail.pack.ko_rule.dimension and score <= detail.pack.ko_rule.threshold %}color:var(--nein);font-weight:700{% endif %}">
+                    {{ score }}/5
+                  </span>
+                  {% if dim.id == detail.pack.ko_rule.dimension and score <= detail.pack.ko_rule.threshold %}
+                    <span class="badge nein" style="font-size:0.6rem">K.-o.</span>
+                  {% endif %}
+                {% else %}
+                  <span class="muted text-xs">—</span>
+                {% endif %}
+                {% if rationale %}
+                  <span class="muted text-xs" x-text="open ? '▲' : '▼'" style="margin-left:auto"></span>
+                {% endif %}
+              </div>
+              {% if rationale %}
+                <div x-show="open" x-cloak style="margin:0.25rem 0 0.25rem 3.5rem; padding:0.4rem 0.6rem; background:var(--bg); border-radius:6px; border-left:3px solid var(--border); font-size:0.82rem; color:var(--muted)">
+                  {{ rationale }}
+                  {% if detail.cited_ids and cited_key in detail.cited_ids %}
+                    <div class="text-xs" style="margin-top:0.2rem">
+                      Belege:
+                      {% for pid in detail.cited_ids[cited_key] %}
+                        <a href="#prompt-{{ pid }}">{{ pid }}</a>{% if not loop.last %}, {% endif %}
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+{% elif detail and not detail.reports %}
+<div class="card">
+  <p class="muted">Noch nicht bewertet — <code>touchstone judge</code> ausführen.</p>
+</div>
+{% endif %}
+
+{# ── Antworten nach Kategorie ─────────────────────────────────────────────── #}
+{% if detail and detail.pack and detail.responses %}
+<div class="card">
+  <div class="card-title">Antworten nach Kategorie</div>
+  {% for cat in detail.pack.categories %}
+    <div style="margin-bottom:1rem">
+      <div style="font-weight:600; padding:0.3rem 0; border-bottom:2px solid var(--border); margin-bottom:0.5rem">
+        {{ cat.id }} · {{ cat.name }}
+      </div>
+      {% for prompt in cat.prompts %}
+        {# Collect all responses + verdicts for this prompt #}
+        {% set ns2 = namespace(responses=[], verdicts=[]) %}
+        {% for resp in detail.responses if resp.prompt_id == prompt.id %}
+          {% set _ = ns2.responses.append(resp) %}
+        {% endfor %}
+        {% for v in detail.verdicts if v.prompt_id == prompt.id %}
+          {% set _ = ns2.verdicts.append(v) %}
+        {% endfor %}
+
+        <div
+          id="prompt-{{ prompt.id }}"
+          x-data="{ open: false }"
+          x-init="
+            const sel = '#prompt-{{ prompt.id }}';
+            const sync = () => { if (window.location.hash === sel) { open = true; $el.scrollIntoView(); } };
+            sync();
+            window.addEventListener('hashchange', sync);
+          "
+          style="margin-bottom:0.5rem; border:1px solid var(--border); border-radius:8px; overflow:hidden; scroll-margin-top:4rem"
+        >
+          {# Collapsed header #}
+          <div
+            class="flex items-center gap-2"
+            style="padding:0.5rem 0.75rem; cursor:pointer; background:var(--bg)"
+            @click="open = !open"
+          >
+            <span class="prompt-id">{{ prompt.id }}</span>
+            <span class="text-sm" style="flex:1">{{ prompt.title }}</span>
+            {% if prompt.safety_critical %}
+              <span class="badge nein" style="font-size:0.62rem">sicherheitskritisch</span>
+            {% endif %}
+            {% if prompt.format_strict %}
+              <span class="badge eval-only" style="font-size:0.62rem">format-strikt</span>
+            {% endif %}
+            {# Show verdict summary if available #}
+            {% if ns2.verdicts %}
+              {% set v0 = ns2.verdicts[0] %}
+              <span class="text-xs muted">
+                {{ v0.score }}/5
+                {% if v0.red_flag %}<span class="badge nein" style="font-size:0.6rem; margin-left:0.2rem">Red-Flag</span>{% endif %}
+              </span>
+            {% elif ns2.responses %}
+              <span class="badge eval-only" style="font-size:0.62rem">nicht bewertet</span>
+            {% endif %}
+            <span class="muted text-xs" x-text="open ? '▲' : '▼'"></span>
+          </div>
+
+          {# Expanded body #}
+          <div x-show="open" x-cloak style="padding:0.75rem; font-size:0.84rem">
+            {# Aufgabe + Flags #}
+            <div style="margin-bottom:0.5rem">
+              <div class="muted text-xs" style="margin-bottom:0.2rem; text-transform:uppercase; letter-spacing:0.05em">Aufgabe (Prompt)</div>
+              <div style="background:var(--card-bg); border-radius:6px; padding:0.5rem 0.7rem; white-space:pre-wrap; font-size:0.82rem">{{ prompt.prompt }}</div>
+              {% if prompt.tests %}
+                <div class="muted text-xs" style="margin-top:0.25rem">Tests: {{ prompt.tests }}</div>
+              {% endif %}
+            </div>
+            <div style="display:flex; gap:1rem; margin-bottom:0.5rem">
+              {% if prompt.green_flags %}
+                <div style="flex:1">
+                  {% for f in prompt.green_flags %}<div><span class="flag green">✓ {{ f }}</span></div>{% endfor %}
+                </div>
+              {% endif %}
+              {% if prompt.red_flags %}
+                <div style="flex:1">
+                  {% for f in prompt.red_flags %}<div><span class="flag red">✗ {{ f }}</span></div>{% endfor %}
+                </div>
+              {% endif %}
+            </div>
+            {# Responses + Verdicts #}
+            {% for resp in ns2.responses %}
+              {% set ns3 = namespace(verdict=none) %}
+              {% for v in ns2.verdicts if v.repeat == resp.repeat %}
+                {% set ns3.verdict = v %}
+              {% endfor %}
+              <div style="border-top:1px solid var(--border); padding-top:0.5rem; margin-top:0.5rem">
+                {% if resp.content_empty %}
+                  <div class="muted text-xs" style="margin-bottom:0.25rem">
+                    (leere Antwort{% if resp.reasoning_chars > 0 %} · nur Reasoning ({{ resp.reasoning_chars }} Zeichen){% endif %})
+                  </div>
+                {% endif %}
+                <div>
+                  <div class="muted text-xs" style="text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.2rem">Modell-Antwort</div>
+                  <div x-data="{ full: false }" style="background:var(--card-bg); border-radius:6px; padding:0.5rem 0.7rem">
+                    <span x-show="!full" style="white-space:pre-wrap">{{ resp.response_text[:400] }}{% if resp.response_text|length > 400 %}<span class="muted">…</span>{% endif %}</span>
+                    <span x-show="full" x-cloak style="white-space:pre-wrap">{{ resp.response_text }}</span>
+                    {% if resp.response_text|length > 400 %}
+                      <div style="margin-top:0.25rem">
+                        <a style="cursor:pointer" @click.prevent="full = !full" x-text="full ? '▲ weniger' : '▼ ganze Antwort'"></a>
+                      </div>
+                    {% endif %}
+                  </div>
+                </div>
+                {# Per-answer perf/token metrics (NaN-guarded via the x == x Jinja idiom) #}
+                <div class="flex gap-2 text-xs muted" style="flex-wrap:wrap; margin-top:0.35rem">
+                  {% if resp.ttft_s is not none and resp.ttft_s == resp.ttft_s %}{{ ui.metric("%.2f"|format(resp.ttft_s), "ttft_p50", "s") }}{% endif %}
+                  {% if resp.decode_tps is not none and resp.decode_tps == resp.decode_tps %}{{ ui.metric("%.0f"|format(resp.decode_tps), "decode_median", "tok/s") }}{% endif %}
+                  {% if resp.prefill_tps is not none and resp.prefill_tps == resp.prefill_tps %}{{ ui.metric("%.0f"|format(resp.prefill_tps), "prefill_tps", "tok/s") }}{% endif %}
+                  {% if resp.e2e_s is not none %}{{ ui.metric("%.2f"|format(resp.e2e_s), "e2e", "s") }}{% endif %}
+                  {% if resp.e2e_s and resp.e2e_s > 0 %}{{ ui.metric("%.0f"|format((resp.prompt_tokens + resp.completion_tokens) / resp.e2e_s), "total_throughput", "tok/s") }}{% endif %}
+                  {% if resp.reasoning_duration_s and resp.reasoning_duration_s > 0 %}{{ ui.metric("%.2f"|format(resp.reasoning_duration_s), "reasoning_duration", "s") }}{% endif %}
+                  {% if resp.reasoning_tps and resp.reasoning_tps > 0 %}{{ ui.metric("%.0f"|format(resp.reasoning_tps), "reasoning_tps", "tok/s") }}{% endif %}
+                  {% if resp.sys_used_mb is not none %}{{ ui.metric("%.1f"|format(resp.sys_used_mb / 1024), "system_peak_ram", "GB") }}{% endif %}
+                  {% if resp.sys_used_delta_mb is not none %}{{ ui.metric("%.1f"|format(resp.sys_used_delta_mb / 1024), "model_delta_ram", "GB") }}{% endif %}
+                  <span class="metric" title="Prompt-/Antwort-Tokens">{{ resp.prompt_tokens }}→{{ resp.completion_tokens }} tok</span>
+                  {% if resp.reasoning_chars > 0 %}<span class="metric" title="{{ g('reasoning_only').short }}">💭 {{ resp.reasoning_chars }} Z.</span>{% endif %}
+                </div>
+                {# Reasoning text (persisted only on content_empty) — collapsible, mirrors the answer block #}
+                {% if resp.reasoning_text %}
+                  <div style="margin-top:0.35rem">
+                    <div class="muted text-xs" style="text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.2rem">💭 Reasoning</div>
+                    <div x-data="{ openR: false }" style="background:var(--card-bg); border-radius:6px; padding:0.5rem 0.7rem">
+                      <a style="cursor:pointer" @click.prevent="openR = !openR" x-text="openR ? '▲ Reasoning ausblenden' : '▼ Reasoning anzeigen'"></a>
+                      <div x-show="openR" x-cloak style="white-space:pre-wrap; margin-top:0.25rem">{{ resp.reasoning_text }}</div>
+                    </div>
+                  </div>
+                {% endif %}
+                {% if ns3.verdict %}
+                  <div style="margin-top:0.4rem">
+                    <span class="text-xs muted">Judge: </span>
+                    <strong>{{ ns3.verdict.score }}/5</strong>
+                    {% if ns3.verdict.red_flag %}
+                      <span class="badge nein" style="font-size:0.65rem; margin-left:0.25rem">Red-Flag</span>
+                    {% endif %}
+                    {% if ns3.verdict.rationale %}
+                      <span class="muted text-xs" style="margin-left:0.5rem">{{ ns3.verdict.rationale }}</span>
+                    {% endif %}
+                    {% if ns3.verdict.unscored %}
+                      <span class="badge eval-only" style="font-size:0.62rem">unscored</span>
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </div>
+            {% else %}
+              <div class="muted text-xs">Keine Antworten in diesem Lauf für {{ prompt.id }}.</div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ── Perf + Ressourcen-Verlauf ────────────────────────────────────────────── #}
+{% if detail %}
+<div class="card">
+  <div class="card-title">Perf + Ressourcen-Verlauf</div>
+  <div style="display:flex; gap:1rem; flex-wrap:wrap">
+    {# Performance summary #}
+    {% if detail.responses %}
+      {% set ok_responses = detail.responses | selectattr("ok") | list %}
+      {% if ok_responses %}
+        <div style="flex:1; min-width:160px; background:var(--bg); border-radius:8px; padding:0.6rem 0.8rem">
+          <div class="muted text-xs" style="text-transform:uppercase; margin-bottom:0.25rem">Geschwindigkeit</div>
+          <div class="text-sm">
+            TTFT P50: <strong>
+              {% if detail.perf and detail.perf.ttft_p50 is number and detail.perf.ttft_p50 == detail.perf.ttft_p50 %}
+                {{ "%.2f"|format(detail.perf.ttft_p50) }}s
+              {% else %}
+                —
+              {% endif %}
+            </strong>
+          </div>
+          <div class="text-sm muted">Decode: <strong>
+            {% if detail.perf and detail.perf.decode_med is number and detail.perf.decode_med == detail.perf.decode_med %}
+              {{ "%.0f"|format(detail.perf.decode_med) }} tok/s
+            {% else %}
+              —
+            {% endif %}
+          </strong></div>
+        </div>
+      {% endif %}
+    {% endif %}
+    {# RAM + CPU sparkline #}
+    {% if detail.ram %}
+      <div style="flex:2; min-width:200px; background:var(--bg); border-radius:8px; padding:0.6rem 0.8rem">
+        <div class="muted text-xs" style="text-transform:uppercase; margin-bottom:0.25rem">
+          RAM/CPU-Verlauf
+          <span style="color:#2563eb">■ RAM</span>
+          {% if detail.cpu and detail.cpu | select | list %}
+            <span style="color:#d97706; margin-left:0.5rem">■ CPU</span>
+          {% endif %}
+        </div>
+        <svg
+          data-sparkline
+          data-ram="{{ detail.ram | tojson }}"
+          data-cpu="{{ detail.cpu | tojson }}"
+          width="300"
+          height="48"
+          style="display:block; width:100%; height:48px"
+        ></svg>
+        <div class="muted text-xs" data-sparkline-labels style="margin-top:0.25rem">…</div>
+        {% if detail.responses %}
+          {% set throttled = detail.responses | selectattr("throttled") | list %}
+          {% if throttled %}
+            <div class="badge nein text-xs" style="margin-top:0.25rem; display:inline-block">⚠ Throttle</div>
+          {% endif %}
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="muted text-xs" style="padding:0.6rem 0.8rem">Keine Ressourcen-Daten erfasst.</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Export ───────────────────────────────────────────────────────────────── #}
+<div class="card">
+  <div class="card-title">Export</div>
+  <div class="flex gap-2">
+    <a href="/export-report/{{ run_dir.name }}" class="btn btn-primary"
+       title="Vollständiger Report als Markdown: alle Prompts, Antworten, Messwerte, Begründungen, Methode + Glossar — intern verlinkt.">Voller Report (.md)</a>
+    <a href="/export-report/{{ run_dir.name }}?judging=0" class="btn btn-secondary"
+       title="Report OHNE qualitative Bewertung + eingebetteter Bewertungs-Auftrag (ausfüllbare Scorecard) — zum Ausfüllen durch eine Cloud-KI wie Claude.">Report zum Bewerten (.md)</a>
+    <a href="/export-bundle/{{ run_dir.name }}" class="btn btn-secondary"
+       title="Ganzes Bundle als .zip (bundle.json + responses.jsonl + scores.csv …) – portabel zwischen Maschinen.">Bundle .zip</a>
+    {% for fname in ["scorecard.md", "scores.csv", "perf.csv", "report.md"] %}
+      {% if (run_dir / fname).exists() %}
+      <a href="/export/{{ run_dir.name }}/{{ fname }}" class="btn btn-secondary">{{ fname }}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}
+{% endblock %}

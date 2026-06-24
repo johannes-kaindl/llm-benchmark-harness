@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn the raw `ramcheck gui` control-center into a self-explaining, feature-complete UI — without switching frameworks — by adding a component/glossary spine, rendering already-captured data, fixing one real bug, and adding two small instrumentation features.
+**Goal:** Turn the raw `touchstone gui` control-center into a self-explaining, feature-complete UI — without switching frameworks — by adding a component/glossary spine, rendering already-captured data, fixing one real bug, and adding two small instrumentation features.
 
 **Architecture:** Additive on the existing out-of-process FastAPI + Jinja2 + Alpine.js stack. Two new substrates (a Jinja macro library and a pure `glossary.py`) make the UI self-explaining; every other change renders data that already lives in `responses.jsonl`/`scores.csv`, adds a read-only viewer route, or adds one cheap capture (RAM baseline, reasoning timing). `runs/` stays SSOT; pure logic is unit-tested, I/O is dependency-injected.
 
@@ -13,9 +13,9 @@
 > **STATUS (2026-06-24):** Phasen **P1–P7 vollständig implementiert und gemergt** (Merge `07ade7d`, je ein Feature-Commit pro Phase, inkl. Pre-Merge-Review). Der nachgelagerte Markdown-Report-Export ist ebenfalls gemergt. **Offen:** P0 (Tool-Rename — blockiert auf Ziel-Name) und der **Final-E2E-Smoke** gegen echte Hardware (Zeile 675). 429 Tests grün.
 
 **Conventions (apply to every task):**
-- Run tests with `uv run pytest <path> -q`; lint `uv run ruff check . && uv run ruff format .`; types `uv run mypy ramcheck/`.
+- Run tests with `uv run pytest <path> -q`; lint `uv run ruff check . && uv run ruff format .`; types `uv run mypy touchstone/`.
 - GUI tests use `_client(tmp_path)` → `TestClient(gui_app.create_app(runs_dir=tmp_path, registry=RunRegistry(runs_dir=tmp_path, launcher=_FakeLauncher())))`; bundle fixtures via `_write_bundle` / `_write_compare_bundle` / `_mk_judged` (copy the local helper from the sibling test file).
-- **After any template/route/static change:** restart the server and verify the touched route headless (`uv run ramcheck gui &` then `curl -s localhost:PORT/route | head`); a stale process serves dead routes.
+- **After any template/route/static change:** restart the server and verify the touched route headless (`uv run touchstone gui &` then `curl -s localhost:PORT/route | head`); a stale process serves dead routes.
 - Commit after every green task. Branch `feat/gui-best-practices-redesign`.
 
 ---
@@ -23,8 +23,8 @@
 ## Phase P1 — The bug: hardware-label contradiction
 
 **Files:**
-- Create: `ramcheck/gui/hwlabel.py` (pure mismatch detector)
-- Modify: `ramcheck/gui/compare.py` (cross-run rows carry a mismatch flag), `ramcheck/gui/templates/compare.html:12-50`
+- Create: `touchstone/gui/hwlabel.py` (pure mismatch detector)
+- Modify: `touchstone/gui/compare.py` (cross-run rows carry a mismatch flag), `touchstone/gui/templates/compare.html:12-50`
 - Test: `tests/test_gui_hwlabel.py`
 
 **Context:** `compare.html` renders `r.chip` (live `hostinfo`), `r.ram_gb` (live), `r.machine` (static `Config.machine` YAML label). On a reused config the label goes stale → "M5 Pro / 64 GB / M1-16GB". `AggRow` (`aggregate.py:40-57`) already has `chip`, `ram_gb`, `machine`.
@@ -33,7 +33,7 @@
 
 ```python
 # tests/test_gui_hwlabel.py
-from ramcheck.gui.hwlabel import label_mismatch
+from touchstone.gui.hwlabel import label_mismatch
 
 
 def test_label_matches_detected_hardware_is_not_flagged():
@@ -57,7 +57,7 @@ Run: `uv run pytest tests/test_gui_hwlabel.py -q` → FAIL (module not found).
 - [x] **Step 3: Implement `hwlabel.py`**
 
 ```python
-# ramcheck/gui/hwlabel.py
+# touchstone/gui/hwlabel.py
 """Detect a stale Config.machine label that contradicts the detected hardware.
 
 chip/ram_gb come from live hostinfo at eval time; machine is a hand-typed YAML
@@ -102,12 +102,12 @@ Run: `uv run pytest tests/test_gui_hwlabel.py -q` → PASS.
 
 - [x] **Step 5: Wire the flag into the cross-run rows**
 
-In `ramcheck/gui/compare.py`, after `aggregate()` produces `AggRow`s the route hands them to the template. The simplest non-invasive wiring: compute the flag in the template via a tiny exposed helper. Add to `compare.py` (or wherever `compare_cross` builds context) a post-process that attaches `mismatch` per row. Concretely, change the `/compare` route in `ramcheck/gui/app.py:114-118` to:
+In `touchstone/gui/compare.py`, after `aggregate()` produces `AggRow`s the route hands them to the template. The simplest non-invasive wiring: compute the flag in the template via a tiny exposed helper. Add to `compare.py` (or wherever `compare_cross` builds context) a post-process that attaches `mismatch` per row. Concretely, change the `/compare` route in `touchstone/gui/app.py:114-118` to:
 
 ```python
     @app.get("/compare", response_class=HTMLResponse)
     def compare_cross(request: Request) -> HTMLResponse:
-        from ramcheck.gui.hwlabel import label_mismatch
+        from touchstone.gui.hwlabel import label_mismatch
 
         rows = aggregate_mod.load_all_scores(runs_dir)
         agg = aggregate_mod.aggregate(rows) if rows else []
@@ -120,7 +120,7 @@ In `ramcheck/gui/compare.py`, after `aggregate()` produces `AggRow`s the route h
 
 - [x] **Step 6: Update the template to demote a stale label**
 
-In `ramcheck/gui/templates/compare.html`, change the loop from `{% for r in rows %}` over `AggRow` to unpack the tuple, and render the `Maschine` cell muted with a warning when flagged. Replace lines 27-50 region's `<tr>...<td>{{ r.machine }}</td>...` with:
+In `touchstone/gui/templates/compare.html`, change the loop from `{% for r in rows %}` over `AggRow` to unpack the tuple, and render the `Maschine` cell muted with a warning when flagged. Replace lines 27-50 region's `<tr>...<td>{{ r.machine }}</td>...` with:
 
 ```html
       {% for r, mismatch in rows %}
@@ -161,8 +161,8 @@ In `ramcheck/gui/templates/compare.html`, change the loop from `{% for r in rows
 - [x] **Step 8: Verify headless + commit**
 
 ```bash
-uv run pytest tests/test_gui_hwlabel.py -q && uv run ruff check . && uv run mypy ramcheck/gui/hwlabel.py
-git add ramcheck/gui/hwlabel.py ramcheck/gui/app.py ramcheck/gui/compare.py ramcheck/gui/templates/compare.html tests/test_gui_hwlabel.py
+uv run pytest tests/test_gui_hwlabel.py -q && uv run ruff check . && uv run mypy touchstone/gui/hwlabel.py
+git add touchstone/gui/hwlabel.py touchstone/gui/app.py touchstone/gui/compare.py touchstone/gui/templates/compare.html tests/test_gui_hwlabel.py
 git commit -m "fix(gui): demote stale machine label that contradicts detected hardware (P1)"
 ```
 
@@ -171,13 +171,13 @@ git commit -m "fix(gui): demote stale machine label that contradicts detected ha
 ## Phase P2a — Spine: metric glossary
 
 **Files:**
-- Create: `ramcheck/gui/glossary.py`, `tests/test_gui_glossary.py`
+- Create: `touchstone/gui/glossary.py`, `tests/test_gui_glossary.py`
 
 - [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_gui_glossary.py
-from ramcheck.gui.glossary import GLOSSARY, describe
+from touchstone.gui.glossary import GLOSSARY, describe
 
 
 def test_every_entry_has_term_short_long():
@@ -200,7 +200,7 @@ def test_describe_unknown_key_returns_safe_placeholder():
 - [x] **Step 3: Implement `glossary.py`**
 
 ```python
-# ramcheck/gui/glossary.py
+# touchstone/gui/glossary.py
 """Single source of truth for what every metric/label in the GUI means.
 
 Pure data — no GUI imports — so it is unit-testable and so a render-time test can
@@ -317,8 +317,8 @@ def describe(key: str) -> Glossary:
 - [x] **Step 5: Commit.**
 
 ```bash
-uv run ruff check . && uv run mypy ramcheck/gui/glossary.py
-git add ramcheck/gui/glossary.py tests/test_gui_glossary.py
+uv run ruff check . && uv run mypy touchstone/gui/glossary.py
+git add touchstone/gui/glossary.py tests/test_gui_glossary.py
 git commit -m "feat(gui): metric glossary — single source of truth for UI explanations (P2a)"
 ```
 
@@ -327,14 +327,14 @@ git commit -m "feat(gui): metric glossary — single source of truth for UI expl
 ## Phase P2b — Spine: Jinja macro library + glossary injection
 
 **Files:**
-- Create: `ramcheck/gui/templates/macros/ui.html`
-- Modify: `ramcheck/gui/app.py:42-68` (inject glossary into the Jinja env globals), `ramcheck/gui/templates/base.html`
+- Create: `touchstone/gui/templates/macros/ui.html`
+- Modify: `touchstone/gui/app.py:42-68` (inject glossary into the Jinja env globals), `touchstone/gui/templates/base.html`
 - Test: `tests/test_gui_macros.py`
 
-- [x] **Step 1: Make the glossary available to all templates.** In `ramcheck/gui/app.py`, where `_templates` (Jinja2Templates) is defined, add the glossary as a global so macros can call it. Add near the module-level `_templates` definition:
+- [x] **Step 1: Make the glossary available to all templates.** In `touchstone/gui/app.py`, where `_templates` (Jinja2Templates) is defined, add the glossary as a global so macros can call it. Add near the module-level `_templates` definition:
 
 ```python
-from ramcheck.gui import glossary as _glossary
+from touchstone.gui import glossary as _glossary
 
 _templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templates
 ```
@@ -342,7 +342,7 @@ _templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templ
 - [x] **Step 2: Write the macro library.**
 
 ```html
-{# ramcheck/gui/templates/macros/ui.html — reusable presentation macros #}
+{# touchstone/gui/templates/macros/ui.html — reusable presentation macros #}
 {% macro metric(value, key, unit="") -%}
   {%- set gd = g(key) -%}
   <span class="metric" title="{{ gd.short }}">{{ value }}{% if unit %} {{ unit }}{% endif %}{% if gd.short %}<span class="metric-help" aria-hidden="true">ⓘ</span>{% endif %}</span>
@@ -366,15 +366,15 @@ _templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templ
 {%- endmacro %}
 ```
 
-- [x] **Step 2b: Add minimal CSS** for `.metric-help`, `.metric-label`, `.kv-row`, `.kv-label`, `.kv-value`, `.alert` in `ramcheck/gui/static/app.css` (mirror existing token style; `.metric-help{font-size:0.7em;opacity:0.5;margin-left:2px}`; `.kv-row{display:flex;gap:1rem;padding:0.15rem 0;border-bottom:1px solid var(--border)}` etc.).
+- [x] **Step 2b: Add minimal CSS** for `.metric-help`, `.metric-label`, `.kv-row`, `.kv-label`, `.kv-value`, `.alert` in `touchstone/gui/static/app.css` (mirror existing token style; `.metric-help{font-size:0.7em;opacity:0.5;margin-left:2px}`; `.kv-row{display:flex;gap:1rem;padding:0.15rem 0;border-bottom:1px solid var(--border)}` etc.).
 
 - [x] **Step 3: Write the test (glossary completeness gate + macro render).**
 
 ```python
 # tests/test_gui_macros.py
 from fastapi.testclient import TestClient
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
 # copy _FakeLauncher from tests/test_gui_app_read.py
 
 
@@ -392,7 +392,7 @@ def test_glossary_global_is_registered():
 
 ```bash
 uv run pytest tests/test_gui_macros.py -q && uv run ruff check .
-git add ramcheck/gui/templates/macros/ui.html ramcheck/gui/app.py ramcheck/gui/static/app.css tests/test_gui_macros.py
+git add touchstone/gui/templates/macros/ui.html touchstone/gui/app.py touchstone/gui/static/app.css tests/test_gui_macros.py
 git commit -m "feat(gui): Jinja macro library + glossary injected as template global (P2b)"
 ```
 
@@ -400,7 +400,7 @@ git commit -m "feat(gui): Jinja macro library + glossary injected as template gl
 
 ## Phase P2c — Explain layer + drop HTMX dead weight
 
-**Files:** Modify `ramcheck/gui/templates/compare.html`, `compare_axis.html`, `config.html`, `pack.html`, `_method_explainer.html`, `base.html`; `pyproject.toml`; delete `ramcheck/gui/static/htmx.min.js`.
+**Files:** Modify `touchstone/gui/templates/compare.html`, `compare_axis.html`, `config.html`, `pack.html`, `_method_explainer.html`, `base.html`; `pyproject.toml`; delete `touchstone/gui/static/htmx.min.js`.
 
 - [x] **Step 1: Metric headers via `mlabel`.** In `compare.html` `<thead>` replace bare `<th>Qualität %</th><th>TTFT P50</th><th>Decode Median</th><th>Peak RAM</th>` with `{% import "macros/ui.html" as ui %}` at top and `<th>{{ ui.mlabel("quality_pct") }}</th>` etc. Do the same for the row labels in `compare_axis.html` (`Qualität`, `Decode`, `TTFT P50`, `e2e Median`, `Peak-RAM`, `CPU Ø/Max` → `ui.mlabel("quality_pct")`, `"decode_median"`, `"ttft_p50"`, `"e2e"`, `"system_peak_ram"`, `"cpu"`).
 
@@ -414,7 +414,7 @@ git commit -m "feat(gui): Jinja macro library + glossary injected as template gl
 
 - [x] **Step 6: Reformat `_method_explainer.html`.** Wrap the weighting formula in `<pre class="formula">Σ (Score × Gewicht) / Max × 100 = Qualität %</pre>`; render the two K.-o. branches as two `<div class="card ko-branch">` cards; render the 1–5 scale as a small `<table>`.
 
-- [x] **Step 7: Drop HTMX.** Remove the `<script src="/static/htmx.min.js">` tag from `base.html`; delete `ramcheck/gui/static/htmx.min.js`. (HTMX is not in `pyproject.toml` deps — it is a vendored asset only — so only the file + tag are removed.)
+- [x] **Step 7: Drop HTMX.** Remove the `<script src="/static/htmx.min.js">` tag from `base.html`; delete `touchstone/gui/static/htmx.min.js`. (HTMX is not in `pyproject.toml` deps — it is a vendored asset only — so only the file + tag are removed.)
 
 - [x] **Step 8: Smoke test the explain layer.**
 
@@ -434,8 +434,8 @@ def test_base_no_longer_references_htmx(tmp_path):
 - [x] **Step 9: Restart server, headless-verify `/`, `/compare`, `/config`, `/packs/packs/ndassist.yaml`; commit.**
 
 ```bash
-git add -A ramcheck/gui pyproject.toml tests/test_gui_explain.py
-git rm ramcheck/gui/static/htmx.min.js
+git add -A touchstone/gui pyproject.toml tests/test_gui_explain.py
+git rm touchstone/gui/static/htmx.min.js
 git commit -m "feat(gui): self-explaining layer — metric tooltips, legends, breadcrumbs, reformatted explainer; drop unused HTMX (P2c)"
 ```
 
@@ -443,7 +443,7 @@ git commit -m "feat(gui): self-explaining layer — metric tooltips, legends, br
 
 ## Phase P3 — Result perf panel + full text + e2e_med
 
-**Files:** Modify `ramcheck/gui/templates/result.html:318-356`, `ramcheck/gui/templates/pack.html:39-78`, `ramcheck/gui/bundles.py:164-204`, `ramcheck/scorecard.py:101-113` + `:296-309`, `ramcheck/aggregate.py`; tests `tests/test_scorecard.py`/`test_scorecard_render.py`, `tests/test_gui_result_perf.py`.
+**Files:** Modify `touchstone/gui/templates/result.html:318-356`, `touchstone/gui/templates/pack.html:39-78`, `touchstone/gui/bundles.py:164-204`, `touchstone/scorecard.py:101-113` + `:296-309`, `touchstone/aggregate.py`; tests `tests/test_scorecard.py`/`test_scorecard_render.py`, `tests/test_gui_result_perf.py`.
 
 ### Task P3.1 — Backend rider: `e2e_med` into the perf summary + scores.csv
 
@@ -451,7 +451,7 @@ git commit -m "feat(gui): self-explaining layer — metric tooltips, legends, br
 
 ```python
 # tests/test_scorecard_e2e.py
-from ramcheck.scorecard import _perf_summary
+from touchstone.scorecard import _perf_summary
 # copy _resp() builder from tests/test_scorecard_render.py (EvalResponse with e2e_s set)
 
 def test_perf_summary_includes_e2e_med():
@@ -527,7 +527,7 @@ git commit -am "feat(gui): per-answer perf/token block + full prompt & system-pr
 
 ## Phase P4 — Config/Pack viewer + ephemeral overrides + YAML export
 
-**Files:** Create `ramcheck/gui/templates/config_view.html`; modify `ramcheck/gui/app.py` (new `/config-view/{config_path}` + `/export-yaml` routes; extend `start_eval` with a small override whitelist), `ramcheck/config.py` (an `apply_overrides` whitelist fn), `config.html` (a "?" link). Tests `tests/test_gui_config_view.py`, `tests/test_config_overrides.py`.
+**Files:** Create `touchstone/gui/templates/config_view.html`; modify `touchstone/gui/app.py` (new `/config-view/{config_path}` + `/export-yaml` routes; extend `start_eval` with a small override whitelist), `touchstone/config.py` (an `apply_overrides` whitelist fn), `config.html` (a "?" link). Tests `tests/test_gui_config_view.py`, `tests/test_config_overrides.py`.
 
 ### Task P4.1 — Read-only config viewer route
 
@@ -563,7 +563,7 @@ git commit -am "feat(gui): per-answer perf/token block + full prompt & system-pr
 
 - [x] **Step 1: Test** in `tests/test_config_overrides.py` (pure): `apply_overrides(cfg, {"runs_per_cell": 4, "seed": 7})` returns a copy with those replaced and everything else intact; an unknown key (`{"endpoint": ...}`) raises `ValueError`; empty dict is a no-op (returns equal config).
 - [x] **Step 2: Implement** `apply_overrides(cfg: Config, overrides: dict[str, object]) -> Config` in `config.py`, whitelisting `{"runs_per_cell", "seed", "temperature"}` only, validating types, using `cfg.model_copy(update=...)` then re-validating via `Config.model_validate(updated.model_dump())` so validators run. (Models keep their existing `apply_models_override` path.)
-- [x] **Step 3: DEFERRED — do not wire into the spawn this round.** Decision gate resolved: `ramcheck eval --help` confirms the CLI has **no** `--runs-per-cell`/`--seed`/`--temperature` flags (only `--resume`/`--run-dir`/`--models-json`). Therefore ship `apply_overrides` as a tested pure helper (Steps 1–2 only) and DO NOT touch `start_eval`/`RunRegistry`/`control.py` for non-model overrides. The model override path (`models_json` → `apply_models_override`) is unchanged and already wired. Note the deferral in the commit message. (Follow-up, out of scope here: add the eval CLI flags, then wire `overrides_json`.)
+- [x] **Step 3: DEFERRED — do not wire into the spawn this round.** Decision gate resolved: `touchstone eval --help` confirms the CLI has **no** `--runs-per-cell`/`--seed`/`--temperature` flags (only `--resume`/`--run-dir`/`--models-json`). Therefore ship `apply_overrides` as a tested pure helper (Steps 1–2 only) and DO NOT touch `start_eval`/`RunRegistry`/`control.py` for non-model overrides. The model override path (`models_json` → `apply_models_override`) is unchanged and already wired. Note the deferral in the commit message. (Follow-up, out of scope here: add the eval CLI flags, then wire `overrides_json`.)
 - [x] **Step 4: Tests green, restart, headless-verify, commit.**
 
 ```bash
@@ -574,7 +574,7 @@ git commit -am "feat(gui): read-only config viewer + YAML export + ephemeral ove
 
 ## Phase P7 — Export/import whole bundles
 
-**Files:** Modify `ramcheck/gui/app.py` (`/export-bundle/{name}`, `/import-bundle`), `result.html` (zip button + import card or a small `/import` page). Tests `tests/test_gui_bundle_io.py`.
+**Files:** Modify `touchstone/gui/app.py` (`/export-bundle/{name}`, `/import-bundle`), `result.html` (zip button + import card or a small `/import` page). Tests `tests/test_gui_bundle_io.py`.
 
 ### Task P7.1 — Export bundle as zip
 
@@ -617,7 +617,7 @@ git commit -am "feat(gui): export/import whole bundles as zip — multi-machine 
 
 ## Phase P5 — RAM methodology: baseline-subtracted model delta
 
-**Files:** Modify `ramcheck/sampler.py:239-251` (baseline sample), `ramcheck/merge.py` (carry baseline + delta), `ramcheck/models.py` (RAW_CSV_COLUMNS + RunRecord), `ramcheck/scorecard.py` (`_perf_summary` + scores.csv), `ramcheck/results.py` (EvalResponse `sys_used_baseline_mb`), compare/result UI labels, `AGENTS.md`, `docs/explanation/design-decisions.md`. Tests `tests/test_merge.py`, `tests/test_scorecard_*`.
+**Files:** Modify `touchstone/sampler.py:239-251` (baseline sample), `touchstone/merge.py` (carry baseline + delta), `touchstone/models.py` (RAW_CSV_COLUMNS + RunRecord), `touchstone/scorecard.py` (`_perf_summary` + scores.csv), `touchstone/results.py` (EvalResponse `sys_used_baseline_mb`), compare/result UI labels, `AGENTS.md`, `docs/explanation/design-decisions.md`. Tests `tests/test_merge.py`, `tests/test_scorecard_*`.
 
 > **Methodology note for the implementer:** the harness drives an *already-running* endpoint, so the model may be loaded before sampling starts. The baseline = system memory at sampler start (before the first request). On a pre-loaded server this yields the inference-time growth (KV/context/activations); on a lazy-loading server it includes weights. We report `model_delta = peak_sys_used − baseline` as the **comparable** number and label the raw peak "System-Peak". Per-prompt KV isolation is explicitly out of scope (documented).
 
@@ -643,7 +643,7 @@ git commit -am "feat(ram): baseline-subtracted model-delta as the cross-machine-
 
 ## Phase P6 — Reasoning-phase timing
 
-**Files:** Modify `ramcheck/runner.py:67-78` (`RequestOutcome`) + `:88-164` (`stream_once`) + `:167-180`/derive, `ramcheck/results.py` (`EvalResponse`), `ramcheck/qualrun.py:189-207` (persist), compare/result UI. Tests `tests/test_runner.py`.
+**Files:** Modify `touchstone/runner.py:67-78` (`RequestOutcome`) + `:88-164` (`stream_once`) + `:167-180`/derive, `touchstone/results.py` (`EvalResponse`), `touchstone/qualrun.py:189-207` (persist), compare/result UI. Tests `tests/test_runner.py`.
 
 ### Task P6.1 — Capture reasoning timing in `stream_once`
 
@@ -666,15 +666,15 @@ git commit -am "feat(eval): capture reasoning-phase duration + tps; surface thin
 
 ## Phase P0 — Tool rename (DEFERRED — blocked on target name)
 
-**Blocked:** the user must provide the target name before execution (CLI `ramcheck`, package `llm-ramcheck`, repo `llm-benchmark-harness`).
+**Blocked:** the user must provide the target name before execution (CLI `touchstone`, package `llm-touchstone`, repo `llm-benchmark-harness`).
 
-- [ ] When the name is known: sweep `pyproject.toml` (`[project].name`, `[project.scripts]`), `ramcheck/` package dir, all imports, `AGENTS.md`, docs, configs, the GUI logo/title. Do it as a single mechanical commit (or a small series), full `pytest` green after.
+- [ ] When the name is known: sweep `pyproject.toml` (`[project].name`, `[project.scripts]`), `touchstone/` package dir, all imports, `AGENTS.md`, docs, configs, the GUI logo/title. Do it as a single mechanical commit (or a small series), full `pytest` green after.
 
 ---
 
 ## Final E2E smoke (before declaring done)
 
-- [x] Start a real local endpoint; run `uv run ramcheck eval --pack packs/ndassist.yaml --config <local>.yaml` against ≥1 real model; open the GUI and walk every touched station (Konfig+Start, Übersicht/pack, Ergebnis, Vergleich, Export/Import). Confirm: per-answer perf renders with real numbers, RAM shows System-Peak + Modell-Delta, reasoning timing appears for a thinking model, export→import round-trips into `/compare`. Tests/review check logic; this checks real load (lesson `harness-preflight-and-rebuild`).
+- [x] Start a real local endpoint; run `uv run touchstone eval --pack packs/ndassist.yaml --config <local>.yaml` against ≥1 real model; open the GUI and walk every touched station (Konfig+Start, Übersicht/pack, Ergebnis, Vergleich, Export/Import). Confirm: per-answer perf renders with real numbers, RAM shows System-Peak + Modell-Delta, reasoning timing appears for a thinking model, export→import round-trips into `/compare`. Tests/review check logic; this checks real load (lesson `harness-preflight-and-rebuild`).
 
   > **DONE (2026-06-24):** Echter Smoke gegen LM Studio :1234 mit `google/gemma-4-12b-qat` (echtes Thinking-Modell, liefert `reasoning_content`), Judge `qwen/qwen3.6-27b`. Bundle `2026-06-24_133030_eval_ndassist` (6 Antworten, 0 Fehler, Qualität 76.2 % baseline / 88.8 % none). Live verifiziert: P3 Per-Answer-Perf (`tok/s`), P5 System-Peak 19.5/33.7 GB + Modell-Delta 1.2/15.5 GB, P6 Reasoning-Timing (`reasoning_duration_s`≈36 s, `reasoning_tps`≈16) + baseline-Sample als erste `resources.jsonl`-Zeile, P1 hwlabel-Demotion feuert im `/compare` (alte M1-Labels auf M5-Hardware ⚠), P4 config-view + YAML-Export, P7 ZIP-Export + Import-Round-Trip, sowie `judge_model`/`quant` im Report-Export. **TTFT-Invariante hält** (Uhr stoppt erst beim ersten Content-Token, nicht beim ersten Reasoning-Tick).
 

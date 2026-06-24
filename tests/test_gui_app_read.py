@@ -6,8 +6,8 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
 
 
 class _FakeLauncher:
@@ -55,8 +55,8 @@ def test_overview_lists_bundles(tmp_path):
 def test_overview_survives_partial_dim_scores(tmp_path):
     """A judged bundle whose judge omitted a master dimension (score='') must not
     500 the overview: classify succeeds and `/` returns 200 (BLOCKER 1)."""
-    from ramcheck.gui import bundles
-    from ramcheck.pack import load_pack
+    from touchstone.gui import bundles
+    from touchstone.pack import load_pack
 
     d = tmp_path / "2026-06-20_eval_ndassist"
     d.mkdir(parents=True)
@@ -72,7 +72,7 @@ def test_overview_survives_partial_dim_scores(tmp_path):
         ),
         encoding="utf-8",
     )
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     resp = EvalResponse(
         pack_id="ndassist",

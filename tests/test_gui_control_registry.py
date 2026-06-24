@@ -1,6 +1,6 @@
 import pytest
 
-from ramcheck.gui import control
+from touchstone.gui import control
 
 
 class FakeLauncher:

@@ -12,10 +12,10 @@ Das Tool ist Johannes' Labor: falsifizierbare Aussagen „Modell X auf HW Y mit 
 
 ## 2 · Verifizierte Ausgangslage (Code-fundiert)
 
-- **`/config`-Route** (`ramcheck/gui/app.py`) rendert `config.html` mit zwei Dropdowns: **Pack** (`packs/*.yaml`) und **Config** (`config*.yaml`). **Kein Modell-Selektor.** (`judge_configs`, `eval_only_bundles` für die Judge-Form.)
-- **Modelle** stehen in der Config-YAML: `Config.models: list[ModelSpec]` (`ramcheck/config.py`). **`ModelSpec`:** `id: str`, `quant: str = ""`, `max_tokens_default: int = 400`.
-- **Start-Pfad:** `/runs/eval`-POST → `RunRegistry.start_eval(*, pack_path, config_path, resume_dir=None)` (`ramcheck/gui/control.py`) baut `argv = ["eval", "--pack", …, "--config", …, "--run-dir", …, "--emit-events", (--resume …)]` und spawnt `python -m ramcheck eval …`.
-- **`eval`-CLI** (`eval_cmd`, `ramcheck/cli.py`): Optionen `--pack`, `--config/-c`, `--run-dir`, `--emit-events`, `--resume`, `--out`. Lädt die Config (inkl. `models`) und fährt die Matrix `for model in config.models` (`iter_eval_cells`). **Kein Modell-Override.**
+- **`/config`-Route** (`touchstone/gui/app.py`) rendert `config.html` mit zwei Dropdowns: **Pack** (`packs/*.yaml`) und **Config** (`config*.yaml`). **Kein Modell-Selektor.** (`judge_configs`, `eval_only_bundles` für die Judge-Form.)
+- **Modelle** stehen in der Config-YAML: `Config.models: list[ModelSpec]` (`touchstone/config.py`). **`ModelSpec`:** `id: str`, `quant: str = ""`, `max_tokens_default: int = 400`.
+- **Start-Pfad:** `/runs/eval`-POST → `RunRegistry.start_eval(*, pack_path, config_path, resume_dir=None)` (`touchstone/gui/control.py`) baut `argv = ["eval", "--pack", …, "--config", …, "--run-dir", …, "--emit-events", (--resume …)]` und spawnt `python -m touchstone eval …`.
+- **`eval`-CLI** (`eval_cmd`, `touchstone/cli.py`): Optionen `--pack`, `--config/-c`, `--run-dir`, `--emit-events`, `--resume`, `--out`. Lädt die Config (inkl. `models`) und fährt die Matrix `for model in config.models` (`iter_eval_cells`). **Kein Modell-Override.**
 - Stack: FastAPI + Jinja2 + Alpine + HTMX, **build-frei**. Bestehendes Muster: Daten server-seitig in die Vorlage einbetten, Alpine für Interaktivität.
 
 ## 3 · Ratifizierte Entscheidungen
@@ -38,7 +38,7 @@ config.html (Alpine baut models_json aus Checkboxen + Ad-hoc)
        └─ Route: models_json → list[ModelSpec] validieren (Pydantic)
             ├─ ungültig/leer (wenn Picker aktiv) → config.html mit Fehler, KEIN Spawn
             └─ gültig → start_eval(models=…)
-                 └─ argv += ["--models-json", <json>]  →  python -m ramcheck eval --models-json … --pack … --config …
+                 └─ argv += ["--models-json", <json>]  →  python -m touchstone eval --models-json … --pack … --config …
                       └─ eval_cmd: models_json → list[ModelSpec] → ersetzt config.models → Lauf
                            └─ bundle.json protokolliert die tatsächlichen Modelle
                                 → /result, /compare?axis=model können jetzt 2 Modelle zeigen
@@ -46,15 +46,15 @@ config.html (Alpine baut models_json aus Checkboxen + Ad-hoc)
 
 ## 5 · Komponenten (Verantwortung · Schnittstelle · Abhängigkeit)
 
-- **`ramcheck/gui/configs.py` (neu, pur):**
+- **`touchstone/gui/configs.py` (neu, pur):**
   - `config_models(path: str | Path) -> list[ModelSpec]` — parst **nur** das `models:`-Feld einer `config*.yaml` (YAML laden, jedes Element via `ModelSpec(**m)` validieren). **Defensiv:** Datei fehlt / YAML kaputt / `models` fehlt oder ist kein Listenelement → `[]`. (Nutzt absichtlich nicht `load_config`, damit eine Config mit Platzhalter-Endpoint trotzdem ihre Modelle zeigt.)
   - `models_by_config(files: list[str]) -> dict[str, list[dict]]` — `{config_path: [model.model_dump(), …]}` für die Vorlage (JSON-serialisierbar).
-- **`ramcheck/gui/app.py`:**
+- **`touchstone/gui/app.py`:**
   - `/config`-Route: zusätzlich `models_by_config(config_files)` an die Vorlage geben (Key `models_by_config`).
   - `/runs/eval`-POST: neues optionales Form-Feld `models_json: str = Form("")`. Bei `resume` wird der Override ignoriert. Sonst, wenn nicht-leer → `models_from_json(...)`; bei JSON-/Validierungs-/Leer-Fehler → **`HTTPException(400)`, kein Spawn** (codebase-konform: die Route liefert sonst JSON und nutzt `HTTPException`, z. B. 409 bei RunInProgress — daher 400 statt HTML-Re-render; der Front-end-Submit ist bei 0 Modellen ohnehin deaktiviert). Gültige Liste → `start_eval(..., models=specs)`.
-- **`ramcheck/gui/control.py` — `RunRegistry.start_eval`:** Signatur erweitern um `models: list[ModelSpec] | None = None`; falls gesetzt → `argv += ["--models-json", json.dumps([m.model_dump() for m in models])]`.
-- **`ramcheck/cli.py` — `eval_cmd`:** Option `models_json: str = typer.Option("", "--models-json", help="JSON list[ModelSpec]; replaces config.models for this run (GUI picker)")`. Wenn nicht-leer → parsen → `cfg.models = [ModelSpec(**m) …]` vor dem Lauf. (Helfer `_apply_models_override(cfg, models_json) -> Config` rein/testbar.)
-- **`ramcheck/gui/templates/config.html`:** Alpine-Block im „Eval starten"-Formular:
+- **`touchstone/gui/control.py` — `RunRegistry.start_eval`:** Signatur erweitern um `models: list[ModelSpec] | None = None`; falls gesetzt → `argv += ["--models-json", json.dumps([m.model_dump() for m in models])]`.
+- **`touchstone/cli.py` — `eval_cmd`:** Option `models_json: str = typer.Option("", "--models-json", help="JSON list[ModelSpec]; replaces config.models for this run (GUI picker)")`. Wenn nicht-leer → parsen → `cfg.models = [ModelSpec(**m) …]` vor dem Lauf. (Helfer `_apply_models_override(cfg, models_json) -> Config` rein/testbar.)
+- **`touchstone/gui/templates/config.html`:** Alpine-Block im „Eval starten"-Formular:
   - `x-data` hält `byConfig` (= eingebettetes `models_by_config` via `tojson`), `selected` (Config-Pfad, an `<select>` gebunden), `picked` (Set/Map der angehakten Modelle), `adhoc` (Liste `{id, quant}`).
   - Bei Config-Wechsel: `picked` = alle Modelle der neuen Config (vorab an).
   - Checkbox-Liste der Config-Modelle (`id` · `quant`), plus „+ Modell"-Zeile (zwei Inputs + Button → an `adhoc` anhängen, entfernbar).
@@ -90,11 +90,11 @@ Genaue Semantik des `models_json`-Feldes (löst die „leer"-Mehrdeutigkeit auf)
 
 | Datei | Änderung |
 |---|---|
-| `ramcheck/gui/configs.py` | **neu** — `config_models` + `models_by_config` (pur) |
-| `ramcheck/gui/app.py` | `/config` reicht `models_by_config`; `/runs/eval` nimmt + validiert `models_json`, ruft `start_eval(models=…)` |
-| `ramcheck/gui/control.py` | `start_eval(..., models=None)` → `--models-json` in argv |
-| `ramcheck/cli.py` | `eval_cmd --models-json` → `_apply_models_override` ersetzt `config.models` |
-| `ramcheck/gui/templates/config.html` | Modell-Picker (Checkboxen + Ad-hoc + hidden `models_json`), bei `resume` aus |
+| `touchstone/gui/configs.py` | **neu** — `config_models` + `models_by_config` (pur) |
+| `touchstone/gui/app.py` | `/config` reicht `models_by_config`; `/runs/eval` nimmt + validiert `models_json`, ruft `start_eval(models=…)` |
+| `touchstone/gui/control.py` | `start_eval(..., models=None)` → `--models-json` in argv |
+| `touchstone/cli.py` | `eval_cmd --models-json` → `_apply_models_override` ersetzt `config.models` |
+| `touchstone/gui/templates/config.html` | Modell-Picker (Checkboxen + Ad-hoc + hidden `models_json`), bei `resume` aus |
 | `tests/` | neue Tests je §7 |
 | `AGENTS.md` | kurze Notiz: GUI-Modell-Override (`--models-json`, ephemer, ersetzt `config.models`) |
 

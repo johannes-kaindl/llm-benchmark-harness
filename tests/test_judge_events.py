@@ -1,4 +1,4 @@
-from ramcheck import judge_events as je
+from touchstone import judge_events as je
 
 
 def test_constructors_have_type_tags():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ramcheck.config import apply_overrides, load_config
+from touchstone.config import apply_overrides, load_config
 
 
 def test_apply_overrides_replaces_whitelisted_keys():

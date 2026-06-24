@@ -1,6 +1,6 @@
-from ramcheck.pack import Pack
-from ramcheck.results import Verdict
-from ramcheck.scorecard import (
+from touchstone.pack import Pack
+from touchstone.results import Verdict
+from touchstone.scorecard import (
     category_averages,
     mean_score,
     passes_ko,
@@ -103,11 +103,11 @@ def test_red_flagged_prompts_collects_flagged_ids():
 
 
 def test_scorecard_surfaces_reasoning_only_count():
-    from ramcheck.scorecard import reasoning_only_counts
+    from touchstone.scorecard import reasoning_only_counts
 
     # build two responses, one reasoning-only
     def _r(pid, empty, rchars):
-        from ramcheck.results import EvalResponse
+        from touchstone.results import EvalResponse
 
         return EvalResponse(
             pack_id="demo",

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from ramcheck.client import OpenAIStreamClient
+from touchstone.client import OpenAIStreamClient
 
 
 def test_client_yields_reasoning_and_content_from_delta(monkeypatch):
@@ -42,7 +42,7 @@ def test_client_supports_reasoning_field_alias(monkeypatch):
 
 
 def test_stream_forwards_extra_body_only_when_set(monkeypatch):
-    from ramcheck.client import OpenAIStreamClient
+    from touchstone.client import OpenAIStreamClient
 
     captured = {}
 
@@ -85,7 +85,7 @@ def test_stream_forwards_extra_body_only_when_set(monkeypatch):
 
 
 def test_stream_omits_max_tokens_when_none(monkeypatch):
-    from ramcheck.client import OpenAIStreamClient
+    from touchstone.client import OpenAIStreamClient
 
     captured = {}
 

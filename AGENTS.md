@@ -4,7 +4,7 @@ Conventions for AI agents (Claude Code, Codex, …) working on this repository.
 
 ## Project character
 
-`llm-ramcheck` is a **thin** benchmark harness for *local* LLM endpoints. It drives a
+`llm-touchstone` is a **thin** benchmark harness for *local* LLM endpoints. It drives a
 fixed prompt set through an **OpenAI-compatible** endpoint, records TTFT / prefill-tok/s
 / decode-tok/s **with their distribution**, and — in a **decoupled process** — samples
 macOS memory pressure and thermal throttling, then merges both into one Markdown table
@@ -83,22 +83,22 @@ skipped, a half-written final line is tolerated.
 
 ```bash
 uv sync                                        # venv + deps (+ dev group)
-uv run ramcheck run    --config config.m1.yaml # M1 → LM Studio
-uv run ramcheck run    --config config.m5.yaml # M5 → mlx_lm.server / mlx-openai-server
-uv run ramcheck embed  --config config.m5.yaml # embedding throughput
-uv run ramcheck report --runs ./runs           # (re)generate report.md from raw.csv
+uv run touchstone run    --config config.m1.yaml # M1 → LM Studio
+uv run touchstone run    --config config.m5.yaml # M5 → mlx_lm.server / mlx-openai-server
+uv run touchstone embed  --config config.m5.yaml # embedding throughput
+uv run touchstone report --runs ./runs           # (re)generate report.md from raw.csv
 
-uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml  # qualitative run → bundle (tech-specs auto)
-uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml --resume runs/<ts>_eval_ndassist  # nach Abbruch weiter
-uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml  # LLM-as-judge → filled scorecard (resumebar)
-uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml --web  # + live judge monitor (score dist / red-flags / master preview)
+uv run touchstone eval   --pack packs/ndassist.yaml --config config.m5.yaml  # qualitative run → bundle (tech-specs auto)
+uv run touchstone eval   --pack packs/ndassist.yaml --config config.m5.yaml --resume runs/<ts>_eval_ndassist  # nach Abbruch weiter
+uv run touchstone judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml  # LLM-as-judge → filled scorecard (resumebar)
+uv run touchstone judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml --web  # + live judge monitor (score dist / red-flags / master preview)
 
 uv sync --extra gui                            # install the optional web-UI deps (fastapi/uvicorn/jinja2)
-uv run ramcheck gui                            # local web control-center: configure→start→watch→evaluate→compare→export
+uv run touchstone gui                            # local web control-center: configure→start→watch→evaluate→compare→export
 
 uv run pytest -q                               # tests (no server/sudo needed)
 uv run ruff check . && uv run ruff format .    # lint + format
-uv run mypy ramcheck/                          # strict type-check
+uv run mypy touchstone/                          # strict type-check
 uv run --extra tokenizer python -c "..."       # exact per-model tokenizer (transformers)
 ```
 
@@ -189,15 +189,15 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   (fed by `run_eval`'s `on_cell_*` callbacks); live host-load from `resources.jsonl`.
 - **The judge monitor (`judge --web`) never tails `resources.jsonl`.** The judge runs on a
   *different* endpoint (a cloud/local judge), so the bundle's `resources.jsonl` (from the
-  earlier `eval` run) is stale and irrelevant. The judge view (`ramcheck/judge_events.py`,
+  earlier `eval` run) is stale and irrelevant. The judge view (`touchstone/judge_events.py`,
   `TAILS_RESOURCES=False`) shows score distribution / red-flags / a master-scorecard preview
   instead of a load panel. The master `%`/safety values are computed in the host process and
   shipped pre-rendered (the monitor never sees the `Pack`). Like `eval --web`, the judge path
   is byte-identical without `--web` (additive callbacks, default off) and `_hold_monitor`
   keeps the dashboard up until Ctrl-C.
-- **The GUI (`ramcheck gui`) is an optional `[gui]` extra and never measures in-process.** The
-  long-lived FastAPI server (`ramcheck/gui/`, deps isolated in the `[gui]` extra — the core never
-  imports it) is an **out-of-process control-plane**: it spawns `python -m ramcheck eval/judge`
+- **The GUI (`touchstone gui`) is an optional `[gui]` extra and never measures in-process.** The
+  long-lived FastAPI server (`touchstone/gui/`, deps isolated in the `[gui]` extra — the core never
+  imports it) is an **out-of-process control-plane**: it spawns `python -m touchstone eval/judge`
   with `--run-dir <host-chosen>` `--emit-events` (event-writers without the webmon monitor — the GUI
   tails `events.jsonl` itself) and reuses the pure read layer (`load_pack`, `scorecard.master_rows`,
   `aggregate`, `tail`+`build_view`). `runs/` stays the SSOT; the GUI's only state is a **transient
@@ -242,7 +242,7 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   per-Aufgabe-Drill-down (per-Prompt `Verdict.score`-Δ, V7 — orthogonal zur holistischen %).
   CPU wird GUI-seitig aus `resources.jsonl`-Fenstern berechnet (`compare._cpu_for_window`); da
   `cpu_pct` erst mit Ink. 7 kam und kein Bundle seither neu lief, ist CPU heute überall **„n. v."**
-  (ein first-class getesteter Zustand). Pure Logik in `ramcheck/gui/compare.py`.
+  (ein first-class getesteter Zustand). Pure Logik in `touchstone/gui/compare.py`.
 
 ## Memory
 

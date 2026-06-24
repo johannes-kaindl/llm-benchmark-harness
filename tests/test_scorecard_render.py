@@ -1,6 +1,6 @@
-from ramcheck.pack import Pack
-from ramcheck.results import EvalResponse, ModelReport, Verdict
-from ramcheck.scorecard import render_scorecard_md, scores_csv_rows
+from touchstone.pack import Pack
+from touchstone.results import EvalResponse, ModelReport, Verdict
+from touchstone.scorecard import render_scorecard_md, scores_csv_rows
 
 
 def _pack():
@@ -74,7 +74,7 @@ def test_render_unjudged_shows_specs_and_pending_quality():
     assert "Demo-Pack" in md
     assert "Apple M5 Pro" in md
     assert "m1" in md  # model in the tech-spec table
-    assert "ramcheck judge" in md  # quality still pending
+    assert "touchstone judge" in md  # quality still pending
 
 
 def test_render_judged_shows_percent_and_recommendation():

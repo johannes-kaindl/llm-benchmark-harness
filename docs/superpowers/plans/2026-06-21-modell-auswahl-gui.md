@@ -4,7 +4,7 @@
 
 **Goal:** Auf `/config` auswählen können, welche Modelle ein Eval-Lauf fährt — Checkboxen für die `models:` der gewählten Config + Ad-hoc-Eingabe (id/quant), ephemer (ersetzt `config.models` nur für diesen Lauf).
 
-**Architecture:** Pure Parse-Helfer (`models_from_json`/`apply_models_override` in `config.py`; `config_models`/`models_by_config` in neuem `ramcheck/gui/configs.py`) tragen die Logik. Die `/config`-Route bettet die Modelle aller Configs als JSON ein; ein Alpine-Picker (`config.html` + `static/model_picker.js`) baut daraus ein verstecktes `models_json`-Feld. `/runs/eval` validiert es und reicht es als `models` an `RunRegistry.start_eval` durch, das `--models-json` in die `eval`-argv schreibt; `eval_cmd` ersetzt damit `config.models` vor dem Lauf. Kein Zurückschreiben in Configs.
+**Architecture:** Pure Parse-Helfer (`models_from_json`/`apply_models_override` in `config.py`; `config_models`/`models_by_config` in neuem `touchstone/gui/configs.py`) tragen die Logik. Die `/config`-Route bettet die Modelle aller Configs als JSON ein; ein Alpine-Picker (`config.html` + `static/model_picker.js`) baut daraus ein verstecktes `models_json`-Feld. `/runs/eval` validiert es und reicht es als `models` an `RunRegistry.start_eval` durch, das `--models-json` in die `eval`-argv schreibt; `eval_cmd` ersetzt damit `config.models` vor dem Lauf. Kein Zurückschreiben in Configs.
 
 **Tech Stack:** Python 3.12 · pydantic v2 (`Config`/`ModelSpec`) · Typer-CLI · FastAPI · Jinja2 · Alpine (build-frei) · pytest (`uv run pytest`).
 
@@ -13,15 +13,15 @@
 ## Pre-flight (für den ausführenden Worker)
 
 - **Working dir:** `/Users/Shared/code/llm-benchmark-harness`; Tests via `uv run pytest` aus dem Repo-Root (cwd hat die echten `config*.yaml`, die die `/config`-Route globt).
-- **Gates nach jeder Task:** die jeweilige Testdatei; am Ende (Task 7): `uv run pytest -q`, `uv run mypy ramcheck`, `uv run ruff check ramcheck tests`, `uv run ruff format --check ramcheck tests`.
+- **Gates nach jeder Task:** die jeweilige Testdatei; am Ende (Task 7): `uv run pytest -q`, `uv run mypy touchstone`, `uv run ruff check touchstone tests`, `uv run ruff format --check touchstone tests`.
 - **Commit-Trailer:** `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. **Branch:** `feat/modell-auswahl-gui` ist ausgecheckt. Kein Push (macht der Controller am Ende).
 
 ## Verifizierte Fakten (aus der Codebase)
 
 - `config.py`: `class ModelSpec(BaseModel): id: str; quant: str = ""; max_tokens_default: int = 400`. `class Config(BaseModel)` mit `models: list[ModelSpec]` + Validator `_at_least_one_model` (≥1). `load_config(path) -> Config`. pydantic v2 (`model_dump()`, `model_copy(update=…)`). `config.py` importiert bereits `yaml`, und aus pydantic `BaseModel, Field, field_validator`.
-- `ramcheck/gui/control.py`: `RunRegistry.start_eval(self, *, pack_path: str, config_path: str, resume_dir: Path | None = None) -> RunHandle` baut `argv = ["eval", "--pack", pack_path, "--config", config_path, "--run-dir", str(run_dir), "--emit-events"]` (+ `--resume`), spawnt via `self.launcher.spawn(argv)`. Sentinel wird vor Spawn geschrieben. `import json` ist vorhanden (Sentinels sind JSON).
-- `ramcheck/cli.py`: `eval_cmd(...)` mit Optionen `--pack`, `--config/-c`, `--out`, `--resume`, `--run-dir`, `--web`, `--port`, `--no-open`, `--emit-events`. Lädt `cfg = load_config(config)` (Zeile ~511). `console` (rich) ist im Modul verfügbar.
-- `ramcheck/gui/app.py` `/runs/eval` (POST): `start_eval(pack_path=Form(...), config_path=Form(...), resume_dir=Form(None))`; confined via `_confine_cwd`/`_confine`; ruft `registry.start_eval(...)`; gibt `{"run_dir":…,"kind":…}` (JSON) zurück; `RunInProgress` → `HTTPException(409)`. `/config` (GET) liefert `packs`, `configs` (`Path('.').glob('config*.yaml')`), `judge_configs`, `eval_only_bundles`, `resume`, `bundle`, `conflict`, `error`, `active`.
+- `touchstone/gui/control.py`: `RunRegistry.start_eval(self, *, pack_path: str, config_path: str, resume_dir: Path | None = None) -> RunHandle` baut `argv = ["eval", "--pack", pack_path, "--config", config_path, "--run-dir", str(run_dir), "--emit-events"]` (+ `--resume`), spawnt via `self.launcher.spawn(argv)`. Sentinel wird vor Spawn geschrieben. `import json` ist vorhanden (Sentinels sind JSON).
+- `touchstone/cli.py`: `eval_cmd(...)` mit Optionen `--pack`, `--config/-c`, `--out`, `--resume`, `--run-dir`, `--web`, `--port`, `--no-open`, `--emit-events`. Lädt `cfg = load_config(config)` (Zeile ~511). `console` (rich) ist im Modul verfügbar.
+- `touchstone/gui/app.py` `/runs/eval` (POST): `start_eval(pack_path=Form(...), config_path=Form(...), resume_dir=Form(None))`; confined via `_confine_cwd`/`_confine`; ruft `registry.start_eval(...)`; gibt `{"run_dir":…,"kind":…}` (JSON) zurück; `RunInProgress` → `HTTPException(409)`. `/config` (GET) liefert `packs`, `configs` (`Path('.').glob('config*.yaml')`), `judge_configs`, `eval_only_bundles`, `resume`, `bundle`, `conflict`, `error`, `active`.
 - `config.html`: `<form method="post" action="/runs/eval">` mit `<select name="pack_path">` + `<select name="config_path">` + Submit. **Plain POST** (kein hx-*) → zeigt die JSON-Antwort. base.html lädt `alpine.min.js` (defer) + `htmx.min.js`.
 - Test-Muster: `tests/test_gui_control_registry.py` hat `FakeLauncher` (records `calls`), `control.RunRegistry(runs_dir=tmp_path, launcher=…)`. GUI-Routen: `gui_app.create_app(runs_dir=tmp_path, registry=RunRegistry(...))` + `TestClient`. `uv run pytest`.
 
@@ -29,13 +29,13 @@
 
 | Datei | Verantwortung |
 |---|---|
-| `ramcheck/config.py` *(ändern)* | `models_from_json(s) -> list[ModelSpec]` (parse+validate, ≥1) + `apply_models_override(cfg, s) -> Config` (replace, leer → unverändert) — pur |
-| `ramcheck/gui/configs.py` *(neu, pur)* | `config_models(path) -> list[ModelSpec]` (defensiv) + `models_by_config(files) -> dict[str, list[dict]]` |
-| `ramcheck/gui/control.py` *(ändern)* | `start_eval(..., models=None)` → `--models-json` in argv |
-| `ramcheck/cli.py` *(ändern)* | `eval_cmd --models-json` → `apply_models_override(cfg, …)` |
-| `ramcheck/gui/app.py` *(ändern)* | `/config` reicht `models_by_config`; `/runs/eval` nimmt + validiert `models_json`, ruft `start_eval(models=…)` |
-| `ramcheck/gui/templates/config.html` *(ändern)* | Alpine-Picker (Checkboxen + Ad-hoc + hidden `models_json`), bei `resume` aus |
-| `ramcheck/gui/static/model_picker.js` *(neu)* | Alpine-Komponente `modelPicker(byConfig)` |
+| `touchstone/config.py` *(ändern)* | `models_from_json(s) -> list[ModelSpec]` (parse+validate, ≥1) + `apply_models_override(cfg, s) -> Config` (replace, leer → unverändert) — pur |
+| `touchstone/gui/configs.py` *(neu, pur)* | `config_models(path) -> list[ModelSpec]` (defensiv) + `models_by_config(files) -> dict[str, list[dict]]` |
+| `touchstone/gui/control.py` *(ändern)* | `start_eval(..., models=None)` → `--models-json` in argv |
+| `touchstone/cli.py` *(ändern)* | `eval_cmd --models-json` → `apply_models_override(cfg, …)` |
+| `touchstone/gui/app.py` *(ändern)* | `/config` reicht `models_by_config`; `/runs/eval` nimmt + validiert `models_json`, ruft `start_eval(models=…)` |
+| `touchstone/gui/templates/config.html` *(ändern)* | Alpine-Picker (Checkboxen + Ad-hoc + hidden `models_json`), bei `resume` aus |
+| `touchstone/gui/static/model_picker.js` *(neu)* | Alpine-Komponente `modelPicker(byConfig)` |
 | `tests/test_config_models_override.py` *(neu)* | Unit: `models_from_json` + `apply_models_override` |
 | `tests/test_gui_configs.py` *(neu)* | Unit: `config_models` + `models_by_config` |
 | `tests/test_gui_eval_models.py` *(neu)* | start_eval-argv + Route-Verhalten + `/config`-Render |
@@ -46,7 +46,7 @@
 ## Task 1: `config.py` — `models_from_json` + `apply_models_override` (pure)
 
 **Files:**
-- Modify: `ramcheck/config.py`
+- Modify: `touchstone/config.py`
 - Test: `tests/test_config_models_override.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import pytest
 
-from ramcheck.config import ModelSpec, apply_models_override, load_config, models_from_json
+from touchstone.config import ModelSpec, apply_models_override, load_config, models_from_json
 
 
 def test_models_from_json_valid():
@@ -106,7 +106,7 @@ Expected: FAIL — `ImportError: cannot import name 'models_from_json'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-At the top of `ramcheck/config.py`, ensure these imports exist (add what's missing):
+At the top of `touchstone/config.py`, ensure these imports exist (add what's missing):
 
 ```python
 import json
@@ -114,7 +114,7 @@ import json
 from pydantic import BaseModel, Field, ValidationError, field_validator
 ```
 
-Add at the end of `ramcheck/config.py` (after `load_config`):
+Add at the end of `touchstone/config.py` (after `load_config`):
 
 ```python
 def models_from_json(s: str) -> list[ModelSpec]:
@@ -148,16 +148,16 @@ Expected: PASS (7 passed).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/config.py tests/test_config_models_override.py
+git add touchstone/config.py tests/test_config_models_override.py
 git commit -m "feat(config): models_from_json + apply_models_override (GUI model override)"
 ```
 
 ---
 
-## Task 2: `ramcheck/gui/configs.py` — `config_models` + `models_by_config` (pure)
+## Task 2: `touchstone/gui/configs.py` — `config_models` + `models_by_config` (pure)
 
 **Files:**
-- Create: `ramcheck/gui/configs.py`
+- Create: `touchstone/gui/configs.py`
 - Test: `tests/test_gui_configs.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -166,7 +166,7 @@ git commit -m "feat(config): models_from_json + apply_models_override (GUI model
 # tests/test_gui_configs.py
 from __future__ import annotations
 
-from ramcheck.gui import configs
+from touchstone.gui import configs
 
 
 def _write(p, text):
@@ -211,12 +211,12 @@ def test_models_by_config_maps_and_survives_one_broken(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_gui_configs.py -q`
-Expected: FAIL — `ModuleNotFoundError: No module named 'ramcheck.gui.configs'`.
+Expected: FAIL — `ModuleNotFoundError: No module named 'touchstone.gui.configs'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# ramcheck/gui/configs.py
+# touchstone/gui/configs.py
 """Pure helpers to surface the models defined inside config*.yaml files for the
 Konfig+Start model picker. Defensive: a broken/missing config yields no models so a
 single bad file never breaks the page."""
@@ -228,7 +228,7 @@ from typing import Any
 
 import yaml
 
-from ramcheck.config import ModelSpec
+from touchstone.config import ModelSpec
 
 
 def config_models(path: str | Path) -> list[ModelSpec]:
@@ -271,7 +271,7 @@ Expected: PASS (5 passed).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/configs.py tests/test_gui_configs.py
+git add touchstone/gui/configs.py tests/test_gui_configs.py
 git commit -m "feat(gui): config_models + models_by_config (pure picker source)"
 ```
 
@@ -280,7 +280,7 @@ git commit -m "feat(gui): config_models + models_by_config (pure picker source)"
 ## Task 3: `RunRegistry.start_eval(models=...)` → `--models-json` argv
 
 **Files:**
-- Modify: `ramcheck/gui/control.py`
+- Modify: `touchstone/gui/control.py`
 - Test: `tests/test_gui_eval_models.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -291,8 +291,8 @@ from __future__ import annotations
 
 import json
 
-from ramcheck.config import ModelSpec
-from ramcheck.gui import control
+from touchstone.config import ModelSpec
+from touchstone.gui import control
 
 
 class _Rec:
@@ -339,10 +339,10 @@ Expected: FAIL — `TypeError: start_eval() got an unexpected keyword argument '
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/gui/control.py`, add the import near the other imports at the top:
+In `touchstone/gui/control.py`, add the import near the other imports at the top:
 
 ```python
-from ramcheck.config import ModelSpec
+from touchstone.config import ModelSpec
 ```
 
 Change `start_eval` to accept `models` and add the flag (only the signature + the argv block change):
@@ -391,7 +391,7 @@ Expected: PASS (2 passed).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/control.py tests/test_gui_eval_models.py
+git add touchstone/gui/control.py tests/test_gui_eval_models.py
 git commit -m "feat(gui): start_eval passes selected models as --models-json"
 ```
 
@@ -400,7 +400,7 @@ git commit -m "feat(gui): start_eval passes selected models as --models-json"
 ## Task 4: `eval_cmd --models-json` wiring
 
 **Files:**
-- Modify: `ramcheck/cli.py`
+- Modify: `touchstone/cli.py`
 - Test: `tests/test_gui_eval_models.py` (append)
 
 - [ ] **Step 1: Write the failing test**
@@ -409,7 +409,7 @@ git commit -m "feat(gui): start_eval passes selected models as --models-json"
 # append to tests/test_gui_eval_models.py
 from typer.testing import CliRunner
 
-from ramcheck.cli import app as cli_app
+from touchstone.cli import app as cli_app
 
 
 def test_eval_cmd_exposes_models_json_option():
@@ -425,10 +425,10 @@ Expected: FAIL — `--models-json` not in help output.
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/cli.py`, add the import (with the other `ramcheck.config` imports):
+In `touchstone/cli.py`, add the import (with the other `touchstone.config` imports):
 
 ```python
-from ramcheck.config import apply_models_override
+from touchstone.config import apply_models_override
 ```
 
 Add a new option to `eval_cmd` (after the `emit_events` option, before the closing `) -> None:`):
@@ -459,7 +459,7 @@ Expected: PASS (3 passed in file).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/test_gui_eval_models.py
+git add touchstone/cli.py tests/test_gui_eval_models.py
 git commit -m "feat(cli): eval --models-json replaces config.models for the run"
 ```
 
@@ -468,7 +468,7 @@ git commit -m "feat(cli): eval --models-json replaces config.models for the run"
 ## Task 5: `/runs/eval` route accepts + validates `models_json`
 
 **Files:**
-- Modify: `ramcheck/gui/app.py`
+- Modify: `touchstone/gui/app.py`
 - Test: `tests/test_gui_eval_models.py` (append)
 
 > **Note (intentional, codebase-consistent deviation from spec §6):** the existing `/runs/eval` returns JSON on success and raises `HTTPException` on error (409 for RunInProgress). For consistency, invalid/empty `models_json` raises **`HTTPException(400)`** (not an HTML re-render). The behavioral guarantee — *no spawn on invalid input* — is preserved.
@@ -479,7 +479,7 @@ git commit -m "feat(cli): eval --models-json replaces config.models for the run"
 # append to tests/test_gui_eval_models.py
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
+from touchstone.gui import app as gui_app
 
 
 def _client_and_launcher(tmp_path):
@@ -536,10 +536,10 @@ Expected: FAIL — valid case has no `--models-json`; "[]"/invalid return 200 (n
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/gui/app.py`, add the import at the top (with the other `ramcheck.config`/`ramcheck.gui` imports):
+In `touchstone/gui/app.py`, add the import at the top (with the other `touchstone.config`/`touchstone.gui` imports):
 
 ```python
-from ramcheck.config import models_from_json
+from touchstone.config import models_from_json
 ```
 
 Change the `/runs/eval` route to accept and validate `models_json`:
@@ -580,7 +580,7 @@ Expected: PASS (all in file).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/app.py tests/test_gui_eval_models.py
+git add touchstone/gui/app.py tests/test_gui_eval_models.py
 git commit -m "feat(gui): /runs/eval validates models_json and forwards it (400, no spawn, on invalid)"
 ```
 
@@ -589,9 +589,9 @@ git commit -m "feat(gui): /runs/eval validates models_json and forwards it (400,
 ## Task 6: `config.html` picker + `model_picker.js` + `/config` data
 
 **Files:**
-- Modify: `ramcheck/gui/app.py` (`/config` route passes `models_by_config`)
-- Create: `ramcheck/gui/static/model_picker.js`
-- Modify: `ramcheck/gui/templates/config.html`
+- Modify: `touchstone/gui/app.py` (`/config` route passes `models_by_config`)
+- Create: `touchstone/gui/static/model_picker.js`
+- Modify: `touchstone/gui/templates/config.html`
 - Test: `tests/test_gui_eval_models.py` (append)
 
 - [ ] **Step 1: Write the failing test**
@@ -621,10 +621,10 @@ Expected: FAIL — no `modelPicker(` / `models_json` in the rendered config page
 
 - [ ] **Step 3a: `/config` route passes `models_by_config`**
 
-In `ramcheck/gui/app.py`, add the import (with the other `ramcheck.gui` imports):
+In `touchstone/gui/app.py`, add the import (with the other `touchstone.gui` imports):
 
 ```python
-from ramcheck.gui import configs as configs_mod
+from touchstone.gui import configs as configs_mod
 ```
 
 In the `config_get` route, after `config_files = ...`, add and pass it:
@@ -646,10 +646,10 @@ In the `config_get` route, after `config_files = ...`, add and pass it:
         )
 ```
 
-- [ ] **Step 3b: Create `ramcheck/gui/static/model_picker.js`**
+- [ ] **Step 3b: Create `touchstone/gui/static/model_picker.js`**
 
 ```javascript
-// ramcheck/gui/static/model_picker.js
+// touchstone/gui/static/model_picker.js
 // Alpine component for the Konfig+Start model picker. Given {config_path: [model,...]},
 // it shows the selected config's models as checkboxes (+ ad-hoc id/quant rows) and keeps
 // a hidden models_json field in sync. Build-free; registered on alpine:init.
@@ -775,7 +775,7 @@ Expected: PASS (all in file).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/app.py ramcheck/gui/static/model_picker.js ramcheck/gui/templates/config.html tests/test_gui_eval_models.py
+git add touchstone/gui/app.py touchstone/gui/static/model_picker.js touchstone/gui/templates/config.html tests/test_gui_eval_models.py
 git commit -m "feat(gui): model picker on Konfig+Start (checkboxes + ad-hoc, hidden models_json)"
 ```
 
@@ -810,11 +810,11 @@ Expected: PASS — alle bisherigen + neuen Tests, 0 Fehler.
 
 Run:
 ```bash
-uv run mypy ramcheck
-uv run ruff check ramcheck tests
-uv run ruff format --check ramcheck tests
+uv run mypy touchstone
+uv run ruff check touchstone tests
+uv run ruff format --check touchstone tests
 ```
-Expected: clean. Bei Format-Funden: `uv run ruff format ramcheck tests` und neu stagen.
+Expected: clean. Bei Format-Funden: `uv run ruff format touchstone tests` und neu stagen.
 
 - [ ] **Step 4: Commit**
 

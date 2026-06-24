@@ -21,6 +21,6 @@ jobs:
       - name: Ruff (format)
         run: uv run ruff format --check .
       - name: Mypy (strict)
-        run: uv run mypy ramcheck/
+        run: uv run mypy touchstone/
       - name: Pytest
         run: uv run pytest -q

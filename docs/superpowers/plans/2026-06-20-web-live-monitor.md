@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A read-only browser live-monitor for `ramcheck eval --web` showing progress X/N, ETA, live host-load (RAM/pressure/throttle) and per-cell pass/fail+latency.
+**Goal:** A read-only browser live-monitor for `touchstone eval --web` showing progress X/N, ETA, live host-load (RAM/pressure/throttle) and per-cell pass/fail+latency.
 
 **Architecture:** A separate monitor subprocess (mirrors `_SamplerProcess`) tails an append-only `events.jsonl` (fed by additive `on_run_start`/`on_cell_start`/`on_cell_done` callbacks on `run_eval`) plus the existing `resources.jsonl`, and serves SSE from stdlib `http.server`. The measurement process is never touched. Zero new dependencies.
 
@@ -12,13 +12,13 @@
 
 ## File Structure
 
-- **Create** `ramcheck/events.py` — event contract (constructors + `parse_line`) + view-model aggregation (`build_view` → `RunView`). Pure.
-- **Create** `ramcheck/tail.py` — `read_new(path, offset)` byte-offset tail tolerant of missing/partial files. Pure.
-- **Create** `ramcheck/loadview.py` — `latest_load(path)` → latest host-load from `resources.jsonl`. Pure.
-- **Create** `ramcheck/webmon.py` — the monitor subprocess: `make_handler(bundle)`, SSE loop, `main()`. stdlib `http.server`.
-- **Modify** `ramcheck/qualrun.py` — add 3 optional callbacks to `run_eval` and fire them.
-- **Modify** `ramcheck/runner.py` — add `_WebMonitorProcess` (copy `_SamplerProcess`, no thread fallback).
-- **Modify** `ramcheck/cli.py` — `eval_cmd`: `--web`/`--port`/`--no-open` + `_eval_event_writers` wiring.
+- **Create** `touchstone/events.py` — event contract (constructors + `parse_line`) + view-model aggregation (`build_view` → `RunView`). Pure.
+- **Create** `touchstone/tail.py` — `read_new(path, offset)` byte-offset tail tolerant of missing/partial files. Pure.
+- **Create** `touchstone/loadview.py` — `latest_load(path)` → latest host-load from `resources.jsonl`. Pure.
+- **Create** `touchstone/webmon.py` — the monitor subprocess: `make_handler(bundle)`, SSE loop, `main()`. stdlib `http.server`.
+- **Modify** `touchstone/qualrun.py` — add 3 optional callbacks to `run_eval` and fire them.
+- **Modify** `touchstone/runner.py` — add `_WebMonitorProcess` (copy `_SamplerProcess`, no thread fallback).
+- **Modify** `touchstone/cli.py` — `eval_cmd`: `--web`/`--port`/`--no-open` + `_eval_event_writers` wiring.
 - **Modify** `AGENTS.md` — amend the "Markdown+CSV, no HTML" rule + document the new pieces.
 - **Create** tests: `tests/test_events.py`, `tests/test_tail.py`, `tests/test_loadview.py`, `tests/test_webmon.py`, `tests/test_eval_web.py`; extend `tests/test_qualrun.py`.
 
@@ -29,14 +29,14 @@ All callbacks default to `None` → `run_eval` behaviour is byte-for-byte unchan
 ## Task 1: events.py — event constructors + tolerant parse
 
 **Files:**
-- Create: `ramcheck/events.py`
+- Create: `touchstone/events.py`
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_events.py
-from ramcheck import events as ev
+from touchstone import events as ev
 
 
 def test_constructors_have_type_tags():
@@ -65,12 +65,12 @@ def test_parse_line_tolerates_garbage():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_events.py -q`
-Expected: FAIL with `ModuleNotFoundError: No module named 'ramcheck.events'`
+Expected: FAIL with `ModuleNotFoundError: No module named 'touchstone.events'`
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# ramcheck/events.py
+# touchstone/events.py
 """Event contract for the live monitor.
 
 The eval loop fires callbacks (run_eval's on_run_start/on_cell_start/on_cell_done);
@@ -146,7 +146,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/events.py tests/test_events.py
+git add touchstone/events.py tests/test_events.py
 git commit -m "feat(web): events.jsonl contract (constructors + tolerant parse)"
 ```
 
@@ -155,7 +155,7 @@ git commit -m "feat(web): events.jsonl contract (constructors + tolerant parse)"
 ## Task 2: events.py — build_view aggregation (progress/ETA/cells, resume dedup)
 
 **Files:**
-- Modify: `ramcheck/events.py`
+- Modify: `touchstone/events.py`
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -215,11 +215,11 @@ def test_run_view_as_dict_is_json_safe():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_events.py -q`
-Expected: FAIL with `AttributeError: module 'ramcheck.events' has no attribute 'build_view'`
+Expected: FAIL with `AttributeError: module 'touchstone.events' has no attribute 'build_view'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Append to `ramcheck/events.py`:
+Append to `touchstone/events.py`:
 
 ```python
 from dataclasses import dataclass, field
@@ -338,7 +338,7 @@ Expected: PASS (8 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/events.py tests/test_events.py
+git add touchstone/events.py tests/test_events.py
 git commit -m "feat(web): build_view aggregation (progress/ETA/resume-dedup)"
 ```
 
@@ -347,14 +347,14 @@ git commit -m "feat(web): build_view aggregation (progress/ETA/resume-dedup)"
 ## Task 3: tail.py — byte-offset tail tolerant of missing/partial
 
 **Files:**
-- Create: `ramcheck/tail.py`
+- Create: `touchstone/tail.py`
 - Test: `tests/test_tail.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_tail.py
-from ramcheck.tail import read_new
+from touchstone.tail import read_new
 
 
 def test_missing_file_yields_nothing(tmp_path):
@@ -393,12 +393,12 @@ def test_second_call_returns_only_new(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_tail.py -q`
-Expected: FAIL with `ModuleNotFoundError: No module named 'ramcheck.tail'`
+Expected: FAIL with `ModuleNotFoundError: No module named 'touchstone.tail'`
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# ramcheck/tail.py
+# touchstone/tail.py
 """Tail an append-only text file by byte offset, tolerant of a not-yet-existing file
 and a partial (still-being-written) last line."""
 
@@ -438,7 +438,7 @@ Expected: PASS (4 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/tail.py tests/test_tail.py
+git add touchstone/tail.py tests/test_tail.py
 git commit -m "feat(web): byte-offset tail tolerant of missing/partial files"
 ```
 
@@ -447,10 +447,10 @@ git commit -m "feat(web): byte-offset tail tolerant of missing/partial files"
 ## Task 4: loadview.py — latest host-load from resources.jsonl
 
 **Files:**
-- Create: `ramcheck/loadview.py`
+- Create: `touchstone/loadview.py`
 - Test: `tests/test_loadview.py`
 
-> **Before implementing:** confirm `ResourceSample` field names by reading `ramcheck/models.py` (expected: `sys_used_mb`, `mem_pressure_level`, `throttled`). If they differ, use the real names.
+> **Before implementing:** confirm `ResourceSample` field names by reading `touchstone/models.py` (expected: `sys_used_mb`, `mem_pressure_level`, `throttled`). If they differ, use the real names.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -458,7 +458,7 @@ git commit -m "feat(web): byte-offset tail tolerant of missing/partial files"
 # tests/test_loadview.py
 import json
 
-from ramcheck.loadview import latest_load
+from touchstone.loadview import latest_load
 
 
 def _write(p, rows):
@@ -499,12 +499,12 @@ def test_tolerates_partial_last_line(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_loadview.py -q`
-Expected: FAIL with `ModuleNotFoundError: No module named 'ramcheck.loadview'`
+Expected: FAIL with `ModuleNotFoundError: No module named 'touchstone.loadview'`
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# ramcheck/loadview.py
+# touchstone/loadview.py
 """Latest host-load snapshot from the sampler's resources.jsonl, for the live monitor.
 
 The only live source of RAM / memory-pressure / throttle during a run (per-cell
@@ -565,7 +565,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/loadview.py tests/test_loadview.py
+git add touchstone/loadview.py tests/test_loadview.py
 git commit -m "feat(web): latest host-load view from resources.jsonl"
 ```
 
@@ -574,7 +574,7 @@ git commit -m "feat(web): latest host-load view from resources.jsonl"
 ## Task 5: qualrun.py — three optional callbacks on run_eval
 
 **Files:**
-- Modify: `ramcheck/qualrun.py` (signature ~line 69-78; `cells` at line 107; loop at 116; flush at 165)
+- Modify: `touchstone/qualrun.py` (signature ~line 69-78; `cells` at line 107; loop at 116; flush at 165)
 - Test: `tests/test_qualrun.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -615,7 +615,7 @@ Expected: FAIL with `TypeError: run_eval() got an unexpected keyword argument 'o
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/qualrun.py`, add the import near the top (after `from pathlib import Path`):
+In `touchstone/qualrun.py`, add the import near the top (after `from pathlib import Path`):
 
 ```python
 from collections.abc import Callable
@@ -674,7 +674,7 @@ Expected: PASS (all prior tests + 2 new). Confirms default-`None` path is unchan
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/qualrun.py tests/test_qualrun.py
+git add touchstone/qualrun.py tests/test_qualrun.py
 git commit -m "feat(eval): additive progress callbacks on run_eval"
 ```
 
@@ -683,7 +683,7 @@ git commit -m "feat(eval): additive progress callbacks on run_eval"
 ## Task 6: webmon.py — the monitor subprocess (HTTP + SSE)
 
 **Files:**
-- Create: `ramcheck/webmon.py`
+- Create: `touchstone/webmon.py`
 - Test: `tests/test_webmon.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -695,7 +695,7 @@ import json
 import threading
 from http.server import ThreadingHTTPServer
 
-from ramcheck import webmon
+from touchstone import webmon
 
 
 def _bundle(tmp_path):
@@ -760,14 +760,14 @@ def test_sse_streams_view_and_load(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_webmon.py -q`
-Expected: FAIL with `ModuleNotFoundError: No module named 'ramcheck.webmon'`
+Expected: FAIL with `ModuleNotFoundError: No module named 'touchstone.webmon'`
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# ramcheck/webmon.py
+# touchstone/webmon.py
 """Live monitor server — a separate process that tails events.jsonl + resources.jsonl
-and serves an SSE dashboard. Run as: python -m ramcheck.webmon --bundle <dir> --port <p>.
+and serves an SSE dashboard. Run as: python -m touchstone.webmon --bundle <dir> --port <p>.
 
 It prints the bound port on stdout (so the parent can open the browser) and binds to
 127.0.0.1 only (local, single-user). It never touches the measurement process — it only
@@ -782,14 +782,14 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from ramcheck import events as events_mod
-from ramcheck import loadview as loadview_mod
-from ramcheck import tail as tail_mod
+from touchstone import events as events_mod
+from touchstone import loadview as loadview_mod
+from touchstone import tail as tail_mod
 
 POLL_S = 0.25
 
 INDEX_HTML = """<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><title>ramcheck monitor</title>
+<html lang="de"><head><meta charset="utf-8"><title>touchstone monitor</title>
 <style>
  body{font-family:system-ui,sans-serif;margin:1.5rem;background:#111;color:#eee}
  h1{font-size:1.1rem} .bar{background:#333;border-radius:4px;height:1.2rem;overflow:hidden}
@@ -802,7 +802,7 @@ INDEX_HTML = """<!doctype html>
  .ok{color:#5c5} .fail{color:#e66} .muted{color:#999}
 </style></head>
 <body>
-<h1>ramcheck — live eval monitor</h1>
+<h1>touchstone — live eval monitor</h1>
 <div class="bar"><div id="barfill"></div></div>
 <div class="grid">
  <div class="card"><div class="muted">Fortschritt</div><div class="num"><span id="done">0</span>/<span id="total">0</span></div></div>
@@ -892,7 +892,7 @@ def make_handler(bundle: str | Path) -> type[BaseHTTPRequestHandler]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="ramcheck live monitor server")
+    ap = argparse.ArgumentParser(description="touchstone live monitor server")
     ap.add_argument("--bundle", required=True)
     ap.add_argument("--port", type=int, default=0)
     args = ap.parse_args(argv)
@@ -916,7 +916,7 @@ Expected: PASS (2 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/webmon.py tests/test_webmon.py
+git add touchstone/webmon.py tests/test_webmon.py
 git commit -m "feat(web): stdlib http.server SSE monitor (tails events+resources)"
 ```
 
@@ -925,7 +925,7 @@ git commit -m "feat(web): stdlib http.server SSE monitor (tails events+resources
 ## Task 7: runner.py — _WebMonitorProcess (spawn, read port, stop)
 
 **Files:**
-- Modify: `ramcheck/runner.py` (add class after `_SamplerProcess`, ~line 319)
+- Modify: `touchstone/runner.py` (add class after `_SamplerProcess`, ~line 319)
 - Test: `tests/test_webmon.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -934,7 +934,7 @@ git commit -m "feat(web): stdlib http.server SSE monitor (tails events+resources
 # append to tests/test_webmon.py
 import http.client as _http
 
-from ramcheck.runner import _WebMonitorProcess
+from touchstone.runner import _WebMonitorProcess
 
 
 def test_webmonitor_process_spawns_and_serves(tmp_path):
@@ -957,7 +957,7 @@ Expected: FAIL with `ImportError: cannot import name '_WebMonitorProcess'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/runner.py`, after the `_SamplerProcess` class (it ends at line 318), add (`subprocess`, `sys` are already imported for `_SamplerProcess`):
+In `touchstone/runner.py`, after the `_SamplerProcess` class (it ends at line 318), add (`subprocess`, `sys` are already imported for `_SamplerProcess`):
 
 ```python
 class _WebMonitorProcess:
@@ -975,7 +975,7 @@ class _WebMonitorProcess:
     def start(self) -> int | None:
         """Spawn the monitor; return the bound port (read from its stdout), or None."""
         cmd = [
-            sys.executable, "-m", "ramcheck.webmon",
+            sys.executable, "-m", "touchstone.webmon",
             "--bundle", str(self.bundle), "--port", str(self.port),
         ]
         try:
@@ -1009,7 +1009,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/runner.py tests/test_webmon.py
+git add touchstone/runner.py tests/test_webmon.py
 git commit -m "feat(web): _WebMonitorProcess spawn (mirrors _SamplerProcess, no fallback)"
 ```
 
@@ -1018,7 +1018,7 @@ git commit -m "feat(web): _WebMonitorProcess spawn (mirrors _SamplerProcess, no 
 ## Task 8: cli.py — eval_cmd --web wiring
 
 **Files:**
-- Modify: `ramcheck/cli.py` (imports; add `_eval_event_writers`; extend `eval_cmd` at line 159-191)
+- Modify: `touchstone/cli.py` (imports; add `_eval_event_writers`; extend `eval_cmd` at line 159-191)
 - Test: `tests/test_eval_web.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1027,8 +1027,8 @@ git commit -m "feat(web): _WebMonitorProcess spawn (mirrors _SamplerProcess, no 
 # tests/test_eval_web.py
 from types import SimpleNamespace
 
-from ramcheck import events as ev
-from ramcheck.cli import _eval_event_writers
+from touchstone import events as ev
+from touchstone.cli import _eval_event_writers
 
 
 def _cell():
@@ -1065,11 +1065,11 @@ def test_eval_event_writers_emit_well_formed_events(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_eval_web.py -q`
-Expected: FAIL with `ImportError: cannot import name '_eval_event_writers' from 'ramcheck.cli'`
+Expected: FAIL with `ImportError: cannot import name '_eval_event_writers' from 'touchstone.cli'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/cli.py`, add to the imports:
+In `touchstone/cli.py`, add to the imports:
 
 ```python
 import time
@@ -1079,11 +1079,11 @@ import webbrowser
 and
 
 ```python
-from ramcheck import events as events_mod
-from ramcheck.runner import _WebMonitorProcess, resolve_engine, run_benchmark
+from touchstone import events as events_mod
+from touchstone.runner import _WebMonitorProcess, resolve_engine, run_benchmark
 ```
 
-(merge the `_WebMonitorProcess` into the existing `from ramcheck.runner import ...` line.)
+(merge the `_WebMonitorProcess` into the existing `from touchstone.runner import ...` line.)
 
 Add this helper above `eval_cmd`:
 
@@ -1140,11 +1140,11 @@ def eval_cmd(
     pk = load_pack(pack)
     if resume is not None:
         run_dir = resume
-        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/] [dim](resume)[/]")
+        console.print(f"[bold]touchstone eval[/] [{pk.id}] → [cyan]{run_dir}[/] [dim](resume)[/]")
     else:
         base_out = out or cfg.output_path()
         run_dir = base_out / f"{_timestamp()}_eval_{pk.id}"
-        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
+        console.print(f"[bold]touchstone eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
 
     client = _make_client(cfg)
 
@@ -1183,7 +1183,7 @@ def eval_cmd(
     console.print(
         f"[green]✓[/] {len(responses)} Antworten ({errors} Fehler) · "
         f"[bold]{run_dir / 'scorecard.md'}[/] (Tech-Specs gefüllt, Qualität offen) · "
-        f"bewerten: [cyan]ramcheck judge --bundle {run_dir} --judge-config judge.yaml[/]"
+        f"bewerten: [cyan]touchstone judge --bundle {run_dir} --judge-config judge.yaml[/]"
     )
 ```
 
@@ -1195,7 +1195,7 @@ Expected: PASS (1 test)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/test_eval_web.py
+git add touchstone/cli.py tests/test_eval_web.py
 git commit -m "feat(cli): eval --web wiring (monitor subprocess + events.jsonl)"
 ```
 
@@ -1260,7 +1260,7 @@ Run:
 ```bash
 uv run pytest -q
 uv run ruff check . && uv run ruff format --check .
-uv run mypy ramcheck/
+uv run mypy touchstone/
 ```
 Expected: all tests pass (101 prior + new), ruff clean, mypy clean.
 
@@ -1269,7 +1269,7 @@ Expected: all tests pass (101 prior + new), ruff clean, mypy clean.
 - [ ] **Step 4: Manual smoke (optional, needs a live endpoint)**
 
 ```bash
-uv run ramcheck eval --pack packs/ndassist.yaml --config config.ndeval.yaml --web
+uv run touchstone eval --pack packs/ndassist.yaml --config config.ndeval.yaml --web
 # browser opens on 127.0.0.1:<auto>; watch progress/ETA/load/cell rows; Ctrl-C to stop.
 ```
 
