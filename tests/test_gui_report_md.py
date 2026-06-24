@@ -246,7 +246,7 @@ def test_scorecard_table_escapes_breaking_rationale():
                 "pct": 80.0,
                 "safety_passed": True,
                 "safety_reason": "",
-                "recommendation": "Ja",
+                "rubric_level": "hoch",
             }
         ],
     )
@@ -270,7 +270,7 @@ def test_unjudged_export_strips_judging_and_adds_eval_task():
     detail = _detail(
         pk, [resp], reports=[report], verdicts=[verdict],
         master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
-                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
     )
     judged = render_report_md(detail, GLOSSARY, include_judging=True)
     blank = render_report_md(detail, GLOSSARY, include_judging=False)
@@ -308,7 +308,7 @@ def test_judge_model_and_quant_surface_when_recorded():
     detail = _detail(
         pk, [resp], reports=[report],
         master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
-                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
         manifest={"host": HOST, "date": "2026-06-24",
                   "judge": {"model": "qwen3.6-35b-a3b", "temperature": 0.0,
                             "endpoint": "http://localhost:1234/v1"}},
@@ -331,7 +331,7 @@ def test_judge_model_unknown_for_old_judged_bundle():
     detail = _detail(  # default manifest has no "judge" block
         pk, [_resp(first.id)], reports=[report],
         master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
-                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
     )
     md = render_report_md(detail, GLOSSARY)
     assert "nicht erfasst (älterer Lauf" in md

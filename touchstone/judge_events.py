@@ -51,7 +51,7 @@ INDEX_HTML = """<!doctype html>
 <table><thead><tr><th>#</th><th>Prompt</th><th>Modell &middot; Variante</th><th>Score</th><th>Red?</th><th>Begr&uuml;ndung</th></tr></thead>
 <tbody id="rows"></tbody></table>
 <h2>Master-Scorecard (am Ende)</h2>
-<table><thead><tr><th>Modell &middot; Variante</th><th>In %</th><th>Sicherheit</th><th>Empfehlung</th></tr></thead>
+<table><thead><tr><th>Modell &middot; Variante</th><th>In %</th><th>Sicherheit</th><th>Rubrik</th></tr></thead>
 <tbody id="masterbody"></tbody></table>
 <script>
 function fmtEta(s){if(s==null)return '\\u2013';s=Math.round(s);return Math.floor(s/60)+'m '+(s%60)+'s';}
@@ -70,8 +70,8 @@ es.addEventListener('view',e=>{let v;try{v=JSON.parse(e.data)}catch(_){return}
   return `<tr><td>${c.i}</td><td>${esc(c.prompt_id)}</td><td>${esc(c.model)} \\u00b7 ${esc(c.variant)}</td><td>${sc}</td><td>${rf}</td><td class="muted">${esc(c.rationale)}</td></tr>`;
  }).join('');
  masterbody.innerHTML=v.masters.map(m=>{
-  const safe=m.safety_passed?'<span class="ok">ja</span>':`<span class="fail">nein</span> <span class="muted">(${esc(m.safety_reason)})</span>`;
-  return `<tr><td>${esc(m.model)} \\u00b7 ${esc(m.variant)}</td><td>${m.pct.toFixed(1)} %</td><td>${safe}</td><td>${esc(m.recommendation)}</td></tr>`;
+  const safe=m.safety_passed?'<span class="ok">&#10003;</span>':`<span class="fail">&#10007;</span> <span class="muted">(${esc(m.safety_reason)})</span>`;
+  return `<tr><td>${esc(m.model)} \\u00b7 ${esc(m.variant)}</td><td>${m.pct.toFixed(1)} %</td><td>${safe}</td><td>${esc(m.rubric_level)}</td></tr>`;
  }).join('');});
 es.onerror=()=>{document.title='touchstone judge monitor (offline)';};
 </script></body></html>"""
@@ -117,7 +117,7 @@ def master_event(
     pct: float,
     safety_passed: bool,
     safety_reason: str,
-    recommendation: str,
+    rubric_level: str,
 ) -> dict[str, object]:
     return {
         "ts": ts,
@@ -127,7 +127,7 @@ def master_event(
         "pct": pct,
         "safety_passed": safety_passed,
         "safety_reason": safety_reason,
-        "recommendation": recommendation,
+        "rubric_level": rubric_level,
     }
 
 
@@ -200,7 +200,7 @@ class MasterRow:
     pct: float
     safety_passed: bool
     safety_reason: str
-    recommendation: str
+    rubric_level: str
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -209,7 +209,7 @@ class MasterRow:
             "pct": self.pct,
             "safety_passed": self.safety_passed,
             "safety_reason": self.safety_reason,
-            "recommendation": self.recommendation,
+            "rubric_level": self.rubric_level,
         }
 
 
@@ -293,7 +293,7 @@ def build_view(events: Iterable[dict[str, object]]) -> JudgeRunView:
                 pct=_as_float(e.get("pct", 0.0)),
                 safety_passed=bool(e.get("safety_passed")),
                 safety_reason=str(e.get("safety_reason", "")),
-                recommendation=str(e.get("recommendation", "")),
+                rubric_level=str(e.get("rubric_level", "")),
             )
     verdicts = [by_key[k] for k in order]
     # "scored" = a usable 1..5 score. Guards against a corrupt/out-of-range score

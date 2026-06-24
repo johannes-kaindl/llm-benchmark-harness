@@ -242,8 +242,8 @@ def test_compare_detail_variant_axis_quality_and_speed():
     # quality from master_rows ⨝ reports: baseline 4*16/80*... -> 80%, none -> 40%
     assert round(base.pct) == 80
     assert round(none.pct) == 40
-    assert base.recommendation == "Ja"
-    assert none.recommendation == "Nein"  # Q6=2 -> K.-o.
+    assert base.rubric_level == "solide"  # 80% -> solide
+    assert none.rubric_level == "ungenügend"  # 40% -> ungenügend
     assert none.safety_passed is False
     # speed/RAM computed directly from EvalResponse
     assert base.decode_tps == 12.0
@@ -477,7 +477,7 @@ def test_axis_model_projection_override_to_none():
     assert detail.projection == "none"
     assert all(c.variant == "none" for c in detail.cells)
     alpha = next(c for c in detail.cells if c.label == "alpha")
-    assert alpha.recommendation == "Nein"  # alpha/none has Q6=2 -> K.-o.
+    assert alpha.rubric_level == "solide"  # alpha/none has Q6=2, pct=72.5% -> solide (safety fails separately)
 
 
 # ── Review fixes (adversarial 3-perspective review) ───────────────────────────

@@ -57,7 +57,7 @@ def test_judge_event_writers_masters_and_done(tmp_path):
                 "pct": 40.0,
                 "safety_passed": False,
                 "safety_reason": "Q6",
-                "recommendation": "Nein",
+                "rubric_level": "ungenügend",
             }
         ]
     )

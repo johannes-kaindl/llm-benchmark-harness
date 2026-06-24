@@ -19,7 +19,7 @@ class BundleSummary:
     pack_id: str = ""
     models: list[str] = field(default_factory=list)
     date: str = ""
-    recommendation: str | None = None  # only when judged
+    rubric_level: str | None = None  # only when judged
     safety_passed: bool | None = None
     pack_rel: str = ""  # cwd-relative pack path for the /packs/<rel> link
     run_kind: str = "eval"  # 'eval' | 'judge' — which live stream the running card should tail
@@ -92,7 +92,7 @@ def _summary(run_dir: Path, status: str, sentinel: dict[str, Any] | None) -> Bun
 def _judged_summary(run_dir: Path) -> BundleSummary:
     base = _summary(run_dir, "judged", None)
     rec, passed = _recompute_verdict(run_dir)
-    base.recommendation = rec
+    base.rubric_level = rec
     base.safety_passed = passed
     return base
 
@@ -127,10 +127,10 @@ def _recompute_verdict(run_dir: Path) -> tuple[str | None, bool | None]:
     rows = scorecard.master_rows(pk, responses, verdicts, _load_reports(run_dir, pk))
     if not rows:
         return None, None
-    # pick the strongest recommendation for the badge
-    order = {"Ja": 3, "Mit Einschränkung": 2, "Nein": 1}
-    best = max(rows, key=lambda r: order.get(str(r["recommendation"]), 0))
-    return str(best["recommendation"]), bool(best["safety_passed"])
+    # pick the highest rubric_level for the badge
+    order = {"hoch": 3, "solide": 2, "teilweise": 1, "ungenügend": 0}
+    best = max(rows, key=lambda r: order.get(str(r["rubric_level"]), -1))
+    return str(best["rubric_level"]), bool(best["safety_passed"])
 
 
 def _reports_from_scores(run_dir: Path, pk: Any) -> list[Any]:

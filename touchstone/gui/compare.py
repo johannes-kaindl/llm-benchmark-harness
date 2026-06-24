@@ -91,7 +91,7 @@ class CompareCell:
     model: str
     variant: str
     pct: float | None
-    recommendation: str | None
+    rubric_level: str | None
     safety_passed: bool | None
     safety_reason: str
     dim_scores: dict[str, int] = field(default_factory=dict)
@@ -168,7 +168,7 @@ def _cell_metrics(
         model=model,
         variant=variant,
         pct=(master["pct"] if master else None),
-        recommendation=(master["recommendation"] if master else None),
+        rubric_level=(master["rubric_level"] if master else None),
         safety_passed=(master["safety_passed"] if master else None),
         safety_reason=(master["safety_reason"] if master else ""),
         dim_scores=dict(dim_scores),

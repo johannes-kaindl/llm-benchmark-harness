@@ -161,7 +161,7 @@ def _frontmatter(
         ("temperature", pack.sampling.temperature),
         ("n_prompts", len(known_ids)),
         ("n_answers", len(responses)),
-        ("recommendation", best["recommendation"] if best else None),
+        ("rubric_level", best["rubric_level"] if best else None),
         ("quality_pct", round(best["pct"]) if best else None),
         ("safety_passed", best["safety_passed"] if best else None),
         ("judge_model", judge.get("model")),
@@ -317,7 +317,7 @@ def render_report_md(
             w(
                 f"| {_cell(str(row['model']))} | {_cell(str(row['variant']))} "
                 f"| {_fmt(row.get('pct'), '{:.0f}', '%')} "
-                f"| {_cell(str(row.get('recommendation', '—')))} | {_cell(safe)} |"
+                f"| {_cell(str(row.get('rubric_level', '—')))} | {_cell(safe)} |"
             )
         w("")
     else:
@@ -390,8 +390,9 @@ def render_report_md(
                 w(f"### {row['model']} · Variante `{row['variant']}`\n")
                 w(
                     f"**{_metric_link('quality_pct', glossary)}: "
-                    f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Urteil: **{row.get('recommendation', '—')}**"
-                    + ("" if row.get("safety_passed") else f" · ⛔ {_cell(str(row.get('safety_reason', '')))}")
+                    f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Rubrik: **{row.get('rubric_level', '—')}**"
+                    + f" · Sicherheit: {'✓' if row.get('safety_passed') else '✗'}"
+                    + ("" if row.get("safety_passed") else f" ({_cell(str(row.get('safety_reason', '')))})")
                     + "\n"
                 )
                 if rep and rep.dim_scores:

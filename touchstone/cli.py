@@ -379,7 +379,7 @@ def _judge_event_writers(
                     pct,
                     bool(row["safety_passed"]),
                     str(row["safety_reason"]),
-                    str(row["recommendation"]),
+                    str(row["rubric_level"]),
                 )
             )
 
