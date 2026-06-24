@@ -166,6 +166,65 @@ def test_render_report_md_escapes_table_breaking_rationale():
     assert "gut \\| aber<br>zweite Zeile" in md  # rationale stays a single table cell
 
 
+def test_render_report_md_failed_request_shows_error_not_fake_answer():
+    # ok=False must surface the error and NOT render a clean empty answer + a perf table
+    # of meaningless numbers (a crashed request must be distinguishable in a handover doc).
+    from ramcheck.results import EvalResponse
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    payload = _resp_payload(first.id)
+    payload.update(ok=False, error="ConnectionError: boom", response_text="", content_empty=True, reasoning_text="")
+    detail = {
+        "run_dir": Path("runs/x"),
+        "manifest": {},
+        "pack": pk,
+        "responses": [EvalResponse(**payload)],
+        "verdicts": [],
+        "reports": [],
+        "master_rows": [],
+        "cited_ids": {},
+    }
+    md = render_report_md(detail, GLOSSARY)
+    assert "Anfrage fehlgeschlagen: ConnectionError: boom" in md
+    assert "| Kennzahl | Wert |" not in md  # no perf table for the failed answer
+
+
+def test_render_report_md_judge_rationale_is_doc_safe():
+    # judge rationale is free prose interpolated into a paragraph — a '```'/'|'/newline
+    # must not open a code block, break a table, or pollute the outline.
+    from ramcheck.results import EvalResponse, Verdict
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp = EvalResponse(**_resp_payload(first.id))
+    verdict = Verdict(
+        model="m",
+        variant="baseline",
+        prompt_id=first.id,
+        repeat=0,
+        category="A",
+        score=4,
+        red_flag=False,
+        rationale="hat ``` und | und\nzeile",
+        unscored=False,
+        safety_critical=False,
+    )
+    detail = {
+        "run_dir": Path("runs/x"),
+        "manifest": {},
+        "pack": pk,
+        "responses": [resp],
+        "verdicts": [verdict],
+        "reports": [],
+        "master_rows": [],
+        "cited_ids": {},
+    }
+    md = render_report_md(detail, GLOSSARY)
+    assert "**Judge:**" in md
+    assert "hat ``` und \\| und<br>zeile" in md  # single line, pipe-escaped
+
+
 def test_render_report_md_fences_arbitrary_backticks():
     # A model answer that itself contains a ``` code fence must not break out of its block.
     from ramcheck.results import EvalResponse
