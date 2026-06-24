@@ -53,6 +53,15 @@ class EvalResponse:
     t_end: float
     reasoning_chars: int = 0  # length of "thinking" output (0 if none / non-reasoning model)
     reasoning_text: str = ""  # the "thinking" text — persisted ONLY when content_empty (else "")
+    # reasoning-phase timing (always persisted; 0 if none / non-reasoning model). Split out from
+    # the answer phase so a slow "thinking" stretch can't be mistaken for a slow response.
+    reasoning_duration_s: float = 0.0  # time spent in the reasoning channel (s)
+    reasoning_tps: float = 0.0  # reasoning tokens / reasoning_duration_s (heuristic)
+    reasoning_completion_tokens: int = 0  # heuristic reasoning-token count
+    # baseline = pre-run host memory floor; delta = peak − baseline (cross-machine-comparable
+    # model memory growth). Both None on bundles produced before the baseline tick existed.
+    sys_used_baseline_mb: float | None = None
+    sys_used_delta_mb: float | None = None
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)

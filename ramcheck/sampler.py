@@ -242,6 +242,12 @@ class HostSampler:
         self.start()
         try:
             with path.open("w", encoding="utf-8") as fh:
+                # Capture one baseline tick before the loop so resources.jsonl
+                # carries the pre-run host state as its first line.
+                baseline = self.sample_once()
+                baseline.baseline = True
+                fh.write(json.dumps(asdict(baseline)) + "\n")
+                fh.flush()
                 while not stop_event.is_set():
                     sample = self.sample_once()
                     fh.write(json.dumps(asdict(sample)) + "\n")

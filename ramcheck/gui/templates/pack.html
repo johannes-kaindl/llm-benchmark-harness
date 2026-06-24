@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title_suffix %} · Pack {{ pack.id }}{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Pack › {{ pack.title }}</nav>
+{% endblock %}
 {% block body %}
 <div class="page-header">
   <h1 class="page-title">{{ pack.title }}</h1>
@@ -33,15 +36,22 @@
 
 <div class="card">
   <div class="card-title">Prompt-Varianten</div>
+  <p class="muted text-xs"><strong>baseline</strong>: {{ g("variant_baseline").short }} · <strong>none</strong>: {{ g("variant_none").short }}</p>
   {% for pv in pack.prompt_variants %}
+  {% if pv.system_prompt %}
+  <div x-data="{ open: false }" style="margin-bottom:0.3rem">
+    <div class="flex items-center gap-2" style="cursor:pointer;user-select:none" @click="open = !open">
+      <span class="dim-id">{{ pv.id }}</span>
+      <a class="text-xs" style="cursor:pointer" x-text="open ? '▲ System-Prompt verbergen' : '▼ System-Prompt anzeigen'"></a>
+    </div>
+    <div x-show="open" x-cloak class="text-xs muted" style="white-space:pre-wrap; margin:0.3rem 0 0 0; padding:0.4rem 0.6rem; background:var(--bg); border-radius:6px; border-left:3px solid var(--border)">{{ pv.system_prompt }}</div>
+  </div>
+  {% else %}
   <div class="dim-row">
     <span class="dim-id">{{ pv.id }}</span>
-    {% if pv.system_prompt %}
-      <span class="text-xs muted">{{ pv.system_prompt[:80] }}{% if pv.system_prompt|length > 80 %}…{% endif %}</span>
-    {% else %}
-      <span class="text-xs muted">(kein System-Prompt)</span>
-    {% endif %}
+    <span class="text-xs muted">(kein System-Prompt)</span>
   </div>
+  {% endif %}
   {% endfor %}
 </div>
 
@@ -60,6 +70,15 @@
           <span>{{ p.title }}</span>
           {% if p.safety_critical %}<span class="badge nein" style="font-size:0.65rem">sicherheitskritisch</span>{% endif %}
           {% if p.format_strict %}<span class="badge eval-only" style="font-size:0.65rem">format-strikt</span>{% endif %}
+        </div>
+        <div x-data="{ open: false }" class="mt-1">
+          <a class="text-xs" style="cursor:pointer" @click="open = !open" x-text="open ? '▲ Prompt verbergen' : '▼ Prompt anzeigen'"></a>
+          <div x-show="open" x-cloak style="margin-top:0.3rem">
+            <div class="text-xs" style="white-space:pre-wrap; padding:0.4rem 0.6rem; background:var(--bg); border-radius:6px; border-left:3px solid var(--border)">{{ p.prompt }}</div>
+            {% if p.tests %}
+            <div class="text-xs muted" style="margin-top:0.3rem"><strong>Rubrik:</strong> {{ p.tests }}</div>
+            {% endif %}
+          </div>
         </div>
         {% if p.green_flags %}
         <div class="mt-1">

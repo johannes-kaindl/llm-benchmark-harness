@@ -105,6 +105,7 @@ def _write_compare_bundle(
                     ttft_s=p.get("ttft_s", 0.1),
                     e2e_s=p.get("e2e_s", 1.0),
                     sys_used_mb=p.get("sys_used_mb", 8000.0),
+                    sys_used_delta_mb=p.get("sys_used_delta_mb"),
                 ).as_dict()
             )
         )
@@ -208,6 +209,26 @@ def test_cpu_for_window_empty_samples():
     assert compare._cpu_for_window([], [_resp("m", "baseline")]) == (None, None)
 
 
+def test_cell_metrics_reasoning_medians_over_ok_responses():
+    # reasoning duration/tps medians come from ok, non-cold responses (nan-safe like the others).
+    responses = [
+        _resp("m", "baseline", reasoning_duration_s=2.0, reasoning_tps=30.0),
+        _resp("m", "baseline", reasoning_duration_s=4.0, reasoning_tps=50.0),
+        _resp("m", "baseline", is_cold_start=True, reasoning_duration_s=99.0, reasoning_tps=1.0),
+    ]
+    cell = compare._cell_metrics("baseline", "m", "baseline", responses, None, {}, {}, [])
+    assert cell.reasoning_duration_med == 3.0  # median(2,4); cold-start excluded
+    assert cell.reasoning_tps_med == 40.0  # median(30,50)
+
+
+def test_cell_metrics_reasoning_medians_none_when_absent():
+    # all-zero reasoning (non-reasoning model) → no median surfaced.
+    responses = [_resp("m", "baseline"), _resp("m", "baseline")]
+    cell = compare._cell_metrics("baseline", "m", "baseline", responses, None, {}, {}, [])
+    assert cell.reasoning_duration_med is None
+    assert cell.reasoning_tps_med is None
+
+
 def test_compare_detail_variant_axis_quality_and_speed():
     d = _two_variant_bundle(pathlib.Path(_mk_runs(tempfile.mkdtemp())))
     detail = compare.compare_detail(d, "variant")
@@ -232,6 +253,28 @@ def test_compare_detail_variant_axis_quality_and_speed():
     assert base.dim_scores["Q6"] == 4
     # CPU absent -> "n. v."
     assert base.cpu_max is None
+
+
+def test_compare_detail_carries_model_delta_per_cell():
+    d = tmp = pathlib.Path(_mk_runs(tempfile.mkdtemp())) / "2026_eval_delta"
+    _write_compare_bundle(
+        tmp,
+        cells=[("m", "baseline"), ("m", "none")],
+        dim_scores_by_cell={
+            ("m", "baseline"): {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+            ("m", "none"): {q: 3 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]},
+        },
+        perf_by_cell={
+            ("m", "baseline"): {"sys_used_mb": 52000.0, "sys_used_delta_mb": 12000.0},
+            ("m", "none"): {"sys_used_mb": 50000.0, "sys_used_delta_mb": 10000.0},
+        },
+    )
+    detail = compare.compare_detail(d, "variant")
+    assert detail is not None
+    base = next(c for c in detail.cells if c.label == "baseline")
+    none = next(c for c in detail.cells if c.label == "none")
+    assert base.model_delta_mb == 12000.0
+    assert none.model_delta_mb == 10000.0
 
 
 def test_compare_detail_single_axis_value_marks_nothing_to_compare():

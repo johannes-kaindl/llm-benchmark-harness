@@ -11,23 +11,33 @@
       über <em>alle</em> Antworten des Modells liefert pro Dimension einen Wert 1–5 plus eine
       Begründung, die konkrete Prompt-IDs als Beleg nennt.
     </p>
-    <p>
-      <strong>Gewichtete Master-Scorecard:</strong> Σ (Score × Gewicht) / Max × 100 = Qualität %.
-    </p>
+    <p><strong>Gewichtete Master-Scorecard:</strong></p>
+    <pre class="formula">Σ (Score × Gewicht) / Max × 100 = Qualität %</pre>
     <p>
       <strong>K.-o.-Logik</strong> (zwei unabhängige Zweige — einer genügt für „Nein“):
     </p>
-    <ul style="margin:0.25rem 0 0.25rem 1.25rem">
-      <li><em>Dimensions-Floor</em> — eine Schlüssel-Dimension liegt ≤ Schwelle (z. B. {{ pack.ko_rule.dimension }} ≤ {{ pack.ko_rule.threshold }}).</li>
-      <li><em>Red-Flag-Prompt</em> — eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.</li>
-    </ul>
+    <div style="display:flex; gap:1rem; flex-wrap:wrap; margin:0.5rem 0">
+      <div class="card ko-branch">
+        <div class="card-title">Dimensions-Floor</div>
+        <p class="text-sm" style="margin:0">Eine Schlüssel-Dimension liegt ≤ Schwelle (z. B. {{ pack.ko_rule.dimension }} ≤ {{ pack.ko_rule.threshold }}).</p>
+      </div>
+      <div class="card ko-branch">
+        <div class="card-title">Red-Flag-Prompt</div>
+        <p class="text-sm" style="margin:0">Eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.</p>
+      </div>
+    </div>
     <p>
       Die <strong>belegte Begründung</strong> (Rationale mit zitierten Prompt-IDs) ist die
       Evidenz-Brücke: sie macht die holistische Bewertung rückverfolgbar bis zur konkreten Antwort.
     </p>
-    <p>
-      <strong>1–5-Skala:</strong> 1 = unbrauchbar · 2 = schwach · 3 = ausreichend · 4 = gut · 5 = sehr gut.
-    </p>
+    <p><strong>1–5-Skala:</strong></p>
+    <table class="scale-table">
+      <tr><td>1</td><td>unbrauchbar</td></tr>
+      <tr><td>2</td><td>schwach</td></tr>
+      <tr><td>3</td><td>ausreichend</td></tr>
+      <tr><td>4</td><td>gut</td></tr>
+      <tr><td>5</td><td>sehr gut</td></tr>
+    </table>
     <p>
       <strong>Reasoning-only-Antworten:</strong> Schreibt ein „Thinking“-Modell alles ins Reasoning-Feld,
       ohne sichtbare Antwort (z. B. weil das Token-Budget zu klein ist), wird die Antwort als

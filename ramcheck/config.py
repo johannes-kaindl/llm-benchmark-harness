@@ -153,6 +153,42 @@ def models_from_json(s: str) -> list[ModelSpec]:
     return out
 
 
+# Non-model run knobs the GUI may override ephemerally (per-start), kept narrow on purpose:
+# endpoint/machine/models/output paths stay config-owned. Maps key → accepted python type.
+OVERRIDE_TYPES: dict[str, type] = {
+    "runs_per_cell": int,
+    "seed": int,
+    "temperature": float,
+}
+
+
+def apply_overrides(cfg: Config, overrides: dict[str, object]) -> Config:
+    """Return a copy of ``cfg`` with whitelisted run knobs replaced (ephemeral GUI start).
+
+    Only ``runs_per_cell``/``seed``/``temperature`` may be overridden; any other key raises
+    ``ValueError``. Values are type-checked (``int``/``float``; ``bool`` is rejected for ints
+    since ``bool`` is an ``int`` subclass) and the result is re-validated through
+    ``Config.model_validate`` so the field validators (e.g. runs_per_cell >= 2) still run.
+    An empty mapping is a no-op (returns an equal config). Models keep their own
+    ``apply_models_override`` path."""
+    if not overrides:
+        return cfg.model_copy()
+    unknown = set(overrides) - set(OVERRIDE_TYPES)
+    if unknown:
+        raise ValueError(
+            f"unknown override key(s): {sorted(unknown)}; allowed: {sorted(OVERRIDE_TYPES)}"
+        )
+    for key, value in overrides.items():
+        expected = OVERRIDE_TYPES[key]
+        if expected is int:
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise ValueError(f"override {key!r} must be an int, got {value!r}")
+        elif not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ValueError(f"override {key!r} must be a number, got {value!r}")
+    updated = cfg.model_copy(update=dict(overrides))
+    return Config.model_validate(updated.model_dump())
+
+
 def apply_models_override(cfg: Config, models_json: str) -> Config:
     """Return cfg with its models replaced by ``models_json`` (the GUI picker selection).
     An empty/blank string means 'no override' and returns cfg unchanged (resume / CLI default)."""

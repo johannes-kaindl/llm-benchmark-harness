@@ -127,6 +127,20 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
 - **Peak-RAM = system memory, not RSS.** On Apple Silicon mlx mmaps the weights into unified
   memory, so the server-PID RSS undercounts the model (~0.2 GB vs ~18 GB). The report leads with
   peak *system* memory + `memory_pressure`; RSS is only a parenthetical hint.
+- **System-Peak vs Modell-Delta — the cross-machine number is the delta.** The raw `sys_used_mb`
+  peak ("System-Peak") includes the whole OS + every other process, so it is **not** comparable
+  across machines. We report `sys_used_delta_mb = peak − baseline` ("Modell-Delta") as the
+  comparable figure. **Baseline** = the `baseline=True` resources.jsonl tick captured at
+  `sampler.run_to_file` *before the first request* (or, on an older bundle without the marker,
+  `min` of all samples). The harness drives an *already-running* endpoint: on a pre-loaded server
+  the delta is the inference-time growth (KV/context/activations); on a lazy-loading server it
+  also includes the weights. The delta lives in unified memory where the context/KV share is **not**
+  cleanly separable from the weights (documented imprecision); per-prompt KV isolation is out of
+  scope. `merge.resources_for_window` derives the baseline from the *full* sample list (the baseline
+  tick is outside every run window) and threads it into `aggregate_window`; `RunRecord` /
+  `EvalResponse` / `scores.csv` (`model_delta_gb`) all carry it. **When you add a RAM field, keep
+  the `RAW_CSV_COLUMNS ↔ RunRecord` import-time assertion green** (`sys_used_delta_mb` sits right
+  after `sys_used_mb` in both).
 - **Cold-start** is the very first request of a whole run (flagged `is_cold_start`), reported
   on its own line, never in the aggregates.
 - **Reasoning ("thinking") models are captured, not dropped.** `client.py` reads the separate
@@ -134,6 +148,13 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   accumulates it (separately from content, so it never triggers content-TTFT) and `run_eval` records
   its length as `EvalResponse.reasoning_chars`. A reasoning-only answer (e.g. ollama `gemma4:e4b`) has
   `content_empty=True` with a non-zero `reasoning_chars`; the monitor shows a 💭 marker per such cell.
+  `stream_once` also records `reasoning_duration_s` / `reasoning_tps` (heuristic token count) and the
+  first-reasoning-token time, surfaced per-answer and as a "Thinking" compare row.
+- **Prefill/decode rates start at the first *generated* token, not the first content token.** For a
+  reasoning model the reasoning stream begins long before the first content token, so `derive_rates`
+  would otherwise shrink the decode window to ~0 and explode `decode_tps` (and starve `prefill_tps`).
+  It uses `min(ttft, t_reasoning_start)` as the prefill/decode boundary. `ttft_s` itself stays "time to
+  first *visible content*" — the UX latency metric, deliberately distinct from the throughput boundary.
 - **Reasoning-only is scored `unscored`, not a silent 1/5.** `judge.py:score_response` splits the
   empty-content path on `reasoning_chars`: reasoning-only (content empty *and* reasoning present) →
   `unscored` (excluded from the mean, `REASONING_ONLY_RATIONALE`) — it is *our* token-starvation, not a

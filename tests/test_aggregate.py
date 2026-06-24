@@ -13,7 +13,9 @@ HEADER = [
     "variant",
     "ttft_p50",
     "decode_med",
+    "e2e_med",
     "peak_ram_gb",
+    "model_delta_gb",
     "power",
     "metric_type",
     "metric",
@@ -94,6 +96,28 @@ def test_aggregate_computes_weighted_quality():
     assert a.n_dims == 2
     assert a.dim_scores == {"Q1": 4, "Q2": 2}
     assert a.ttft_p50 == "0.3" and a.decode_med == "60"
+
+
+def test_aggregate_carries_model_delta_gb():
+    rows = [
+        _row(
+            chip="M5",
+            machine="mac",
+            model="m",
+            variant="baseline",
+            peak_ram_gb="50.8",
+            model_delta_gb="11.7",
+            metric_type="dimension",
+            metric="Q1",
+            weight="3",
+            score="4",
+        )
+    ]
+    out = agg.aggregate(rows)
+    assert out[0].model_delta_gb == "11.7"
+    md = agg.render_aggregate_md(out)
+    assert "Modell-Delta (GB)" in md  # new column header
+    assert "11.7" in md
 
 
 def test_aggregate_unscored_group_has_no_quality():

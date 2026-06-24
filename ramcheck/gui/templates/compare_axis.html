@@ -1,6 +1,10 @@
 {# ramcheck/gui/templates/compare_axis.html #}
 {% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block title_suffix %} · Vergleich{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Vergleich{% if detail %} › {{ detail.run_name }}{% endif %}</nav>
+{% endblock %}
 {% block body %}
 <script defer src="/static/scatter.js"></script>
 
@@ -62,6 +66,7 @@
 {# ── ② Kopf-an-Kopf ──────────────────────────────────────────────────── #}
 <div class="card">
   <div class="card-title">② Kopf-an-Kopf</div>
+  <p class="muted text-xs"><strong>baseline</strong>: {{ g("variant_baseline").short }} · <strong>none</strong>: {{ g("variant_none").short }}</p>
   <table class="bundle-table">
     <thead><tr><th></th>{% for c in detail.cells %}<th>{{ c.label }}{% if detail.axis == "model" %}<div class="muted text-xs">Variante: {{ c.variant }}</div>{% endif %}</th>{% endfor %}</tr></thead>
     <tbody>
@@ -72,18 +77,20 @@
         {% else %}<span class="muted text-xs">noch nicht bewertet</span>{% endif %}
         {% if c.safety_passed is false %}<span class="badge nein text-xs">K.-o.</span>{% endif %}
       </td>{% endfor %}</tr>
-      <tr><td>Qualität</td>{% for c in detail.cells %}<td>{% if c.pct is not none %}{{ "%.0f"|format(c.pct) }} %{% if detail.winners.pct == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("quality_pct") }}</td>{% for c in detail.cells %}<td>{% if c.pct is not none %}{{ "%.0f"|format(c.pct) }} %{% if detail.winners.pct == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
       {% for d in detail.dimensions %}
       <tr><td class="muted text-xs">{{ d.id }} {{ d.name }} ×{{ d.weight }}</td>{% for c in detail.cells %}<td>
         {% set s = c.dim_scores.get(d.id) %}{{ s if s is not none else "—" }}{% if detail.winners.get(d.id) == c.label %} 🏆{% endif %}
         {% if d.id == detail.pack.ko_rule.dimension and s is not none and s <= detail.pack.ko_rule.threshold %}<span class="badge nein text-xs">K.-o.</span>{% endif %}
       </td>{% endfor %}</tr>
       {% endfor %}
-      <tr><td>Decode</td>{% for c in detail.cells %}<td>{% if c.decode_tps is not none %}{{ "%.0f"|format(c.decode_tps) }} tok/s{% if detail.winners.decode == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
-      <tr><td>TTFT P50</td>{% for c in detail.cells %}<td>{% if c.ttft_p50 is not none %}{{ "%.2f"|format(c.ttft_p50) }} s{% if detail.winners.ttft == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
-      <tr><td>e2e Median</td>{% for c in detail.cells %}<td>{% if c.e2e_med is not none %}{{ "%.2f"|format(c.e2e_med) }} s{% if detail.winners.e2e == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
-      <tr><td>Peak-RAM</td>{% for c in detail.cells %}<td>{% if c.peak_ram_mb is not none %}{{ "%.1f"|format(c.peak_ram_mb / 1024) }} GB{% if detail.winners.ram == c.label %} 🏆{% endif %}<div class="muted text-xs">Druck: {{ c.mem_pressure_max }}</div>{% else %}—{% endif %}</td>{% endfor %}</tr>
-      <tr><td>CPU Ø/Max</td>{% for c in detail.cells %}<td>{% if c.cpu_max is not none %}{{ "%.0f"|format(c.cpu_avg) }} / {{ "%.0f"|format(c.cpu_max) }} %{% if detail.winners.cpu == c.label %} 🏆{% endif %}{% else %}<span class="muted">n. v.</span>{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("decode_median") }}</td>{% for c in detail.cells %}<td>{% if c.decode_tps is not none %}{{ "%.0f"|format(c.decode_tps) }} tok/s{% if detail.winners.decode == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("ttft_p50") }}</td>{% for c in detail.cells %}<td>{% if c.ttft_p50 is not none %}{{ "%.2f"|format(c.ttft_p50) }} s{% if detail.winners.ttft == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("e2e") }}</td>{% for c in detail.cells %}<td>{% if c.e2e_med is not none %}{{ "%.2f"|format(c.e2e_med) }} s{% if detail.winners.e2e == c.label %} 🏆{% endif %}{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("reasoning_duration") }}</td>{% for c in detail.cells %}<td>{% if c.reasoning_duration_med is not none %}{{ "%.2f"|format(c.reasoning_duration_med) }} s{% if c.reasoning_tps_med is not none %}<div class="muted text-xs">{{ "%.0f"|format(c.reasoning_tps_med) }} tok/s</div>{% endif %}{% else %}<span class="muted">n. v.</span>{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("system_peak_ram") }}</td>{% for c in detail.cells %}<td>{% if c.peak_ram_mb is not none %}{{ "%.1f"|format(c.peak_ram_mb / 1024) }} GB{% if detail.winners.ram == c.label %} 🏆{% endif %}<div class="muted text-xs">Druck: {{ c.mem_pressure_max }}</div>{% else %}—{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("model_delta_ram") }}</td>{% for c in detail.cells %}<td>{% if c.model_delta_mb is not none %}{{ "%.1f"|format(c.model_delta_mb / 1024) }} GB{% else %}<span class="muted">n. v.</span>{% endif %}</td>{% endfor %}</tr>
+      <tr><td>{{ ui.mlabel("cpu") }}</td>{% for c in detail.cells %}<td>{% if c.cpu_max is not none %}{{ "%.0f"|format(c.cpu_avg) }} / {{ "%.0f"|format(c.cpu_max) }} %{% if detail.winners.cpu == c.label %} 🏆{% endif %}{% else %}<span class="muted">n. v.</span>{% endif %}</td>{% endfor %}</tr>
     </tbody>
   </table>
 </div>

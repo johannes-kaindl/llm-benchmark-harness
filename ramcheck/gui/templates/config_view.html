@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
+{% block title_suffix %} · Config {{ path }}{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › <a href="/config">Konfig</a> › {{ path }}</nav>
+{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">{{ path }}</h1>
+  <span class="muted text-sm">{{ cfg.machine }}</span>
+</div>
+
+<div class="card mb-4">
+  <p class="muted text-sm">Schreibgeschützte Ansicht der effektiven Konfiguration. Nichts hier ändert die Datei.</p>
+  <p><a href="/export-yaml?kind=config&amp;path={{ path }}">Config-Datei herunterladen</a></p>
+</div>
+
+<div class="card">
+  <div class="card-title">Endpoint</div>
+  {{ ui.kv("base_url", cfg.endpoint.base_url) }}
+  {{ ui.kv("api_key", "•••••••• (maskiert)") }}
+</div>
+
+<div class="card">
+  <div class="card-title">Lauf</div>
+  {{ ui.kv("machine", cfg.machine) }}
+  {{ ui.kv("runs_per_cell", cfg.runs_per_cell) }}
+  {{ ui.kv("seed", cfg.seed) }}
+  {{ ui.kv("temperature", cfg.temperature) }}
+  {{ ui.kv("context_buckets", cfg.context_buckets | join(", ")) }}
+  {{ ui.kv("scenarios", cfg.scenarios | join(", ")) }}
+  {{ ui.kv("server_process_match", cfg.server_process_match or "—") }}
+  {{ ui.kv("power_check", "ja" if cfg.power_check else "nein") }}
+  {{ ui.kv("engine", cfg.engine or "—") }}
+  {{ ui.kv("engine_version", cfg.engine_version or "—") }}
+</div>
+
+{% if cfg.max_tokens %}
+<div class="card">
+  <div class="card-title">max_tokens (Overrides)</div>
+  {% for scenario, mt in cfg.max_tokens.items() %}
+  {{ ui.kv(scenario, mt) }}
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-title">VLM</div>
+  {{ ui.kv("image_path", cfg.vlm.image_path) }}
+</div>
+
+<div class="card">
+  <div class="card-title">Embed</div>
+  {{ ui.kv("model", cfg.embed.model) }}
+  {{ ui.kv("num_chunks", cfg.embed.num_chunks) }}
+  {{ ui.kv("chunk_tokens", cfg.embed.chunk_tokens) }}
+</div>
+
+<div class="card">
+  <div class="card-title">Modelle</div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>id</th>
+        <th>quant</th>
+        <th>max_tokens_default</th>
+        <th>reasoning_headroom_tokens</th>
+        <th>extra_body</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in cfg.models %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td>{{ m.quant or "—" }}</td>
+        <td>{{ m.max_tokens_default }}</td>
+        <td>{{ m.reasoning_headroom_tokens }}</td>
+        <td class="text-xs"><code>{{ m.extra_body | tojson if m.extra_body else "—" }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

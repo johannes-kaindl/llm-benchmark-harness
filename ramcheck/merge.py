@@ -39,6 +39,18 @@ def load_samples_jsonl(path: str | Path) -> list[ResourceSample]:
     return samples
 
 
+def baseline_sys_used_mb(samples: list[ResourceSample]) -> float | None:
+    """The pre-run host memory floor: the ``baseline``-flagged tick's ``sys_used_mb``,
+    or (when no tick is flagged — e.g. an older bundle) the ``min`` over all samples.
+    None only when there are no samples at all."""
+    if not samples:
+        return None
+    flagged = [s.sys_used_mb for s in samples if s.baseline]
+    if flagged:
+        return min(flagged)
+    return min(s.sys_used_mb for s in samples)
+
+
 def _window_samples(
     samples: list[ResourceSample], t_start: float, t_end: float, tol: float
 ) -> list[ResourceSample]:
@@ -52,7 +64,9 @@ def _window_samples(
     return [nearest]
 
 
-def aggregate_window(samples: list[ResourceSample]) -> ResourceAggregate:
+def aggregate_window(
+    samples: list[ResourceSample], baseline_mb: float | None = None
+) -> ResourceAggregate:
     if not samples:
         return ResourceAggregate(
             peak_rss_mb=None,
@@ -61,16 +75,22 @@ def aggregate_window(samples: list[ResourceSample]) -> ResourceAggregate:
             mem_pressure_max="normal",
             throttled=False,
             n_samples=0,
+            sys_used_baseline_mb=baseline_mb,
+            sys_used_delta_mb=None,
         )
     rss = [s.server_rss_mb for s in samples if s.server_rss_mb is not None]
     swaps = [s.swap_used_mb for s in samples]
+    peak_used = max(s.sys_used_mb for s in samples)
+    delta = (peak_used - baseline_mb) if baseline_mb is not None else None
     return ResourceAggregate(
         peak_rss_mb=max(rss) if rss else None,
-        sys_used_mb=max(s.sys_used_mb for s in samples),
+        sys_used_mb=peak_used,
         swap_delta_mb=max(swaps) - min(swaps),
         mem_pressure_max=pressure_max([s.mem_pressure_level for s in samples]),
         throttled=any(s.throttled for s in samples),
         n_samples=len(samples),
+        sys_used_baseline_mb=baseline_mb,
+        sys_used_delta_mb=delta,
     )
 
 
@@ -78,8 +98,12 @@ def resources_for_window(
     samples: list[ResourceSample], t_start: float, t_end: float, tol: float = DEFAULT_TOLERANCE_S
 ) -> ResourceAggregate:
     """Roll up the samples inside [t_start, t_end] (with slack). Public so the eval
-    runner can fill an EvalResponse's resources without building a throwaway RunRecord."""
-    return aggregate_window(_window_samples(samples, t_start, t_end, tol))
+    runner can fill an EvalResponse's resources without building a throwaway RunRecord.
+
+    The baseline tick is captured before the first request — outside every run window — so
+    we derive it from the *full* sample list, then subtract it from the in-window peak."""
+    baseline = baseline_sys_used_mb(samples)
+    return aggregate_window(_window_samples(samples, t_start, t_end, tol), baseline)
 
 
 def merge_run(
@@ -88,6 +112,7 @@ def merge_run(
     agg = resources_for_window(samples, record.t_start, record.t_end, tol)
     record.peak_rss_mb = agg.peak_rss_mb
     record.sys_used_mb = agg.sys_used_mb
+    record.sys_used_delta_mb = agg.sys_used_delta_mb
     record.swap_delta_mb = agg.swap_delta_mb
     record.mem_pressure_max = agg.mem_pressure_max
     # A run is throttled if powermetrics flagged it OR it ran on battery is handled

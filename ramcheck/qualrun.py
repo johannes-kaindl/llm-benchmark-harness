@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -205,6 +206,16 @@ def run_eval(
                     t_end=outcome.t_end,
                     reasoning_chars=len(outcome.reasoning_text),
                     reasoning_text=outcome.reasoning_text if content_empty else "",
+                    # nan (no reasoning) → 0.0 so the field stays JSON-safe and the slim default holds.
+                    reasoning_duration_s=(
+                        0.0
+                        if math.isnan(outcome.reasoning_duration_s)
+                        else outcome.reasoning_duration_s
+                    ),
+                    reasoning_tps=(
+                        0.0 if math.isnan(outcome.reasoning_tps) else outcome.reasoning_tps
+                    ),
+                    reasoning_completion_tokens=outcome.reasoning_completion_tokens,
                 )
                 # Persist immediately so an interruption keeps every finished answer.
                 fh.write(json.dumps(resp.as_dict(), ensure_ascii=False) + "\n")
@@ -221,6 +232,8 @@ def run_eval(
         agg = merge_mod.resources_for_window(samples, r.t_start, r.t_end)
         r.peak_rss_mb = agg.peak_rss_mb
         r.sys_used_mb = agg.sys_used_mb
+        r.sys_used_baseline_mb = agg.sys_used_baseline_mb
+        r.sys_used_delta_mb = agg.sys_used_delta_mb
         r.mem_pressure_max = agg.mem_pressure_max
         r.throttled = r.throttled or agg.throttled
 
@@ -254,6 +267,7 @@ def _resp_to_raw_row(r: EvalResponse) -> dict[str, object]:
         "e2e_s": r.e2e_s,
         "peak_rss_mb": r.peak_rss_mb,
         "sys_used_mb": r.sys_used_mb,
+        "sys_used_delta_mb": r.sys_used_delta_mb,
         "swap_delta_mb": 0.0,
         "mem_pressure_max": r.mem_pressure_max,
         "throttled": r.throttled,

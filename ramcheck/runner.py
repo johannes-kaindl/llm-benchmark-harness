@@ -73,6 +73,10 @@ class RequestOutcome:
     t_end: float
     text: str = ""
     reasoning_text: str = ""  # "thinking" tokens (separate channel; not counted toward TTFT)
+    reasoning_duration_s: float = math.nan  # time spent in the reasoning channel (s); nan if none
+    reasoning_completion_tokens: int = 0  # heuristic reasoning-token count
+    reasoning_tps: float = math.nan  # reasoning tokens / reasoning_duration_s; nan-safe
+    t_reasoning_start: float = math.nan  # first reasoning token (s since t0); nan if none
     ok: bool = True
     error: str = ""
 
@@ -109,6 +113,8 @@ def stream_once(
     ttft: float | None = None
     text_parts: list[str] = []
     reasoning_parts: list[str] = []
+    t_reasoning_start: float | None = None
+    t_reasoning_last: float | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     error = ""
@@ -128,6 +134,10 @@ def stream_once(
                     ttft = clock() - t0
                 text_parts.append(ev.delta_text)
             if ev.reasoning_text:
+                t_reasoning = clock() - t0
+                if t_reasoning_start is None:
+                    t_reasoning_start = t_reasoning
+                t_reasoning_last = t_reasoning
                 reasoning_parts.append(ev.reasoning_text)
             if ev.prompt_tokens is not None:
                 prompt_tokens = ev.prompt_tokens
@@ -150,6 +160,19 @@ def stream_once(
     if prompt_tokens is None:
         prompt_tokens = 0
 
+    if t_reasoning_start is not None and t_reasoning_last is not None:
+        reasoning_duration_s = t_reasoning_last - t_reasoning_start
+    else:
+        reasoning_duration_s = math.nan
+    reasoning_completion_tokens = (
+        (counter or prompts_mod.HeuristicCounter()).count(reasoning) if reasoning else 0
+    )
+    reasoning_tps = (
+        reasoning_completion_tokens / reasoning_duration_s
+        if not math.isnan(reasoning_duration_s) and reasoning_duration_s > 0
+        else math.nan
+    )
+
     return RequestOutcome(
         ttft_s=ttft,
         e2e_s=e2e,
@@ -159,19 +182,38 @@ def stream_once(
         t_end=wall_end,
         text=text,
         reasoning_text=reasoning,
+        reasoning_duration_s=reasoning_duration_s,
+        reasoning_completion_tokens=reasoning_completion_tokens,
+        reasoning_tps=reasoning_tps,
+        t_reasoning_start=(t_reasoning_start if t_reasoning_start is not None else math.nan),
         ok=ok,
         error=error,
     )
 
 
 def derive_rates(outcome: RequestOutcome) -> tuple[float, float]:
-    """(prefill_tps, decode_tps) from an outcome. nan-safe."""
+    """(prefill_tps, decode_tps) from an outcome. nan-safe.
+
+    The prefill/decode boundary is the first *generated* token. For a reasoning
+    ("thinking") model the reasoning stream starts well before the first content
+    token, so using TTFT (first content) would shrink the decode window to almost
+    zero and explode decode_tps (and starve prefill_tps). We therefore start the
+    decode window at the earlier of (first content, first reasoning) token. TTFT
+    itself stays "time to first visible content" — that is the UX latency metric.
+    """
+    gen_start = outcome.ttft_s
+    if not math.isnan(outcome.t_reasoning_start):
+        gen_start = (
+            min(outcome.ttft_s, outcome.t_reasoning_start)
+            if not math.isnan(outcome.ttft_s)
+            else outcome.t_reasoning_start
+        )
     prefill = (
-        outcome.prompt_tokens / outcome.ttft_s
-        if outcome.ttft_s and not math.isnan(outcome.ttft_s) and outcome.ttft_s > 0
+        outcome.prompt_tokens / gen_start
+        if not math.isnan(gen_start) and gen_start > 0
         else math.nan
     )
-    decode_window = outcome.e2e_s - outcome.ttft_s
+    decode_window = outcome.e2e_s - gen_start
     decode = (
         outcome.completion_tokens / decode_window
         if not math.isnan(decode_window) and decode_window > 0

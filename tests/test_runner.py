@@ -122,6 +122,7 @@ def test_stream_once_captures_reasoning_separately():
             yield StreamEvent(delta_text="Answer")
             yield StreamEvent(prompt_tokens=5, completion_tokens=2)
 
+    # t0=0, reasoning ticks 0.1/0.2, content-ttft=0.3, e2e=1.0
     out = stream_once(
         ReasoningClient(),
         messages=[],
@@ -129,7 +130,7 @@ def test_stream_once_captures_reasoning_separately():
         max_tokens=10,
         temperature=0.0,
         seed=1,
-        clock=SeqClock([0.0, 0.3, 1.0]),
+        clock=SeqClock([0.0, 0.1, 0.2, 0.3, 1.0]),
         wall=SeqClock([0.0, 1.0]),
     )
     assert out.text == "Answer"
@@ -159,6 +160,53 @@ def test_stream_once_reasoning_only_leaves_content_empty():
     assert out.text == ""
     assert out.reasoning_text == "thinking..."
     assert math.isnan(out.ttft_s)  # no content token → no content TTFT
+
+
+def test_stream_once_captures_reasoning_duration_and_tps():
+    class ReasoningClient:
+        engine = "x"
+        engine_version = "0"
+
+        def stream(self, **kwargs):
+            yield StreamEvent(reasoning_text="let me think ")
+            yield StreamEvent(reasoning_text="hard")
+            yield StreamEvent(delta_text="Answer")
+            yield StreamEvent(prompt_tokens=5, completion_tokens=2)
+
+    # t0=0, reasoning-start=0.2, reasoning-last=0.5, content-ttft=1.0, e2e=2.0
+    out = stream_once(
+        ReasoningClient(),
+        messages=[],
+        model="m",
+        max_tokens=10,
+        temperature=0.0,
+        seed=1,
+        clock=SeqClock([0.0, 0.2, 0.5, 1.0, 2.0]),
+        wall=SeqClock([0.0, 2.0]),
+    )
+    assert out.ttft_s == 1.0  # reasoning does not move TTFT
+    assert math.isclose(out.reasoning_duration_s, 0.3)  # 0.5 - 0.2
+    assert out.reasoning_completion_tokens > 0
+    assert math.isclose(
+        out.reasoning_tps, out.reasoning_completion_tokens / out.reasoning_duration_s
+    )
+
+
+def test_stream_once_reasoning_timing_nan_without_reasoning():
+    client = FakeClient(["Hallo", " Welt"], prompt_tokens=1000, completion_tokens=100)
+    out = stream_once(
+        client,
+        messages=[],
+        model="m",
+        max_tokens=100,
+        temperature=0.0,
+        seed=42,
+        clock=SeqClock([0.0, 0.5, 2.0]),
+        wall=SeqClock([100.0, 102.0]),
+    )
+    assert math.isnan(out.reasoning_duration_s)
+    assert math.isnan(out.reasoning_tps)
+    assert out.reasoning_completion_tokens == 0
 
 
 def test_resolve_engine_by_port():
@@ -223,3 +271,42 @@ def test_stream_once_forwards_extra_body():
         extra_body={"foo": "bar"},
     )
     assert seen["extra_body"] == {"foo": "bar"}
+
+
+def test_derive_rates_decode_window_starts_at_first_generated_token():
+    # Reasoning model: first reasoning token at 0.3s, first content (TTFT) only at 5.9s,
+    # e2e 5.95s. Using TTFT would give decode_window ≈ 0.05s → absurd tps. The fix starts
+    # the window at the first generated (reasoning) token.
+    from ramcheck.runner import RequestOutcome, derive_rates
+
+    o = RequestOutcome(
+        ttft_s=5.9,
+        e2e_s=5.95,
+        prompt_tokens=30,
+        completion_tokens=300,
+        t_start=0.0,
+        t_end=0.0,
+        t_reasoning_start=0.3,
+    )
+    prefill, decode = derive_rates(o)
+    # decode window = 5.95 - 0.3 = 5.65 → ~53 tok/s, NOT 300/0.05 = 6000
+    assert 40 < decode < 80, decode
+    # prefill = 30 / 0.3 = 100 tok/s, NOT 30/5.9 ≈ 5
+    assert 80 < prefill < 120, prefill
+
+
+def test_derive_rates_unchanged_without_reasoning():
+    # No reasoning → t_reasoning_start is nan → gen_start = TTFT (legacy behavior preserved).
+    from ramcheck.runner import RequestOutcome, derive_rates
+
+    o = RequestOutcome(
+        ttft_s=0.2,
+        e2e_s=2.2,
+        prompt_tokens=20,
+        completion_tokens=200,
+        t_start=0.0,
+        t_end=0.0,
+    )
+    prefill, decode = derive_rates(o)
+    assert abs(prefill - 100.0) < 1e-6  # 20 / 0.2
+    assert abs(decode - 100.0) < 1e-6  # 200 / (2.2 - 0.2)

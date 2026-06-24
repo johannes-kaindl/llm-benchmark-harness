@@ -1,5 +1,9 @@
 {% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block title_suffix %} · {{ run_dir.name }}{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Ergebnis › {{ run_dir.name }}</nav>
+{% endblock %}
 {% block body %}
 <script src="/static/sparkline.js" defer></script>
 
@@ -338,6 +342,30 @@
                     {% endif %}
                   </div>
                 </div>
+                {# Per-answer perf/token metrics (NaN-guarded via the x == x Jinja idiom) #}
+                <div class="flex gap-2 text-xs muted" style="flex-wrap:wrap; margin-top:0.35rem">
+                  {% if resp.ttft_s is not none and resp.ttft_s == resp.ttft_s %}{{ ui.metric("%.2f"|format(resp.ttft_s), "ttft_p50", "s") }}{% endif %}
+                  {% if resp.decode_tps is not none and resp.decode_tps == resp.decode_tps %}{{ ui.metric("%.0f"|format(resp.decode_tps), "decode_median", "tok/s") }}{% endif %}
+                  {% if resp.prefill_tps is not none and resp.prefill_tps == resp.prefill_tps %}{{ ui.metric("%.0f"|format(resp.prefill_tps), "prefill_tps", "tok/s") }}{% endif %}
+                  {% if resp.e2e_s is not none %}{{ ui.metric("%.2f"|format(resp.e2e_s), "e2e", "s") }}{% endif %}
+                  {% if resp.e2e_s and resp.e2e_s > 0 %}{{ ui.metric("%.0f"|format((resp.prompt_tokens + resp.completion_tokens) / resp.e2e_s), "total_throughput", "tok/s") }}{% endif %}
+                  {% if resp.reasoning_duration_s and resp.reasoning_duration_s > 0 %}{{ ui.metric("%.2f"|format(resp.reasoning_duration_s), "reasoning_duration", "s") }}{% endif %}
+                  {% if resp.reasoning_tps and resp.reasoning_tps > 0 %}{{ ui.metric("%.0f"|format(resp.reasoning_tps), "reasoning_tps", "tok/s") }}{% endif %}
+                  {% if resp.sys_used_mb is not none %}{{ ui.metric("%.1f"|format(resp.sys_used_mb / 1024), "system_peak_ram", "GB") }}{% endif %}
+                  {% if resp.sys_used_delta_mb is not none %}{{ ui.metric("%.1f"|format(resp.sys_used_delta_mb / 1024), "model_delta_ram", "GB") }}{% endif %}
+                  <span class="metric" title="Prompt-/Antwort-Tokens">{{ resp.prompt_tokens }}→{{ resp.completion_tokens }} tok</span>
+                  {% if resp.reasoning_chars > 0 %}<span class="metric" title="{{ g('reasoning_only').short }}">💭 {{ resp.reasoning_chars }} Z.</span>{% endif %}
+                </div>
+                {# Reasoning text (persisted only on content_empty) — collapsible, mirrors the answer block #}
+                {% if resp.reasoning_text %}
+                  <div style="margin-top:0.35rem">
+                    <div class="muted text-xs" style="text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.2rem">💭 Reasoning</div>
+                    <div x-data="{ openR: false }" style="background:var(--card-bg); border-radius:6px; padding:0.5rem 0.7rem">
+                      <a style="cursor:pointer" @click.prevent="openR = !openR" x-text="openR ? '▲ Reasoning ausblenden' : '▼ Reasoning anzeigen'"></a>
+                      <div x-show="openR" x-cloak style="white-space:pre-wrap; margin-top:0.25rem">{{ resp.reasoning_text }}</div>
+                    </div>
+                  </div>
+                {% endif %}
                 {% if ns3.verdict %}
                   <div style="margin-top:0.4rem">
                     <span class="text-xs muted">Judge: </span>
@@ -378,7 +406,7 @@
           <div class="muted text-xs" style="text-transform:uppercase; margin-bottom:0.25rem">Geschwindigkeit</div>
           <div class="text-sm">
             TTFT P50: <strong>
-              {% if detail.perf and detail.perf.ttft_p50 is number %}
+              {% if detail.perf and detail.perf.ttft_p50 is number and detail.perf.ttft_p50 == detail.perf.ttft_p50 %}
                 {{ "%.2f"|format(detail.perf.ttft_p50) }}s
               {% else %}
                 —
@@ -386,7 +414,7 @@
             </strong>
           </div>
           <div class="text-sm muted">Decode: <strong>
-            {% if detail.perf and detail.perf.decode_med is number %}
+            {% if detail.perf and detail.perf.decode_med is number and detail.perf.decode_med == detail.perf.decode_med %}
               {{ "%.0f"|format(detail.perf.decode_med) }} tok/s
             {% else %}
               —
@@ -432,6 +460,8 @@
 <div class="card">
   <div class="card-title">Export</div>
   <div class="flex gap-2">
+    <a href="/export-bundle/{{ run_dir.name }}" class="btn btn-primary"
+       title="Ganzes Bundle als .zip (bundle.json + responses.jsonl + scores.csv …) – portabel zwischen Maschinen.">Bundle .zip</a>
     {% for fname in ["scorecard.md", "scores.csv", "perf.csv", "report.md"] %}
       {% if (run_dir / fname).exists() %}
       <a href="/export/{{ run_dir.name }}/{{ fname }}" class="btn btn-secondary">{{ fname }}</a>

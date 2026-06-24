@@ -3,26 +3,31 @@ Templates/static are mounted from this package; routes return HTMX-friendly HTML
 
 from __future__ import annotations
 
+import io
 import json
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+import yaml
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from ramcheck import aggregate as aggregate_mod
-from ramcheck.config import models_from_json
+from ramcheck.config import load_config, models_from_json
 from ramcheck.gui import bundles, compare
 from ramcheck.gui import configs as configs_mod
+from ramcheck.gui import glossary as _glossary
 from ramcheck.gui.control import RunRegistry
 from ramcheck.pack import load_pack
 
 _PKG = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PKG / "templates"))
+_templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templates
 
 # Hosts allowed by the DNS-rebinding guard. The GUI binds to 127.0.0.1 and is
 # single-user; "testserver" is the host the Starlette TestClient uses.
@@ -86,6 +91,52 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             raise HTTPException(status_code=404) from None
         return render("pack.html", request, pack=pk, active="pack")
 
+    @app.get("/config-view/{config_path:path}", response_class=HTMLResponse)
+    def config_view(request: Request, config_path: str) -> HTMLResponse:
+        candidate = Path(config_path)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise HTTPException(status_code=404)
+        if config_path not in {str(p) for p in Path(".").glob("config*.yaml")}:
+            raise HTTPException(status_code=404)
+        try:
+            cfg = load_config(config_path)
+        except (FileNotFoundError, OSError):
+            raise HTTPException(status_code=404) from None
+        return render("config_view.html", request, cfg=cfg, path=config_path, active="config")
+
+    @app.get("/export-yaml")
+    def export_yaml(kind: str, path: str) -> Any:
+        """Serialize the *effective* (validated) config or pack back to YAML for download.
+        Path is confined to the exact globs the pickers offer — never an arbitrary cwd file."""
+        if kind == "config":
+            offered = {str(p) for p in Path(".").glob("config*.yaml")}
+            loader: Any = load_config
+        elif kind == "pack":
+            offered = {str(p) for p in Path("packs").glob("*.yaml")}
+            loader = load_pack
+        else:
+            raise HTTPException(status_code=404)
+        if path not in offered:
+            raise HTTPException(status_code=404)
+        try:
+            model = loader(path)
+        except (FileNotFoundError, OSError, ValueError):
+            raise HTTPException(status_code=404) from None
+        data = model.model_dump(mode="json")
+        if kind == "config":
+            # Never ship the endpoint api_key in a downloadable artifact (the on-screen
+            # config viewer masks it too — the download must not be a side-channel leak).
+            ep = data.get("endpoint")
+            if isinstance(ep, dict) and "api_key" in ep:
+                ep["api_key"] = "<redacted>"
+        body = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
+        name = Path(path).name
+        return Response(
+            body,
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        )
+
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(request: Request, name: str) -> HTMLResponse:
         rd = (runs_dir / name).resolve()
@@ -113,9 +164,14 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
     @app.get("/compare", response_class=HTMLResponse)
     def compare_cross(request: Request) -> HTMLResponse:
+        from ramcheck.gui.hwlabel import label_mismatch
+
         rows = aggregate_mod.load_all_scores(runs_dir)
         agg = aggregate_mod.aggregate(rows) if rows else []
-        return render("compare.html", request, rows=agg, active="compare")
+        flagged = [
+            (a, label_mismatch(chip=a.chip, ram_gb=str(a.ram_gb), machine=a.machine)) for a in agg
+        ]
+        return render("compare.html", request, rows=flagged, active="compare")
 
     @app.get("/compare/{name}", response_class=HTMLResponse)
     def compare_axis(
@@ -197,6 +253,95 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         if not candidate.exists():
             raise HTTPException(status_code=404)
         return FileResponse(candidate)
+
+    @app.get("/export-bundle/{name}")
+    def export_bundle(name: str) -> Any:
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not (rd / "bundle.json").exists():
+            raise HTTPException(status_code=404)
+        ledger = [
+            "bundle.json",
+            "responses.jsonl",
+            "scores.csv",
+            "reports.jsonl",
+            "judgements.jsonl",
+            "scorecard.md",
+            "perf.csv",
+            "resources.jsonl",
+        ]
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for f in ledger:
+                p = rd / f
+                if p.exists():
+                    z.write(p, arcname=f)
+        buf.seek(0)
+        return Response(
+            buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{name}.zip"'},
+        )
+
+    @app.post("/import-bundle")
+    def import_bundle(file: UploadFile = File(...)) -> Any:
+        """Accept a zipped bundle from another machine, validate it, and land it under
+        runs_dir under a collision-safe name. Multi-machine aggregation: a bundle is
+        bundle.json + responses.jsonl + scores.csv — portable, self-contained."""
+        import shutil
+        import tempfile
+
+        rdir = runs_dir.resolve()
+        with tempfile.TemporaryDirectory() as tmp:
+            extracted = Path(tmp) / "extracted"
+            extracted.mkdir()
+            max_total = 500 * 1024 * 1024  # decompressed budget for an untrusted bundle
+            max_members = 10_000
+            raw = file.file.read(max_total + 1)
+            if len(raw) > max_total:
+                raise HTTPException(status_code=400, detail="upload too large")
+            try:
+                zf = zipfile.ZipFile(io.BytesIO(raw))
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400, detail="not a zip file") from None
+            with zf as z:
+                # Reject any member that would escape the extraction root (zip-slip).
+                for member in z.namelist():
+                    dest = (extracted / member).resolve()
+                    if not dest.is_relative_to(extracted.resolve()):
+                        raise HTTPException(status_code=400, detail="unsafe zip entry")
+                # Reject zip-bombs before extracting untrusted input: a tiny upload can
+                # inflate to gigabytes. Cap member count and total uncompressed size.
+                infos = z.infolist()
+                if len(infos) > max_members:
+                    raise HTTPException(status_code=400, detail="too many zip entries")
+                if sum(i.file_size for i in infos) > max_total:
+                    raise HTTPException(status_code=400, detail="zip too large")
+                z.extractall(extracted)
+
+            if not (extracted / "bundle.json").exists():
+                raise HTTPException(status_code=400, detail="missing bundle.json")
+            try:
+                json.loads((extracted / "bundle.json").read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                raise HTTPException(status_code=400, detail="invalid bundle.json") from None
+            resp = extracted / "responses.jsonl"
+            if not resp.exists():
+                raise HTTPException(status_code=400, detail="missing responses.jsonl")
+            try:
+                for line in resp.read_text(encoding="utf-8").splitlines():
+                    if line.strip():
+                        json.loads(line)
+            except (json.JSONDecodeError, OSError):
+                raise HTTPException(status_code=400, detail="invalid responses.jsonl") from None
+
+            stem = Path(file.filename or "bundle").stem or "bundle"
+            name = stem
+            n = 2
+            while (rdir / name).exists():
+                name = f"{stem}__{n}"
+                n += 1
+            shutil.move(str(extracted), str(rdir / name))
+        return {"run_dir": name}
 
     _register_control_routes(app, runs_dir=runs_dir, registry=registry)
     return app

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "macros/ui.html" as ui %}
 {% block title_suffix %} · Vergleich{% endblock %}
 {% block body %}
 <div class="page-header">
@@ -19,32 +20,36 @@
         <th>Modell</th>
         <th>Variante</th>
         <th>Quant</th>
-        <th>Qualität %</th>
-        <th>TTFT P50</th>
-        <th>Decode Median</th>
-        <th>Peak RAM</th>
+        <th>{{ ui.mlabel("quality_pct") }}</th>
+        <th>{{ ui.mlabel("ttft_p50") }}</th>
+        <th>{{ ui.mlabel("decode_median") }}</th>
+        <th>{{ ui.mlabel("system_peak_ram") }}</th>
+        <th>{{ ui.mlabel("model_delta_ram") }}</th>
       </tr>
     </thead>
     <tbody>
-      {% for r in rows %}
+      {% for r, mismatch in rows %}
       <tr>
         <td>{{ r.chip }}</td>
         <td>{{ r.ram_gb }}</td>
-        <td>{{ r.machine }}</td>
-        <td>{{ r.pack }}</td>
+        <td>
+          {% if mismatch %}
+            <span class="muted" title="Config-Label »{{ r.machine }}« passt nicht zur erkannten Hardware – erkannte Werte gelten.">{{ r.machine }} ⚠</span>
+          {% else %}
+            {{ r.machine }}
+          {% endif %}
+        </td>
+        <td><a href="/packs/packs/{{ r.pack }}.yaml">{{ r.pack }}</a></td>
         <td>{{ r.model }}</td>
         <td>{{ r.variant }}</td>
         <td>{{ r.quant }}</td>
         <td>
-          {% if r.quality_pct is not none %}
-            <strong>{{ "%.0f" | format(r.quality_pct) }}%</strong>
-          {% else %}
-            <span class="muted">—</span>
-          {% endif %}
+          {% if r.quality_pct is not none %}<strong>{{ "%.0f" | format(r.quality_pct) }}%</strong>{% else %}<span class="muted">—</span>{% endif %}
         </td>
-        <td>{{ r.ttft_p50 }}</td>
-        <td>{{ r.decode_med }}</td>
-        <td>{{ r.peak_ram_gb }}</td>
+        <td>{% if r.ttft_p50 %}{{ r.ttft_p50 }} s{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.decode_med %}{{ r.decode_med }} tok/s{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.peak_ram_gb %}{{ r.peak_ram_gb }} GB{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.model_delta_gb %}{{ r.model_delta_gb }} GB{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
