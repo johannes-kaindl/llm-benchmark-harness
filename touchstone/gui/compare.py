@@ -192,13 +192,15 @@ def compare_detail(
     axis: str | None = None,
     *,
     projection: str | None = None,
+    base: dict[str, Any] | None = None,
 ) -> CompareDetail | None:
     """Project a bundle along ``axis`` (model|variant), holding the other dimension
-    constant. Returns None if the bundle has no loadable pack.
+    constant. Returns None if the bundle has no loadable pack. ``base`` lets the caller
+    pass an already-loaded ``bundle_detail`` dict to avoid a second load.
     """
     from touchstone.gui import bundles  # local import avoids a cycle
 
-    base = bundles.bundle_detail(run_dir)
+    base = base if base is not None else bundles.bundle_detail(run_dir)
     if base is None:
         return None
     responses: list[EvalResponse] = base["responses"]

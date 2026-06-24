@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import pathlib
 import tempfile
+from unittest.mock import patch
 
 import pytest
 
@@ -477,7 +478,9 @@ def test_axis_model_projection_override_to_none():
     assert detail.projection == "none"
     assert all(c.variant == "none" for c in detail.cells)
     alpha = next(c for c in detail.cells if c.label == "alpha")
-    assert alpha.rubric_level == "solide"  # alpha/none has Q6=2, pct=72.5% -> solide (safety fails separately)
+    assert (
+        alpha.rubric_level == "solide"
+    )  # alpha/none has Q6=2, pct=72.5% -> solide (safety fails separately)
 
 
 # ── Review fixes (adversarial 3-perspective review) ───────────────────────────
@@ -596,3 +599,17 @@ def test_mem_pressure_uses_ok_responses_only():
     (d / "judgements.jsonl").write_text("", encoding="utf-8")
     detail = compare.compare_detail(d, "variant")
     assert detail.cells[0].mem_pressure_max == "normal"  # cold-start 'critical' excluded
+
+
+def test_compare_detail_reuses_passed_base(tmp_path, monkeypatch):
+    """When a base dict is passed, compare_detail must not re-call bundle_detail."""
+    from touchstone.gui import bundles
+
+    rd = _two_variant_bundle(tmp_path)
+    base = bundles.bundle_detail(rd)
+    assert base is not None
+    with patch.object(bundles, "bundle_detail") as spy:
+        detail = compare.compare_detail(rd, "variant", base=base)
+    spy.assert_not_called()
+    assert detail is not None
+    assert detail.run_name == rd.name
