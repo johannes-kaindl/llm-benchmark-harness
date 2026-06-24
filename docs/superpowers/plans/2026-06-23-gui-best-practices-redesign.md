@@ -674,7 +674,9 @@ git commit -am "feat(eval): capture reasoning-phase duration + tps; surface thin
 
 ## Final E2E smoke (before declaring done)
 
-- [ ] Start a real local endpoint; run `uv run ramcheck eval --pack packs/ndassist.yaml --config <local>.yaml` against ≥1 real model; open the GUI and walk every touched station (Konfig+Start, Übersicht/pack, Ergebnis, Vergleich, Export/Import). Confirm: per-answer perf renders with real numbers, RAM shows System-Peak + Modell-Delta, reasoning timing appears for a thinking model, export→import round-trips into `/compare`. Tests/review check logic; this checks real load (lesson `harness-preflight-and-rebuild`).
+- [x] Start a real local endpoint; run `uv run ramcheck eval --pack packs/ndassist.yaml --config <local>.yaml` against ≥1 real model; open the GUI and walk every touched station (Konfig+Start, Übersicht/pack, Ergebnis, Vergleich, Export/Import). Confirm: per-answer perf renders with real numbers, RAM shows System-Peak + Modell-Delta, reasoning timing appears for a thinking model, export→import round-trips into `/compare`. Tests/review check logic; this checks real load (lesson `harness-preflight-and-rebuild`).
+
+  > **DONE (2026-06-24):** Echter Smoke gegen LM Studio :1234 mit `google/gemma-4-12b-qat` (echtes Thinking-Modell, liefert `reasoning_content`), Judge `qwen/qwen3.6-27b`. Bundle `2026-06-24_133030_eval_ndassist` (6 Antworten, 0 Fehler, Qualität 76.2 % baseline / 88.8 % none). Live verifiziert: P3 Per-Answer-Perf (`tok/s`), P5 System-Peak 19.5/33.7 GB + Modell-Delta 1.2/15.5 GB, P6 Reasoning-Timing (`reasoning_duration_s`≈36 s, `reasoning_tps`≈16) + baseline-Sample als erste `resources.jsonl`-Zeile, P1 hwlabel-Demotion feuert im `/compare` (alte M1-Labels auf M5-Hardware ⚠), P4 config-view + YAML-Export, P7 ZIP-Export + Import-Round-Trip, sowie `judge_model`/`quant` im Report-Export. **TTFT-Invariante hält** (Uhr stoppt erst beim ersten Content-Token, nicht beim ersten Reasoning-Tick).
 
 ---
 
