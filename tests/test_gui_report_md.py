@@ -134,9 +134,11 @@ def test_export_report_route_serves_obsidian_markdown(tmp_path):
     assert body.startswith("---\n")
     assert 'type: "testrun"' in body
     assert "models:" in body and "  - " in body
-    # Obsidian wikilink TOC + a metric wikilink into the glossary
+    # Obsidian wikilink TOC + a metric wikilink into the glossary; inside the measurement
+    # table the alias '|' must be escaped as '\\|' so the table does not break.
     assert "- [[#Bewertungs-Methode]]" in body
-    assert "[[#TTFT P50|TTFT]]" in body
+    assert "[[#TTFT P50\\|TTFT]]" in body
+    assert "[[#TTFT P50|TTFT]]" not in body  # the unescaped (table-breaking) form must NOT appear
     # collapsed callouts for the long texts
     assert "> [!question]- Prompt anzeigen" in body
     assert "> [!quote]- Antwort ·" in body

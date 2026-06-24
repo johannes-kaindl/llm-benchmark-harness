@@ -73,9 +73,16 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\r", " ").replace("\n", "<br>").strip()
 
 
-def _wl(heading: str, display: str | None = None) -> str:
-    """An Obsidian same-note heading wikilink `[[#Heading|display]]`."""
-    return f"[[#{heading}|{display}]]" if display is not None else f"[[#{heading}]]"
+def _wl(heading: str, display: str | None = None, *, in_table: bool = False) -> str:
+    """An Obsidian same-note heading wikilink `[[#Heading|display]]`.
+
+    Inside a Markdown table cell the alias separator must be escaped as `\\|`, otherwise
+    the bare `|` is read as a column delimiter and the table (and link) break.
+    """
+    if display is None:
+        return f"[[#{heading}]]"
+    sep = "\\|" if in_table else "|"
+    return f"[[#{heading}{sep}{display}]]"
 
 
 def _callout(kind: str, title: str, body: str) -> str:
@@ -86,11 +93,13 @@ def _callout(kind: str, title: str, body: str) -> str:
     return f"> [!{kind}]- {title}\n{quoted}"
 
 
-def _metric_link(key: str, glossary: Mapping[str, Glossary], label: str | None = None) -> str:
+def _metric_link(
+    key: str, glossary: Mapping[str, Glossary], label: str | None = None, *, in_table: bool = False
+) -> str:
     """A label that wikilinks to its glossary heading (the term), when defined."""
     if key in glossary:
         term = glossary[key].term
-        return _wl(term, label if label is not None else term)
+        return _wl(term, label if label is not None else term, in_table=in_table)
     return label if label is not None else key
 
 
@@ -380,7 +389,7 @@ def render_report_md(
                             else ""
                         )
                         w(
-                            f"| {_wl(f'{dim.id} · {dim.name}', dim.id)} | {dim.weight} "
+                            f"| {_wl(f'{dim.id} · {dim.name}', dim.id, in_table=True)} | {dim.weight} "
                             f"| {score if score is not None else '—'}{ko_mark} | {_cell(rationale) or '—'} |"
                         )
                     w("")
@@ -481,18 +490,18 @@ def _answer_body(r: Any, v: Any, glossary: Mapping[str, Glossary]) -> str:
     b.append("\n**Messwerte:**\n")
     b.append("| Kennzahl | Wert |")
     b.append("|---|---|")
-    b.append(f"| {_metric_link('ttft_p50', glossary, 'TTFT')} | {_fmt(r.ttft_s, '{:.2f}', 's')} |")
-    b.append(f"| {_metric_link('decode_median', glossary, 'Decode')} | {_fmt(r.decode_tps, '{:.0f}', 'tok/s')} |")
-    b.append(f"| {_metric_link('prefill_tps', glossary, 'Prefill')} | {_fmt(r.prefill_tps, '{:.0f}', 'tok/s')} |")
-    b.append(f"| {_metric_link('e2e', glossary, 'Gesamtzeit')} | {_fmt(r.e2e_s, '{:.2f}', 's')} |")
-    b.append(f"| {_metric_link('total_throughput', glossary, 'Gesamt-Durchsatz')} | {_fmt(total_tp, '{:.0f}', 'tok/s')} |")
+    b.append(f"| {_metric_link('ttft_p50', glossary, 'TTFT', in_table=True)} | {_fmt(r.ttft_s, '{:.2f}', 's')} |")
+    b.append(f"| {_metric_link('decode_median', glossary, 'Decode', in_table=True)} | {_fmt(r.decode_tps, '{:.0f}', 'tok/s')} |")
+    b.append(f"| {_metric_link('prefill_tps', glossary, 'Prefill', in_table=True)} | {_fmt(r.prefill_tps, '{:.0f}', 'tok/s')} |")
+    b.append(f"| {_metric_link('e2e', glossary, 'Gesamtzeit', in_table=True)} | {_fmt(r.e2e_s, '{:.2f}', 's')} |")
+    b.append(f"| {_metric_link('total_throughput', glossary, 'Gesamt-Durchsatz', in_table=True)} | {_fmt(total_tp, '{:.0f}', 'tok/s')} |")
     b.append(f"| Tokens (Prompt→Antwort) | {r.prompt_tokens} → {r.completion_tokens} |")
-    b.append(f"| {_metric_link('system_peak_ram', glossary, 'System-Peak')} | {_fmt(peak_gb, '{:.1f}', 'GB')} |")
-    b.append(f"| {_metric_link('model_delta_ram', glossary, 'Modell-Delta')} | {_fmt(delta_gb, '{:.1f}', 'GB')} |")
-    b.append(f"| {_metric_link('mem_pressure', glossary, 'Memory-Pressure')} | {getattr(r, 'mem_pressure_max', '') or '—'} |")
+    b.append(f"| {_metric_link('system_peak_ram', glossary, 'System-Peak', in_table=True)} | {_fmt(peak_gb, '{:.1f}', 'GB')} |")
+    b.append(f"| {_metric_link('model_delta_ram', glossary, 'Modell-Delta', in_table=True)} | {_fmt(delta_gb, '{:.1f}', 'GB')} |")
+    b.append(f"| {_metric_link('mem_pressure', glossary, 'Memory-Pressure', in_table=True)} | {getattr(r, 'mem_pressure_max', '') or '—'} |")
     if _is_num(getattr(r, "reasoning_duration_s", math.nan)) and r.reasoning_duration_s > 0:
-        b.append(f"| {_metric_link('reasoning_duration', glossary, 'Thinking-Dauer')} | {_fmt(r.reasoning_duration_s, '{:.2f}', 's')} |")
-        b.append(f"| {_metric_link('reasoning_tps', glossary, 'Thinking-Tempo')} | {_fmt(r.reasoning_tps, '{:.0f}', 'tok/s')} |")
+        b.append(f"| {_metric_link('reasoning_duration', glossary, 'Thinking-Dauer', in_table=True)} | {_fmt(r.reasoning_duration_s, '{:.2f}', 's')} |")
+        b.append(f"| {_metric_link('reasoning_tps', glossary, 'Thinking-Tempo', in_table=True)} | {_fmt(r.reasoning_tps, '{:.0f}', 'tok/s')} |")
     if getattr(r, "throttled", False):
         b.append("| Throttled | ⚠️ ja (aus Aggregaten ausgeschlossen) |")
     if getattr(r, "power_source", "") == "battery":
