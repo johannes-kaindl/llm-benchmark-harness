@@ -128,6 +128,44 @@ def test_export_report_missing_bundle_is_404(tmp_path):
     assert r.status_code == 404
 
 
+def test_render_report_md_escapes_table_breaking_rationale():
+    # Judge rationales are free prose; a '|' or newline in a scorecard cell must be escaped
+    # so the Markdown table stays intact.
+    from ramcheck.results import ModelReport
+
+    pk = load_pack(PACK)
+    dim0 = pk.dimensions[0]
+    report = ModelReport(
+        model="m",
+        variant="baseline",
+        dim_scores={d.id: 4 for d in pk.dimensions},
+        dim_rationales={dim0.id: "gut | aber\nzweite Zeile"},
+    )
+    detail = {
+        "run_dir": Path("runs/x"),
+        "manifest": {},
+        "pack": pk,
+        "responses": [],
+        "verdicts": [],
+        "reports": [report],
+        "master_rows": [
+            {
+                "model": "m",
+                "variant": "baseline",
+                "pct": 80.0,
+                "safety_passed": True,
+                "safety_reason": "",
+                "recommendation": "Ja",
+            }
+        ],
+        "cited_ids": {},
+    }
+    md = render_report_md(detail, GLOSSARY)
+    assert "\\|" in md  # the pipe was escaped
+    assert "<br>" in md  # the newline was folded into the cell
+    assert "gut \\| aber<br>zweite Zeile" in md  # rationale stays a single table cell
+
+
 def test_render_report_md_fences_arbitrary_backticks():
     # A model answer that itself contains a ``` code fence must not break out of its block.
     from ramcheck.results import EvalResponse

@@ -55,11 +55,16 @@ def _prompt_anchor(pid: str) -> str:
 
 
 def _link_cited(text: str, cited: list[str]) -> str:
-    """Append clickable links to cited prompt ids after a rationale."""
+    """Append clickable links to cited prompt ids after a rationale (inline, table-safe)."""
     if not cited:
         return text
     links = ", ".join(f"[{pid}](#{_prompt_anchor(pid)})" for pid in cited)
-    return f"{text}  \n  _Belege: {links}_"
+    return f"{text} · _Belege: {links}_"
+
+
+def _cell(text: str) -> str:
+    """Make arbitrary prose safe inside a Markdown table cell (escape pipes, fold newlines)."""
+    return text.replace("|", "\\|").replace("\r", " ").replace("\n", "<br>").strip()
 
 
 def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -> str:
@@ -120,8 +125,9 @@ def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -
         for row in master_rows:
             safe = "✓" if row.get("safety_passed") else f"✗ K.-o. ({row.get('safety_reason', '')})"
             w(
-                f"| {row['model']} | {row['variant']} | {_fmt(row.get('pct'), '{:.0f}', '%')} "
-                f"| {row.get('recommendation', '—')} | {safe} |"
+                f"| {_cell(str(row['model']))} | {_cell(str(row['variant']))} "
+                f"| {_fmt(row.get('pct'), '{:.0f}', '%')} "
+                f"| {row.get('recommendation', '—')} | {_cell(safe)} |"
             )
         w("")
     else:
@@ -188,7 +194,7 @@ def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -
                     )
                     w(
                         f"| [{dim.id} {dim.name}](#dim-{dim.id}) | {dim.weight} "
-                        f"| {score if score is not None else '—'}{ko_mark} | {rationale or '—'} |"
+                        f"| {score if score is not None else '—'}{ko_mark} | {_cell(rationale) or '—'} |"
                     )
                 w("")
     else:
