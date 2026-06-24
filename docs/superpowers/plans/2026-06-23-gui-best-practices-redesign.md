@@ -10,7 +10,7 @@
 
 **Reference:** spec `docs/superpowers/specs/2026-06-23-gui-best-practices-redesign-design.md`.
 
-> **STATUS (2026-06-24):** Phasen **P1–P7 vollständig implementiert und gemergt** (Merge `07ade7d`, je ein Feature-Commit pro Phase, inkl. Pre-Merge-Review). Der nachgelagerte Markdown-Report-Export ist ebenfalls gemergt. **Offen:** P0 (Tool-Rename — blockiert auf Ziel-Name) und der **Final-E2E-Smoke** gegen echte Hardware (Zeile 675). 429 Tests grün.
+> **STATUS (2026-06-24):** **Plan vollständig abgeschlossen.** P1–P7 implementiert + gemergt (`07ade7d`), Markdown-Report-Export gemergt, **Final-E2E-Smoke gegen echte Hardware bestanden**, und **P0 Tool-Rename `ramcheck` → `touchstone` gemergt** (`2555ca4`). 429 Tests grün, ruff/mypy sauber. Einzige offene manuelle Aufgabe: Repo auf Codeberg/GitHub im Web-UI umbenennen (siehe P0).
 
 **Conventions (apply to every task):**
 - Run tests with `uv run pytest <path> -q`; lint `uv run ruff check . && uv run ruff format .`; types `uv run mypy touchstone/`.
@@ -664,11 +664,13 @@ git commit -am "feat(eval): capture reasoning-phase duration + tps; surface thin
 
 ---
 
-## Phase P0 — Tool rename (DEFERRED — blocked on target name)
+## Phase P0 — Tool rename (DONE 2026-06-24 — `ramcheck` → `touchstone`)
 
-**Blocked:** the user must provide the target name before execution (CLI `touchstone`, package `llm-touchstone`, repo `llm-benchmark-harness`).
+**Target name:** Johannes chose **touchstone**. CLI `touchstone`, package `touchstone/`, distribution `llm-touchstone`.
 
-- [ ] When the name is known: sweep `pyproject.toml` (`[project].name`, `[project.scripts]`), `touchstone/` package dir, all imports, `AGENTS.md`, docs, configs, the GUI logo/title. Do it as a single mechanical commit (or a small series), full `pytest` green after.
+- [x] Swept the standalone `ramcheck` token across `pyproject.toml` (`[project].name` → `llm-touchstone`, `[project.scripts]` → `touchstone = "touchstone.cli:app"`, `packages`), the `ramcheck/` → `touchstone/` package dir (`git mv`, history preserved), all imports, tests, `AGENTS.md`, docs, configs, GUI templates/static. uv.lock regenerated. GUI brand capitalized to "Touchstone" — the sidebar logo was split across tags (`ram<span>check</span>`) so the blanket replace missed it; fixed by hand. **429 tests green · ruff clean · mypy 0 · GUI routes 200.** Merge `2555ca4`.
+
+  > **Restliche manuelle Aufgabe (Hard-Blocker, Web-UI):** Das **Repo** heißt noch `llm-benchmark-harness` auf Codeberg (origin) + GitHub (mirror). Umbenennen muss Johannes in beiden Web-UIs; die git-Remotes funktionieren danach weiter (Plattformen leiten alte URLs um), optional lokal `git remote set-url` nachziehen.
 
 ---
 
