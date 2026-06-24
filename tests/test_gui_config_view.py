@@ -27,9 +27,9 @@ def _client(tmp_path):
 def test_config_view_renders_key_fields(tmp_path):
     r = _client(tmp_path).get("/config-view/config.m5.yaml")
     assert r.status_code == 200
-    # Endpoint base_url, machine, runs_per_cell and a model id must surface.
+    # Endpoint base_url, runs_per_cell and a model id must surface.
+    # (machine label was removed from the quality path in Task 5 — no longer displayed)
     assert "http://localhost:8080/v1" in r.text
-    assert "M5-32GB" in r.text
     assert "runs_per_cell" in r.text or "Runs pro Zelle" in r.text
     assert "qwen3.6-35b-a3b-4bit" in r.text
 

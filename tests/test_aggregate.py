@@ -3,7 +3,6 @@ import csv
 from touchstone import aggregate as agg
 
 HEADER = [
-    "machine",
     "chip",
     "ram_gb",
     "pack",
@@ -62,7 +61,6 @@ def test_aggregate_computes_weighted_quality():
     rows = [
         _row(
             chip="M5",
-            machine="mac",
             pack="nd",
             pack_version="1",
             model="m",
@@ -78,7 +76,6 @@ def test_aggregate_computes_weighted_quality():
         ),
         _row(
             chip="M5",
-            machine="mac",
             pack="nd",
             pack_version="1",
             model="m",
@@ -102,7 +99,6 @@ def test_aggregate_carries_model_delta_gb():
     rows = [
         _row(
             chip="M5",
-            machine="mac",
             model="m",
             variant="baseline",
             peak_ram_gb="50.8",
@@ -164,7 +160,6 @@ def test_render_aggregate_md_has_table():
     rows = [
         _row(
             chip="M5",
-            machine="mac",
             pack="nd",
             pack_version="1",
             model="m",
@@ -189,8 +184,8 @@ def test_render_aggregate_md_graceful_with_empty_identity_fields():
     ]
     assert len(data) == 1
     cells = data[0].split("|")
-    assert cells[4].strip() == "—"  # model → em-dash, not blank
-    assert "v" not in cells[7]  # pack cell is "—", not a malformed " v"
+    assert cells[3].strip() == "—"  # model → em-dash, not blank
+    assert "v" not in cells[6]  # pack cell is "—", not a malformed " v"
     assert "60.0" in data[0]  # quality % = 3 / (5*1) = 60
 
 

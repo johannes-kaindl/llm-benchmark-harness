@@ -114,9 +114,11 @@ def test_scores_csv_rows_are_flat_and_mergeable():
     reports = [ModelReport("m1", "none", {"Q1": 4, "Q6": 5})]
     rows = scores_csv_rows(pack, responses, verdicts, reports, host=_host())
     assert rows  # non-empty
-    assert all("machine" in r and "model" in r for r in rows)
+    assert all("model" in r for r in rows)
     # carries hardware + a score column so many machines' CSVs concatenate
     assert any("chip" in r for r in rows)
+    # machine label removed in Task 5 — auto-detected chip/ram are canonical
+    assert all("machine" not in r for r in rows)
 
 
 def test_scores_csv_carries_model_delta_gb():

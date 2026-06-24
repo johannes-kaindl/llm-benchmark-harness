@@ -53,7 +53,7 @@ class VlmSpec(BaseModel):
 
 class Config(BaseModel):
     endpoint: Endpoint
-    machine: str
+    machine: str = ""
     runs_per_cell: int = 8
     seed: int = 42
     temperature: float = 0.0

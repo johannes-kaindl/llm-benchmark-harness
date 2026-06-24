@@ -198,7 +198,6 @@ def _write_bundle_manifest(
         "pack_id": pk.id,
         "pack_version": pk.version,
         "pack_path": str(Path(pack_path).resolve()),
-        "machine": cfg.machine,
         "models": [{"id": m.id, "quant": m.quant} for m in cfg.models],
         "variants": [v.id for v in pk.prompt_variants],
         "host": host,

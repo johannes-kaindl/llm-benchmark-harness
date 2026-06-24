@@ -34,9 +34,6 @@
         {{ summary.models | join(", ") }}
         <span class="muted" style="font-weight:400; font-size:0.9rem">
           · Variante: {{ detail.reports[0].variant if detail and detail.reports else "—" }}
-          {% if detail and detail.manifest and detail.manifest.host %}
-            · {{ detail.manifest.host.get("machine", "") }}
-          {% endif %}
           · seed {{ detail.manifest.get("seed", 42) if detail and detail.manifest else 42 }}
         </span>
       </div>

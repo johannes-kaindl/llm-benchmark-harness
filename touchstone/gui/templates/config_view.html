@@ -7,7 +7,6 @@
 {% block body %}
 <div class="page-header">
   <h1 class="page-title">{{ path }}</h1>
-  <span class="muted text-sm">{{ cfg.machine }}</span>
 </div>
 
 <div class="card mb-4">
@@ -23,7 +22,6 @@
 
 <div class="card">
   <div class="card-title">Lauf</div>
-  {{ ui.kv("machine", cfg.machine) }}
   {{ ui.kv("runs_per_cell", cfg.runs_per_cell) }}
   {{ ui.kv("seed", cfg.seed) }}
   {{ ui.kv("temperature", cfg.temperature) }}

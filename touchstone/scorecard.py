@@ -323,7 +323,6 @@ def scores_csv_rows(
         g = [r for r in responses if r.model == model and r.variant == variant]
         p = _perf_summary(g)
         base: dict[str, object] = {
-            "machine": g[0].machine if g else "",
             "chip": host.get("chip", ""),
             "ram_gb": host.get("ram_gb", ""),
             "pack": pack.id,
