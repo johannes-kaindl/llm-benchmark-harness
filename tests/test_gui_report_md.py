@@ -294,3 +294,44 @@ def test_export_report_blank_route_serves_evaluation_task(tmp_path):
     assert "zum-bewerten.md" in r.headers.get("content-disposition", "")
     assert "## 📋 Bewertungs-Auftrag" in r.text
     assert "## Master-Scorecard" not in r.text
+
+
+def test_judge_model_and_quant_surface_when_recorded():
+    from ramcheck.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp = _resp(first.id, quant="q4")
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    detail = _detail(
+        pk, [resp], reports=[report],
+        master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+        manifest={"host": HOST, "date": "2026-06-24",
+                  "judge": {"model": "qwen3.6-35b-a3b", "temperature": 0.0,
+                            "endpoint": "http://localhost:1234/v1"}},
+    )
+    md = render_report_md(detail, GLOSSARY)
+    assert "**Judge-Modell:** `qwen3.6-35b-a3b`" in md  # visible in the method section
+    assert 'judge_model: "qwen3.6-35b-a3b"' in md  # frontmatter (Bases-queryable)
+    assert 'quant: "q4"' in md  # frontmatter
+    assert "**Modell-Quant:** q4" in md  # visible
+
+
+def test_judge_model_unknown_for_old_judged_bundle():
+    from ramcheck.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    detail = _detail(  # default manifest has no "judge" block
+        pk, [_resp(first.id)], reports=[report],
+        master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+    )
+    md = render_report_md(detail, GLOSSARY)
+    assert "nicht erfasst (älterer Lauf" in md

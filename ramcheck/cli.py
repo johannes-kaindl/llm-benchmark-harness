@@ -687,6 +687,15 @@ def judge(
     if prior:
         console.print(f"[dim]resume: {len(prior)} bereits bewertet — überspringe sie.[/]")
     console.print(f"[bold]ramcheck judge[/] [{pk.id}] · judge: {jc.model}")
+    # Persist which judge produced the scores so the report / Base can show it.
+    manifest["judge"] = {
+        "model": jc.model,
+        "endpoint": jc.endpoint.base_url,
+        "temperature": jc.temperature,
+    }
+    (bundle / "bundle.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     jpath = bundle / "judgements.jsonl"
     emit = web or emit_events

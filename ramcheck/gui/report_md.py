@@ -113,9 +113,12 @@ def _frontmatter(
     master_rows: list[dict[str, Any]],
     perf: dict[str, Any],
     known_ids: set[str],
+    include_judging: bool,
 ) -> list[str]:
     models = sorted({r.model for r in responses})
     variants = sorted({r.variant for r in responses})
+    quants = sorted({r.quant for r in responses if getattr(r, "quant", "")})
+    judge = (manifest.get("judge") or {}) if include_judging else {}
     ok_resp = [r for r in responses if r.ok and not getattr(r, "is_cold_start", False)]
     engine = host.get("engine") or manifest.get("engine") or (responses[0].engine if responses else None)
     engine_version = (
@@ -153,6 +156,7 @@ def _frontmatter(
         ("engine", engine or None),
         ("engine_version", engine_version or None),
         ("model", models[0] if len(models) == 1 else None),  # scalar for single-model runs (Bases groupBy)
+        ("quant", quants[0] if len(quants) == 1 else None),
         ("seed", manifest.get("seed", pack.sampling.seed)),
         ("temperature", pack.sampling.temperature),
         ("n_prompts", len(known_ids)),
@@ -160,6 +164,8 @@ def _frontmatter(
         ("recommendation", best["recommendation"] if best else None),
         ("quality_pct", round(best["pct"]) if best else None),
         ("safety_passed", best["safety_passed"] if best else None),
+        ("judge_model", judge.get("model")),
+        ("judge_temperature", judge.get("temperature")),
         ("ttft_p50_s", _round(_to_num(perf.get("ttft_p50")), 2)),
         ("decode_med_tps", _round(_to_num(perf.get("decode_med")), 1)),
         ("e2e_med_s", _round(_to_num(perf.get("e2e_med")), 2)),
@@ -266,19 +272,23 @@ def render_report_md(
             master_rows=master_rows,
             perf=perf,
             known_ids=known_ids,
+            include_judging=include_judging,
         )
     )
 
     # ── Title + meta ────────────────────────────────────────────────────────
     models = ", ".join(sorted({r.model for r in responses})) or "—"
+    quants_str = ", ".join(sorted({r.quant for r in responses if getattr(r, "quant", "")}))
+    judge = (manifest.get("judge") or {}) if include_judging else {}
     machine = host.get("machine") or manifest.get("machine") or "—"
     chip = host.get("chip", "")
     ram = _to_num(host.get("ram_gb"))
     hw = f"{chip} · {ram:.0f} GB" if chip and ram else machine
     w(f"\n# Ergebnis-Report — {run_name}\n")
     w(
-        f"> **Pack:** {pack.title} (v{pack.version}) · **Modelle:** {models} · "
-        f"**Hardware:** {hw} · **Maschine-Label:** {machine} · **Datum:** {manifest.get('date', '—')}\n"
+        f"> **Pack:** {pack.title} (v{pack.version}) · **Modelle:** {models}"
+        + (f" ({quants_str})" if quants_str else "")
+        + f" · **Hardware:** {hw} · **Maschine-Label:** {machine} · **Datum:** {manifest.get('date', '—')}\n"
     )
     if pack.description:
         w(f"{pack.description}\n")
@@ -327,6 +337,16 @@ def render_report_md(
         "über *alle* Antworten eines Modells liefert pro Dimension einen Wert 1–5 plus eine "
         "Begründung, die konkrete Prompt-IDs als Beleg nennt.\n"
     )
+    if include_judging and judge:
+        t = judge.get("temperature")
+        w(
+            f"**Judge-Modell:** `{judge.get('model', '—')}`"
+            + (f" · Temperatur {t}" if t is not None else "")
+            + (f" · Endpoint `{judge.get('endpoint')}`" if judge.get("endpoint") else "")
+            + "\n"
+        )
+    elif include_judging and reports:
+        w("**Judge-Modell:** _nicht erfasst (älterer Lauf — ein neuer `judge`-Lauf speichert es)._\n")
     w("**Gewichtete Master-Scorecard:** `Σ (Score × Gewicht) / Max × 100 = Qualität %`\n")
     w("**K.-o.-Logik** (zwei unabhängige Zweige — einer genügt für „Nein“):\n")
     w(f"- *Dimensions-Floor* — eine Schlüssel-Dimension liegt ≤ Schwelle (hier: **{ko.dimension} ≤ {ko.threshold}**).")
@@ -354,6 +374,7 @@ def render_report_md(
     w(f"- **Chip:** {chip or '—'}")
     w(f"- **RAM:** {f'{ram:.1f} GB' if ram else '—'}")
     w(f"- **Maschine-Label (Config):** {machine}")
+    w(f"- **Modell-Quant:** {quants_str or '—'}")
     w(f"- **Seed:** {manifest.get('seed', pack.sampling.seed)}")
     w(f"- **Sampling:** temperature {pack.sampling.temperature}, seed {pack.sampling.seed}")
     w(f"- **Engine:** {engine or '—'}" + (f" ({engine_version})" if engine_version else "") + "\n")
