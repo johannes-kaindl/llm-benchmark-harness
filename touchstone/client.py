@@ -8,8 +8,38 @@ consumes. Works unchanged against LM Studio, mlx_lm.server and mlx-openai-server
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 
 from touchstone.runner import StreamEvent
+
+
+@dataclass
+class BuildMetadata:
+    engine_version: str | None = None
+    runtime: str | None = None
+    quant_by_model: dict[str, str] = field(default_factory=dict)
+
+
+def parse_lmstudio_models(payload: dict[str, object]) -> BuildMetadata:
+    """Extract runtime + per-model quant from an LM Studio /api/v0/models payload.
+
+    Best-effort: unknown shape → empty metadata (callers fall back to config)."""
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return BuildMetadata()
+    quant_by_model: dict[str, str] = {}
+    runtimes: list[str] = []
+    for m in data:
+        if not isinstance(m, dict):
+            continue
+        mid = m.get("id")
+        q = m.get("quantization")
+        rt = m.get("compatibility_type")
+        if isinstance(mid, str) and isinstance(q, str):
+            quant_by_model[mid] = q
+        if isinstance(rt, str):
+            runtimes.append(rt)
+    return BuildMetadata(runtime=runtimes[0] if runtimes else None, quant_by_model=quant_by_model)
 
 
 class OpenAIStreamClient:
@@ -39,8 +69,25 @@ class OpenAIStreamClient:
             self._client = OpenAI(
                 base_url=base_url, api_key=api_key, timeout=_timeout, max_retries=max_retries
             )
+        self.base_url = base_url
         self.engine = engine
         self.engine_version = engine_version
+
+    def probe_build_metadata(self) -> BuildMetadata:
+        """Best-effort build/quant probe. LM Studio exposes /api/v0/models; others don't.
+
+        Never raises into the eval loop — any failure yields empty metadata."""
+        import httpx
+
+        base = self.base_url.rstrip("/")
+        host = base[:-3] if base.endswith("/v1") else base  # strip OpenAI suffix
+        try:
+            r = httpx.get(f"{host}/api/v0/models", timeout=3.0)
+            if r.status_code == 200:
+                return parse_lmstudio_models(r.json())
+        except Exception:
+            pass
+        return BuildMetadata()
 
     def list_models(self) -> list[str]:
         """Model ids the endpoint advertises at /v1/models (for the GUI picker dropdown)."""
