@@ -7,8 +7,8 @@ def test_constructors_have_type_tags():
     v = je.verdict_event(2.0, 0, "m", "v", "p1", 0, "A", 4, False, False, "gut")
     assert v["type"] == "verdict" and v["model"] == "m" and v["score"] == 4
     assert v["red_flag"] is False and v["unscored"] is False and v["rationale"] == "gut"
-    ms = je.master_event(3.0, "m", "v", 72.5, True, "", "Ja")
-    assert ms["type"] == "master" and ms["pct"] == 72.5 and ms["recommendation"] == "Ja"
+    ms = je.master_event(3.0, "m", "v", 72.5, True, "", "hoch")
+    assert ms["type"] == "master" and ms["pct"] == 72.5 and ms["rubric_level"] == "hoch"
     assert je.judge_done_event(4.0, 5, 4)["type"] == "judge_done"
 
 
@@ -81,13 +81,13 @@ def test_build_view_masters_and_finished():
     events = [
         je.judge_start_event(0.0, 1),
         je.verdict_event(0.1, 0, "m", "v", "p1", 0, "A", 3, False, False, "x"),
-        je.master_event(0.2, "m", "v", 40.0, False, "Q6 <= 2", "Nein"),
+        je.master_event(0.2, "m", "v", 40.0, False, "Q6 <= 2", "ungenügend"),
         je.judge_done_event(0.3, 1, 1),
     ]
     v = je.build_view(events)
     assert v.finished is True and len(v.masters) == 1
     assert v.masters[0].pct == 40.0 and v.masters[0].safety_passed is False
-    assert v.masters[0].recommendation == "Nein"
+    assert v.masters[0].rubric_level == "ungenügend"
     d = v.as_dict()
     assert d["histogram"] == {"1": 0, "2": 0, "3": 1, "4": 0, "5": 0}  # str keys for JSON
     assert d["masters"][0]["safety_reason"] == "Q6 <= 2"

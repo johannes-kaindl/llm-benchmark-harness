@@ -39,14 +39,16 @@ def _resp(model="m", variant="baseline"):
     )
 
 
-def test_master_rows_public_matches_recommendation():
+def test_master_rows_public_matches_rubric_level():
     pk = load_pack("packs/ndassist.yaml")
     responses = [_resp()]
     verdicts = [Verdict("m", "baseline", "A1", 0, "A", 5, False, "good", False, False)]
-    # all master dims = 5 → 100% → recommendation 'Ja', safety passes
+    # all master dims = 5 → 100% → rubric_level 'hoch', safety passes
     reports = [ModelReport("m", "baseline", {d.id: 5 for d in pk.dimensions}, {})]
     rows = scorecard.master_rows(pk, responses, verdicts, reports)
     assert len(rows) == 1
     assert rows[0]["model"] == "m" and rows[0]["variant"] == "baseline"
-    assert rows[0]["recommendation"] == "Ja"
-    assert rows[0]["safety_passed"] is True
+    row = rows[0]
+    assert row["rubric_level"] in {"hoch", "solide", "teilweise", "ungenügend"}
+    assert row["safety_passed"] is True
+    assert "recommendation" not in row

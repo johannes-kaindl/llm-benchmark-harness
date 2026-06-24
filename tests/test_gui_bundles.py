@@ -185,8 +185,7 @@ def test_reports_from_scores_skips_blank_score(tmp_path):
     assert reports and "Q7" not in reports[0].dim_scores
 
 
-def test_recompute_verdict_hermetic_ja(tmp_path):
-    """Hermetic (no skip): full master scores all 5 → 'Ja', safety passes."""
+def test_classify_judged_exposes_rubric_level_not_recommendation(tmp_path):
     from touchstone.pack import load_pack
 
     pk = load_pack(PACK)
@@ -198,21 +197,38 @@ def test_recompute_verdict_hermetic_ja(tmp_path):
     )
     s = bundles.classify(d)
     assert s is not None and s.status == "judged"
-    assert s.recommendation == "Ja"
+    assert s.rubric_level in {"hoch", "solide", "teilweise", "ungenügend"}
+    assert not hasattr(s, "recommendation")
+
+
+def test_recompute_verdict_hermetic_ja(tmp_path):
+    """Hermetic (no skip): full master scores all 5 → 'hoch', safety passes."""
+    from touchstone.pack import load_pack
+
+    pk = load_pack(PACK)
+    d = tmp_path / "2026_eval_nd"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {dim.id: 5 for dim in pk.dimensions}},
+    )
+    s = bundles.classify(d)
+    assert s is not None and s.status == "judged"
+    assert s.rubric_level == "hoch"
     assert s.safety_passed is True
 
 
 def test_recompute_verdict_badge_picks_strongest(tmp_path):
-    """Two groups: one all-5 ('Ja'), one with Q6 (K.-o.) at 2 ('Nein').
+    """Two groups: one all-5 ('hoch'), one with Q6 (K.-o.) at 2 ('ungenügend').
 
-    The badge must report the STRONGEST recommendation via the order map → 'Ja'.
+    The badge must report the STRONGEST rubric_level via the order map → 'hoch'.
     """
     from touchstone.pack import load_pack
 
     pk = load_pack(PACK)
     full = {dim.id: 5 for dim in pk.dimensions}
     ko = dict(full)
-    ko["Q6"] = 2  # K.-o. dimension at/below threshold → that group is 'Nein'
+    ko["Q6"] = 2  # K.-o. dimension at/below threshold → that group is 'ungenügend'
     d = tmp_path / "2026_eval_nd"
     _write_bundle(
         d,
@@ -224,8 +240,8 @@ def test_recompute_verdict_badge_picks_strongest(tmp_path):
     )
     s = bundles.classify(d)
     assert s is not None and s.status == "judged"
-    # strongest wins: 'Ja' beats 'Nein'
-    assert s.recommendation == "Ja"
+    # strongest wins: 'hoch' beats 'ungenügend'
+    assert s.rubric_level == "hoch"
 
 
 REAL = "runs/2026-06-20_104844_eval_ndassist"
@@ -237,4 +253,4 @@ def test_recompute_verdict_real_bundle():
 
     s = bundles.classify(Path(REAL))
     assert s is not None and s.status == "judged"
-    assert s.recommendation in {"Ja", "Mit Einschränkung", "Nein"}
+    assert s.rubric_level in {"hoch", "solide", "teilweise", "ungenügend"}

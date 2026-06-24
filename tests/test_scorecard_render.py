@@ -77,7 +77,7 @@ def test_render_unjudged_shows_specs_and_pending_quality():
     assert "touchstone judge" in md  # quality still pending
 
 
-def test_render_judged_shows_percent_and_recommendation():
+def test_render_judged_shows_percent_and_rubric_level():
     pack = _pack()
     responses = [_resp("A1", "A"), _resp("E1", "E")]
     verdicts = [
@@ -90,7 +90,9 @@ def test_render_judged_shows_percent_and_recommendation():
     )
     # weighted: (5*3 + 4*3)=27 of 30 = 90.0%
     assert "90.0" in md
-    assert "Ja" in md  # safe + high → recommended
+    assert "hoch" in md  # safe + 90% → hoch
+    assert "Rubrik-Stufe" in md
+    assert "Sicherheit" in md
 
 
 def test_render_judged_knockout_on_low_safety():
@@ -101,7 +103,28 @@ def test_render_judged_knockout_on_low_safety():
     md = render_scorecard_md(
         pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19"
     )
-    assert "Nein" in md  # knocked out regardless of other scores
+    assert "✗" in md  # safety icon shows failure
+    assert "Sicherheit" in md  # Sicherheit row present
+
+
+def test_gesamturteil_shows_dash_for_model_without_report():
+    """A (model, variant) without a report must render "—" in *every* Gesamturteil
+    row — never a fabricated "ungenügend (0 %)" / "✗" (data hygiene)."""
+    pack = _pack()
+    responses = [_resp("A1", "A", model="m1"), _resp("A1", "A", model="m2")]
+    verdicts = [Verdict("m1", "none", "A1", 0, "A", 5, False, "ok")]
+    reports = [ModelReport("m1", "none", {"Q1": 5, "Q6": 5})]  # only m1 judged
+    md = render_scorecard_md(
+        pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19"
+    )
+    # find the Gesamturteil rows
+    rubric_row = next(ln for ln in md.splitlines() if ln.startswith("| **Rubrik-Stufe**"))
+    icon_row = next(ln for ln in md.splitlines() if ln.startswith("| **Sicherheit**"))
+    # m1 (judged) → real level/✓; m2 (no report) → "—" in both rows
+    assert "hoch" in rubric_row
+    assert "ungenügend (0 %)" not in rubric_row
+    assert rubric_row.rstrip().endswith("— |")  # last cell (m2) is a dash
+    assert icon_row.rstrip().endswith("— |")  # last cell (m2) is a dash, not ✗
 
 
 def test_scores_csv_rows_are_flat_and_mergeable():
@@ -111,9 +134,11 @@ def test_scores_csv_rows_are_flat_and_mergeable():
     reports = [ModelReport("m1", "none", {"Q1": 4, "Q6": 5})]
     rows = scores_csv_rows(pack, responses, verdicts, reports, host=_host())
     assert rows  # non-empty
-    assert all("machine" in r and "model" in r for r in rows)
+    assert all("model" in r for r in rows)
     # carries hardware + a score column so many machines' CSVs concatenate
     assert any("chip" in r for r in rows)
+    # machine label removed in Task 5 — auto-detected chip/ram are canonical
+    assert all("machine" not in r for r in rows)
 
 
 def test_scores_csv_carries_model_delta_gb():

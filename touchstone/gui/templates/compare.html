@@ -15,7 +15,6 @@
       <tr>
         <th>Chip</th>
         <th>RAM</th>
-        <th>Maschine</th>
         <th>Pack</th>
         <th>Modell</th>
         <th>Variante</th>
@@ -28,17 +27,10 @@
       </tr>
     </thead>
     <tbody>
-      {% for r, mismatch in rows %}
+      {% for r in rows %}
       <tr>
         <td>{{ r.chip }}</td>
         <td>{{ r.ram_gb }}</td>
-        <td>
-          {% if mismatch %}
-            <span class="muted" title="Config-Label »{{ r.machine }}« passt nicht zur erkannten Hardware – erkannte Werte gelten.">{{ r.machine }} ⚠</span>
-          {% else %}
-            {{ r.machine }}
-          {% endif %}
-        </td>
         <td><a href="/packs/packs/{{ r.pack }}.yaml">{{ r.pack }}</a></td>
         <td>{{ r.model }}</td>
         <td>{{ r.variant }}</td>

@@ -25,6 +25,9 @@ from statistics import median
 from typing import Any
 
 from touchstone.gui.glossary import Glossary
+from touchstone.result_schema import ResultDoc, build_result_doc
+
+_SUPPORTED_SCHEMA_VERSION = 1
 
 
 def _is_num(v: Any) -> bool:
@@ -114,18 +117,24 @@ def _frontmatter(
     perf: dict[str, Any],
     known_ids: set[str],
     include_judging: bool,
+    doc: ResultDoc | None = None,
 ) -> list[str]:
     models = sorted({r.model for r in responses})
     variants = sorted({r.variant for r in responses})
     quants = sorted({r.quant for r in responses if getattr(r, "quant", "")})
     judge = (manifest.get("judge") or {}) if include_judging else {}
     ok_resp = [r for r in responses if r.ok and not getattr(r, "is_cold_start", False)]
-    engine = host.get("engine") or manifest.get("engine") or (responses[0].engine if responses else None)
-    engine_version = (
-        host.get("engine_version")
-        or manifest.get("engine_version")
-        or (responses[0].engine_version if responses else None)
-    )
+    # Source engine/engine_version from canonical provenance (honest best-effort, never fabricated).
+    # "unknown" is the client-side default for unreachable metadata — treat it as absent.
+    if doc is not None:
+        engine = doc.provenance.engine or None
+        _ev = doc.provenance.engine_version
+        engine_version = (_ev if _ev and _ev != "unknown" else None)
+    else:
+        # Fallback for unsupported-schema or missing-doc path: host/manifest only.
+        engine = host.get("engine") or manifest.get("engine") or None
+        _ev = host.get("engine_version") or manifest.get("engine_version")
+        engine_version = (_ev if _ev and _ev != "unknown" else None)
 
     # headline result = best-scoring (model, variant); per-variant quality kept too
     scored = [r for r in master_rows if r.get("pct") is not None]
@@ -150,7 +159,6 @@ def _frontmatter(
         ("pack", pack.id),
         ("pack_title", pack.title),
         ("pack_version", pack.version),
-        ("machine", host.get("machine") or manifest.get("machine")),
         ("cpu", host.get("chip") or None),
         ("gb_ram", _round(_to_num(host.get("ram_gb")), 1)),
         ("engine", engine or None),
@@ -161,7 +169,7 @@ def _frontmatter(
         ("temperature", pack.sampling.temperature),
         ("n_prompts", len(known_ids)),
         ("n_answers", len(responses)),
-        ("recommendation", best["recommendation"] if best else None),
+        ("rubric_level", best["rubric_level"] if best else None),
         ("quality_pct", round(best["pct"]) if best else None),
         ("safety_passed", best["safety_passed"] if best else None),
         ("judge_model", judge.get("model")),
@@ -228,6 +236,35 @@ def _eval_task(pack: Any, responses: list[Any], prompt_link: Any, known_ids: set
     return "\n".join(b)
 
 
+def _load_doc(run_dir: Any, pack: Any, responses: list[Any], verdicts: list[Any],
+               reports: list[Any], host: dict[str, Any], manifest: dict[str, Any]) -> ResultDoc | None:
+    """Load canonical ResultDoc from result.json if available, else build on-the-fly.
+
+    Returns None only when schema_version is unsupported (future schema).
+    """
+    rj = run_dir / "result.json" if run_dir is not None else None
+    if rj is not None and rj.exists():
+        try:
+            raw = json.loads(rj.read_text(encoding="utf-8"))
+            version = raw.get("schema_version", 1)
+            if version > _SUPPORTED_SCHEMA_VERSION:
+                return None  # signal: unsupported schema
+            return ResultDoc.model_validate(raw)
+        except Exception:
+            pass  # malformed JSON → fall through to build
+    # Build on-the-fly from the *.jsonl data already in `detail`
+    return build_result_doc(
+        pack, responses, verdicts, reports,
+        host=host,
+        build_meta=None,
+        judge=manifest.get("judge"),
+        sampling={
+            "seed": manifest.get("seed", pack.sampling.seed),
+            "temperature": pack.sampling.temperature,
+        },
+    )
+
+
 def render_report_md(
     detail: dict[str, Any], glossary: Mapping[str, Glossary], *, include_judging: bool = True
 ) -> str:
@@ -255,6 +292,14 @@ def render_report_md(
         # strip every qualitative judgement so a cloud AI can produce a fresh one
         master_rows, reports, verdicts = [], [], []
 
+    # ── Load canonical ResultDoc ─────────────────────────────────────────────
+    doc = _load_doc(run_dir, pack, responses, verdicts, reports, host, manifest)
+    schema_unsupported = doc is None
+    # Build an index of cells by (model, variant) for quick lookup
+    cells_by: dict[tuple[str, str], Any] = {}
+    if doc is not None:
+        cells_by = {(c.model, c.variant): c for c in doc.cells}
+
     def prompt_link(pid: str, display: str | None = None) -> str:
         return _wl(f"{pid} · {title_by[pid]}", display or pid) if pid in title_by else pid
 
@@ -273,6 +318,7 @@ def render_report_md(
             perf=perf,
             known_ids=known_ids,
             include_judging=include_judging,
+            doc=doc,
         )
     )
 
@@ -280,16 +326,35 @@ def render_report_md(
     models = ", ".join(sorted({r.model for r in responses})) or "—"
     quants_str = ", ".join(sorted({r.quant for r in responses if getattr(r, "quant", "")}))
     judge = (manifest.get("judge") or {}) if include_judging else {}
-    machine = host.get("machine") or manifest.get("machine") or "—"
     chip = host.get("chip", "")
     ram = _to_num(host.get("ram_gb"))
-    hw = f"{chip} · {ram:.0f} GB" if chip and ram else machine
+    hw = f"{chip} · {ram:.0f} GB" if chip and ram else "—"
     w(f"\n# Ergebnis-Report — {run_name}\n")
     w(
         f"> **Pack:** {pack.title} (v{pack.version}) · **Modelle:** {models}"
         + (f" ({quants_str})" if quants_str else "")
-        + f" · **Hardware:** {hw} · **Maschine-Label:** {machine} · **Datum:** {manifest.get('date', '—')}\n"
+        + f" · **Hardware:** {hw} · **Datum:** {manifest.get('date', '—')}\n"
     )
+    # Judge identity in the top header (right after the model/hardware line)
+    if include_judging:
+        if judge and judge.get("model"):
+            jt = judge.get("temperature")
+            w(
+                f"> **Judge:** `{judge['model']}`"
+                + (f" · Temperatur {jt}" if jt is not None else "")
+                + "\n"
+            )
+        elif doc is not None and doc.judge and doc.judge.model:
+            jt = doc.judge.temperature
+            w(
+                f"> **Judge:** `{doc.judge.model}`"
+                + (f" · Temperatur {jt}" if jt is not None else "")
+                + "\n"
+            )
+    if schema_unsupported:
+        w("> [!warning] neueres Schema\n> `result.json` wurde mit einer neueren Version "
+          "dieses Harness erstellt und kann nicht vollständig dargestellt werden. "
+          "Bitte Harness aktualisieren.\n")
     if pack.description:
         w(f"{pack.description}\n")
 
@@ -317,7 +382,7 @@ def render_report_md(
             w(
                 f"| {_cell(str(row['model']))} | {_cell(str(row['variant']))} "
                 f"| {_fmt(row.get('pct'), '{:.0f}', '%')} "
-                f"| {_cell(str(row.get('recommendation', '—')))} | {_cell(safe)} |"
+                f"| {_cell(str(row.get('rubric_level', '—')))} | {_cell(safe)} |"
             )
         w("")
     else:
@@ -365,19 +430,25 @@ def render_report_md(
 
     # ── Hardware & Konfiguration ────────────────────────────────────────────
     w("## Hardware & Konfiguration\n")
-    engine = host.get("engine") or manifest.get("engine") or (responses[0].engine if responses else "")
-    engine_version = (
-        host.get("engine_version")
-        or manifest.get("engine_version")
-        or (responses[0].engine_version if responses else "")
-    )
+    # Source engine/engine_version from canonical provenance (honest best-effort, never fabricated).
+    # "unknown" is the client-side default for unreachable metadata — treat it as absent.
+    if doc is not None:
+        hw_engine: str | None = doc.provenance.engine or None
+        _hw_ev = doc.provenance.engine_version
+        hw_engine_version: str | None = (_hw_ev if _hw_ev and _hw_ev != "unknown" else None)
+    else:
+        # Fallback for unsupported-schema path: host/manifest only (no response fabrication).
+        hw_engine = host.get("engine") or manifest.get("engine") or None
+        _hw_ev2 = host.get("engine_version") or manifest.get("engine_version")
+        hw_engine_version = (_hw_ev2 if _hw_ev2 and _hw_ev2 != "unknown" else None)
+    _engine_label = hw_engine or "—"
+    _version_suffix = f" ({hw_engine_version})" if hw_engine_version else " (n. v.)"
     w(f"- **Chip:** {chip or '—'}")
     w(f"- **RAM:** {f'{ram:.1f} GB' if ram else '—'}")
-    w(f"- **Maschine-Label (Config):** {machine}")
     w(f"- **Modell-Quant:** {quants_str or '—'}")
     w(f"- **Seed:** {manifest.get('seed', pack.sampling.seed)}")
     w(f"- **Sampling:** temperature {pack.sampling.temperature}, seed {pack.sampling.seed}")
-    w(f"- **Engine:** {engine or '—'}" + (f" ({engine_version})" if engine_version else "") + "\n")
+    w(f"- **Engine:** {_engine_label}{_version_suffix}\n")
     w(top)
 
     # ── Master-Scorecard (judged runs only) ─────────────────────────────────
@@ -385,22 +456,40 @@ def render_report_md(
         w("## Master-Scorecard\n")
         reports_by = {(r.model, r.variant): r for r in reports}
         if reports:
+            # Group rows by model to detect length-bias within a model's variants
+            models_in_rows: dict[str, list[dict[str, Any]]] = {}
             for row in master_rows:
-                rep = reports_by.get((row["model"], row["variant"]))
-                w(f"### {row['model']} · Variante `{row['variant']}`\n")
+                models_in_rows.setdefault(row["model"], []).append(row)
+
+            for row in master_rows:
+                model_key = row["model"]
+                variant_key = row["variant"]
+                rep = reports_by.get((model_key, variant_key))
+                cell = cells_by.get((model_key, variant_key))
+                answer_tokens = cell.answer_tokens_med if cell is not None else None
+                quality = cell.quality if cell is not None else None
+                w(f"### {model_key} · Variante `{variant_key}`\n")
+                # Use quality from ResultCell when available (canonical), else from master_rows
+                rubric = (quality.rubric_level if quality else None) or row.get("rubric_level", "—")
+                safety = (quality.safety_passed if quality else None)
+                if safety is None:
+                    safety = row.get("safety_passed", True)
+                safety_reason = (quality.safety_reason if quality else None) or row.get("safety_reason", "")
                 w(
                     f"**{_metric_link('quality_pct', glossary)}: "
-                    f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Urteil: **{row.get('recommendation', '—')}**"
-                    + ("" if row.get("safety_passed") else f" · ⛔ {_cell(str(row.get('safety_reason', '')))}")
+                    f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Rubrik: **{rubric}**"
+                    + f" · Sicherheit: {'✓' if safety else '✗'}"
+                    + ("" if safety else f" ({_cell(str(safety_reason))})")
+                    + (f" · Ø Tokens/Antwort: **{answer_tokens}**" if answer_tokens is not None else "")
                     + "\n"
                 )
                 if rep and rep.dim_scores:
-                    w("| Dimension | Gewicht | Score | Begründung |")
-                    w("|---|---|---|---|")
+                    w("| Dimension | Gewicht | Score | Tokens (med) | Begründung |")
+                    w("|---|---|---|---|---|")
                     for dim in pack.dimensions:
                         score = rep.dim_scores.get(dim.id)
                         rationale = (rep.dim_rationales or {}).get(dim.id, "")
-                        cite_key = f"{row['model']}|{row['variant']}|{dim.id}"
+                        cite_key = f"{model_key}|{variant_key}|{dim.id}"
                         cited = [c for c in cited_ids.get(cite_key, []) if c in known_ids]
                         if cited:
                             rationale = f"{rationale} · Belege: " + ", ".join(prompt_link(c) for c in cited)
@@ -409,11 +498,45 @@ def render_report_md(
                             if dim.id == ko.dimension and score is not None and score <= ko.threshold
                             else ""
                         )
+                        # Only show tokens on the first row of this cell (avoid repetition)
+                        toks_cell = str(answer_tokens) if answer_tokens is not None else "—"
                         w(
                             f"| {_wl(f'{dim.id} · {dim.name}', dim.id, in_table=True)} | {dim.weight} "
-                            f"| {score if score is not None else '—'}{ko_mark} | {_cell(rationale) or '—'} |"
+                            f"| {score if score is not None else '—'}{ko_mark} "
+                            f"| {toks_cell} | {_cell(rationale) or '—'} |"
                         )
+                        # Only show on first dim row; subsequent rows get "—"
+                        answer_tokens = None
                     w("")
+
+                # ── Length-bias disclaimer ──────────────────────────────
+                sibling_rows = models_in_rows.get(model_key, [])
+                if len(sibling_rows) == 2:
+                    other_row = next((r for r in sibling_rows if r["variant"] != variant_key), None)
+                    if other_row is not None:
+                        this_cell = cells_by.get((model_key, variant_key))
+                        other_cell = cells_by.get((model_key, other_row["variant"]))
+                        if (
+                            this_cell is not None
+                            and other_cell is not None
+                            and this_cell.answer_tokens_med is not None
+                            and other_cell.answer_tokens_med is not None
+                        ):
+                            this_pct = row.get("pct") or 0.0
+                            other_pct = other_row.get("pct") or 0.0
+                            if this_pct > other_pct:
+                                ratio = this_cell.answer_tokens_med / other_cell.answer_tokens_med
+                                if ratio >= 1.20:
+                                    w(
+                                        f"> [!warning] Längen-Confound möglich\n"
+                                        f"> Variante `{variant_key}` erzielte einen höheren Score "
+                                        f"({_fmt(this_pct, '{:.0f}', '%')} vs. "
+                                        f"{_fmt(other_pct, '{:.0f}', '%')}), "
+                                        f"ist aber **{ratio:.2f}× länger** "
+                                        f"({this_cell.answer_tokens_med} vs. "
+                                        f"{other_cell.answer_tokens_med} Tokens/Antwort). "
+                                        f"Ausführlichkeit kann Scores künstlich erhöhen.\n"
+                                    )
         else:
             w("_Keine Bewertung vorhanden (eval-only)._\n")
         w(top)

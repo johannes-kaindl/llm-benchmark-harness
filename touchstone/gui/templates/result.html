@@ -34,9 +34,6 @@
         {{ summary.models | join(", ") }}
         <span class="muted" style="font-weight:400; font-size:0.9rem">
           · Variante: {{ detail.reports[0].variant if detail and detail.reports else "—" }}
-          {% if detail and detail.manifest and detail.manifest.host %}
-            · {{ detail.manifest.host.get("machine", "") }}
-          {% endif %}
           · seed {{ detail.manifest.get("seed", 42) if detail and detail.manifest else 42 }}
         </span>
       </div>
@@ -55,26 +52,28 @@
       {% if detail and detail.master_rows %}
         {% for row in detail.master_rows %}
           <div style="margin-bottom:0.25rem">
-            {% if row.recommendation == "Ja" %}
-              <span class="badge ja" style="font-size:0.9rem; padding:0.3rem 0.7rem">✓ Empfehlenswert</span>
-            {% elif row.recommendation == "Mit Einschränkung" %}
-              <span class="badge einschr" style="font-size:0.9rem; padding:0.3rem 0.7rem">~ Mit Einschränkung</span>
-            {% elif row.recommendation == "Nein" %}
-              <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">✗ Nicht empfehlenswert</span>
+            {% if row.rubric_level == "hoch" %}
+              <span class="badge ja" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: hoch</span>
+            {% elif row.rubric_level == "solide" %}
+              <span class="badge einschr" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: solide</span>
+            {% elif row.rubric_level == "teilweise" %}
+              <span class="badge eval-only" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: teilweise</span>
+            {% elif row.rubric_level == "ungenügend" %}
+              <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: ungenügend</span>
             {% endif %}
             <span class="muted text-xs" style="margin-left:0.5rem">{{ "%.0f"|format(row.pct) }}%</span>
-            {% if not row.safety_passed %}
-              <span class="badge nein" style="font-size:0.7rem; margin-left:0.3rem">Sicherheits-K.-o.</span>
-            {% endif %}
+            <span class="badge {% if row.safety_passed %}ja{% else %}nein{% endif %}" style="font-size:0.7rem; margin-left:0.3rem">Sicherheit {% if row.safety_passed %}✓{% else %}✗{% endif %}</span>
           </div>
         {% endfor %}
-      {% elif summary.recommendation %}
-        {% if summary.recommendation == "Ja" %}
-          <span class="badge ja" style="font-size:0.9rem; padding:0.3rem 0.7rem">✓ Empfehlenswert</span>
-        {% elif summary.recommendation == "Mit Einschränkung" %}
-          <span class="badge einschr" style="font-size:0.9rem; padding:0.3rem 0.7rem">~ Mit Einschränkung</span>
-        {% elif summary.recommendation == "Nein" %}
-          <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">✗ Nicht empfehlenswert</span>
+      {% elif summary.rubric_level %}
+        {% if summary.rubric_level == "hoch" %}
+          <span class="badge ja" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: hoch</span>
+        {% elif summary.rubric_level == "solide" %}
+          <span class="badge einschr" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: solide</span>
+        {% elif summary.rubric_level == "teilweise" %}
+          <span class="badge eval-only" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: teilweise</span>
+        {% elif summary.rubric_level == "ungenügend" %}
+          <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: ungenügend</span>
         {% endif %}
       {% endif %}
       {% if compare_opts and compare_opts.comparable %}
@@ -162,12 +161,14 @@
       <div class="flex items-center gap-2 mb-1">
         <strong>{{ row.model }}</strong>
         <span class="muted text-xs">/ {{ row.variant }}</span>
-        {% if row.recommendation == "Ja" %}
-          <span class="badge ja">Ja</span>
-        {% elif row.recommendation == "Mit Einschränkung" %}
-          <span class="badge einschr">Mit Einschr.</span>
-        {% elif row.recommendation == "Nein" %}
-          <span class="badge nein">Nein</span>
+        {% if row.rubric_level == "hoch" %}
+          <span class="badge ja">hoch</span>
+        {% elif row.rubric_level == "solide" %}
+          <span class="badge einschr">solide</span>
+        {% elif row.rubric_level == "teilweise" %}
+          <span class="badge eval-only">teilweise</span>
+        {% elif row.rubric_level == "ungenügend" %}
+          <span class="badge nein">ungenügend</span>
         {% endif %}
         <span class="text-xs muted">{{ "%.0f"|format(row.pct) }}%</span>
         {% if row.safety_passed %}

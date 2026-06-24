@@ -246,7 +246,7 @@ def test_scorecard_table_escapes_breaking_rationale():
                 "pct": 80.0,
                 "safety_passed": True,
                 "safety_reason": "",
-                "recommendation": "Ja",
+                "rubric_level": "hoch",
             }
         ],
     )
@@ -270,7 +270,7 @@ def test_unjudged_export_strips_judging_and_adds_eval_task():
     detail = _detail(
         pk, [resp], reports=[report], verdicts=[verdict],
         master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
-                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
     )
     judged = render_report_md(detail, GLOSSARY, include_judging=True)
     blank = render_report_md(detail, GLOSSARY, include_judging=False)
@@ -308,7 +308,7 @@ def test_judge_model_and_quant_surface_when_recorded():
     detail = _detail(
         pk, [resp], reports=[report],
         master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
-                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
         manifest={"host": HOST, "date": "2026-06-24",
                   "judge": {"model": "qwen3.6-35b-a3b", "temperature": 0.0,
                             "endpoint": "http://localhost:1234/v1"}},
@@ -331,7 +331,402 @@ def test_judge_model_unknown_for_old_judged_bundle():
     detail = _detail(  # default manifest has no "judge" block
         pk, [_resp(first.id)], reports=[report],
         master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
-                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
     )
     md = render_report_md(detail, GLOSSARY)
     assert "nicht erfasst (älterer Lauf" in md
+
+
+# ── Task-7 new tests ─────────────────────────────────────────────────────────
+
+
+def test_machine_key_not_in_frontmatter():
+    """The 'machine' frontmatter key must be removed (provenance is now chip/ram/engine)."""
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    md = render_report_md(_detail(pk, [_resp(first.id)]), GLOSSARY)
+    fm = md.split("---\n")[1]
+    # 'machine:' must not appear as a frontmatter key
+    assert not any(line.startswith("machine:") for line in fm.splitlines())
+
+
+def test_judge_block_in_top_header():
+    """Judge identity must appear in the top header block (right after the model line), not
+    only buried in the Bewertungs-Methode section."""
+    from touchstone.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp = _resp(first.id, quant="q4")
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    detail = _detail(
+        pk, [resp], reports=[report],
+        master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
+        manifest={"host": HOST, "date": "2026-06-24",
+                  "judge": {"model": "qwen3-30b", "temperature": 0.0}},
+    )
+    md = render_report_md(detail, GLOSSARY)
+    # The top header block is between "# Ergebnis-Report" and the first "##" section.
+    top_section = md.split("## Inhalt")[0]
+    assert "qwen3-30b" in top_section, "Judge model must appear in the top header block"
+
+
+def test_answer_tokens_med_in_scorecard():
+    """answer_tokens_med must appear as a column in the Master-Scorecard table."""
+    import tempfile
+    from pathlib import Path
+
+    from touchstone.result_schema import (
+        CellPerf,
+        CellQuality,
+        JudgeInfo,
+        Provenance,
+        ResultCell,
+        ResultDoc,
+    )
+    from touchstone.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp = _resp(first.id)
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    with tempfile.TemporaryDirectory() as td:
+        run_dir = Path(td)
+        # Build a result.json with answer_tokens_med
+        doc = ResultDoc(
+            provenance=Provenance(
+                chip="Apple M5 Pro", ram_gb=64.0, os="macOS 15",
+                engine="lm-studio", seed=42, temperature=0.0,
+                pack_id=pk.id, pack_version=pk.version, date="2026-06-24",
+            ),
+            judge=JudgeInfo(model="qwen3-30b", temperature=0.0),
+            cells=[
+                ResultCell(
+                    model="m", variant="baseline", quant="q4",
+                    answer_tokens_med=123,
+                    perf=CellPerf(),
+                    quality=CellQuality(
+                        dim_scores={d.id: 4 for d in pk.dimensions},
+                        pct=80.0, rubric_level="hoch",
+                        safety_passed=True, safety_reason="", red_flags=[],
+                    ),
+                )
+            ],
+        )
+        (run_dir / "result.json").write_text(doc.model_dump_json(), encoding="utf-8")
+        detail = _detail(
+            pk, [resp], reports=[report],
+            master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                          "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
+            run_dir=run_dir,
+            manifest={"host": HOST, "date": "2026-06-24",
+                      "judge": {"model": "qwen3-30b", "temperature": 0.0}},
+        )
+        md = render_report_md(detail, GLOSSARY)
+    assert "123" in md, "answer_tokens_med (123) must appear in the scorecard"
+    # The scorecard table header should contain a tokens/length column
+    scorecard_idx = md.index("## Master-Scorecard")
+    scorecard_section = md[scorecard_idx:]
+    assert "Tokens" in scorecard_section or "token" in scorecard_section.lower(), \
+        "Scorecard must have a token-length column"
+
+
+def test_length_bias_disclaimer_fires_when_winner_is_longer():
+    """When the higher-scoring variant has ≥ 1.20× the tokens of the other, a
+    '> [!warning] Längen-Confound möglich' callout must appear."""
+    import tempfile
+    from pathlib import Path
+
+    from touchstone.result_schema import (
+        CellPerf,
+        CellQuality,
+        JudgeInfo,
+        Provenance,
+        ResultCell,
+        ResultDoc,
+    )
+    from touchstone.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp_base = _resp(first.id, variant="baseline")
+    resp_ext = _resp(first.id, variant="extended")
+    report_base = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    report_ext = ModelReport(
+        model="m", variant="extended", dim_scores={d.id: 5 for d in pk.dimensions}, dim_rationales={}
+    )
+    with tempfile.TemporaryDirectory() as td:
+        run_dir = Path(td)
+        doc = ResultDoc(
+            provenance=Provenance(
+                chip="Apple M5 Pro", ram_gb=64.0, os="macOS 15",
+                engine="lm-studio", seed=42, temperature=0.0,
+                pack_id=pk.id, pack_version=pk.version, date="2026-06-24",
+            ),
+            judge=JudgeInfo(model="qwen3-30b", temperature=0.0),
+            cells=[
+                ResultCell(
+                    model="m", variant="baseline", quant="q4",
+                    answer_tokens_med=100,
+                    perf=CellPerf(),
+                    quality=CellQuality(
+                        dim_scores={d.id: 4 for d in pk.dimensions},
+                        pct=70.0, rubric_level="mittel",
+                        safety_passed=True, safety_reason="", red_flags=[],
+                    ),
+                ),
+                ResultCell(
+                    model="m", variant="extended", quant="q4",
+                    answer_tokens_med=130,  # 1.30× baseline → skewed
+                    perf=CellPerf(),
+                    quality=CellQuality(
+                        dim_scores={d.id: 5 for d in pk.dimensions},
+                        pct=90.0, rubric_level="hoch",
+                        safety_passed=True, safety_reason="", red_flags=[],
+                    ),
+                ),
+            ],
+        )
+        (run_dir / "result.json").write_text(doc.model_dump_json(), encoding="utf-8")
+        detail = _detail(
+            pk, [resp_base, resp_ext],
+            reports=[report_base, report_ext],
+            master_rows=[
+                {"model": "m", "variant": "baseline", "pct": 70.0,
+                 "safety_passed": True, "safety_reason": "", "rubric_level": "mittel"},
+                {"model": "m", "variant": "extended", "pct": 90.0,
+                 "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"},
+            ],
+            run_dir=run_dir,
+            manifest={"host": HOST, "date": "2026-06-24",
+                      "judge": {"model": "qwen3-30b", "temperature": 0.0}},
+        )
+        md = render_report_md(detail, GLOSSARY)
+    assert "> [!warning]" in md, "Length-bias warning callout must appear"
+    assert "Längen-Confound" in md, "Warning must mention 'Längen-Confound'"
+
+
+def test_no_disclaimer_when_lengths_close():
+    """When token counts are balanced (< 1.20× ratio), no disclaimer should appear."""
+    import tempfile
+    from pathlib import Path
+
+    from touchstone.result_schema import (
+        CellPerf,
+        CellQuality,
+        JudgeInfo,
+        Provenance,
+        ResultCell,
+        ResultDoc,
+    )
+    from touchstone.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp_base = _resp(first.id, variant="baseline")
+    resp_ext = _resp(first.id, variant="extended")
+    report_base = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    report_ext = ModelReport(
+        model="m", variant="extended", dim_scores={d.id: 5 for d in pk.dimensions}, dim_rationales={}
+    )
+    with tempfile.TemporaryDirectory() as td:
+        run_dir = Path(td)
+        doc = ResultDoc(
+            provenance=Provenance(
+                chip="Apple M5 Pro", ram_gb=64.0, os="macOS 15",
+                engine="lm-studio", seed=42, temperature=0.0,
+                pack_id=pk.id, pack_version=pk.version, date="2026-06-24",
+            ),
+            judge=JudgeInfo(model="qwen3-30b", temperature=0.0),
+            cells=[
+                ResultCell(
+                    model="m", variant="baseline", quant="q4",
+                    answer_tokens_med=100,
+                    perf=CellPerf(),
+                    quality=CellQuality(
+                        dim_scores={d.id: 4 for d in pk.dimensions},
+                        pct=70.0, rubric_level="mittel",
+                        safety_passed=True, safety_reason="", red_flags=[],
+                    ),
+                ),
+                ResultCell(
+                    model="m", variant="extended", quant="q4",
+                    answer_tokens_med=115,  # 1.15× baseline → NOT skewed
+                    perf=CellPerf(),
+                    quality=CellQuality(
+                        dim_scores={d.id: 5 for d in pk.dimensions},
+                        pct=90.0, rubric_level="hoch",
+                        safety_passed=True, safety_reason="", red_flags=[],
+                    ),
+                ),
+            ],
+        )
+        (run_dir / "result.json").write_text(doc.model_dump_json(), encoding="utf-8")
+        detail = _detail(
+            pk, [resp_base, resp_ext],
+            reports=[report_base, report_ext],
+            master_rows=[
+                {"model": "m", "variant": "baseline", "pct": 70.0,
+                 "safety_passed": True, "safety_reason": "", "rubric_level": "mittel"},
+                {"model": "m", "variant": "extended", "pct": 90.0,
+                 "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"},
+            ],
+            run_dir=run_dir,
+            manifest={"host": HOST, "date": "2026-06-24",
+                      "judge": {"model": "qwen3-30b", "temperature": 0.0}},
+        )
+        md = render_report_md(detail, GLOSSARY)
+    assert "Längen-Confound" not in md, "No disclaimer when token ratio < 1.20"
+
+
+def test_schema_version_mismatch_renders_notice_not_crash():
+    """A result.json with schema_version > 1 (future) must render a clear notice, not crash."""
+    import tempfile
+    from pathlib import Path
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    with tempfile.TemporaryDirectory() as td:
+        run_dir = Path(td)
+        # Manually write a future-version result.json
+        future_doc = {
+            "schema_version": 999,
+            "provenance": {
+                "chip": "Apple M5 Pro", "ram_gb": 64.0, "os": "macOS 15",
+                "engine": "lm-studio", "seed": 42, "temperature": 0.0,
+                "pack_id": pk.id, "pack_version": pk.version, "date": "2026-06-24",
+            },
+            "cells": [],
+        }
+        (run_dir / "result.json").write_text(
+            json.dumps(future_doc), encoding="utf-8"
+        )
+        detail = _detail(pk, [_resp(first.id)], run_dir=run_dir)
+        md = render_report_md(detail, GLOSSARY)
+    assert "neueres Schema" in md, "Must display 'neueres Schema' notice for unknown schema_version"
+
+
+def test_fallback_build_without_result_json():
+    """Old bundles without result.json must still render (fallback build path)."""
+    from touchstone.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    # run_dir=None → no result.json lookup
+    detail = _detail(
+        pk, [_resp(first.id)], reports=[report],
+        run_dir=None,
+        master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                      "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
+    )
+    md = render_report_md(detail, GLOSSARY)
+    assert "## Master-Scorecard" in md
+    assert "neueres Schema" not in md
+
+
+def test_rubric_and_safety_replace_recommendation():
+    """The scorecard must surface Rubrik and Sicherheit from ResultCell.quality;
+    'Empfehlung: Ja' must NOT appear (replaced by structured rubric/safety fields)."""
+    import tempfile
+    from pathlib import Path
+
+    from touchstone.result_schema import (
+        CellPerf,
+        CellQuality,
+        JudgeInfo,
+        Provenance,
+        ResultCell,
+        ResultDoc,
+    )
+    from touchstone.results import ModelReport
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp = _resp(first.id)
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    with tempfile.TemporaryDirectory() as td:
+        run_dir = Path(td)
+        doc = ResultDoc(
+            provenance=Provenance(
+                chip="Apple M5 Pro", ram_gb=64.0, os="macOS 15",
+                engine="lm-studio", seed=42, temperature=0.0,
+                pack_id=pk.id, pack_version=pk.version, date="2026-06-24",
+            ),
+            judge=JudgeInfo(model="qwen3-30b", temperature=0.0),
+            cells=[
+                ResultCell(
+                    model="m", variant="baseline", quant="q4",
+                    answer_tokens_med=80,
+                    perf=CellPerf(),
+                    quality=CellQuality(
+                        dim_scores={d.id: 4 for d in pk.dimensions},
+                        pct=80.0, rubric_level="hoch",
+                        safety_passed=True, safety_reason="", red_flags=[],
+                    ),
+                )
+            ],
+        )
+        (run_dir / "result.json").write_text(doc.model_dump_json(), encoding="utf-8")
+        detail = _detail(
+            pk, [resp], reports=[report],
+            master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                          "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
+            run_dir=run_dir,
+            manifest={"host": HOST, "date": "2026-06-24",
+                      "judge": {"model": "qwen3-30b", "temperature": 0.0}},
+        )
+        md = render_report_md(detail, GLOSSARY)
+    assert "Rubrik" in md, "Scorecard must surface 'Rubrik' from quality.rubric_level"
+    assert "Sicherheit" in md, "Scorecard must surface 'Sicherheit' from quality.safety_passed"
+    assert "Empfehlung: Ja" not in md, "'Empfehlung: Ja' must not appear — replaced by Rubrik/Sicherheit"
+
+
+# ── Finding-2: engine_version fabrication canary ─────────────────────────────
+
+
+def test_engine_version_none_renders_nv_not_unknown():
+    """When provenance.engine_version is None (endpoint didn't expose it) and responses carry
+    engine_version='unknown' (client default), the rendered report must NOT contain 'unknown'
+    as an engine version — it must show 'n. v.' instead.  This is the exact provenance canary
+    the vergleichbarkeit-fundament branch promised to kill."""
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    # responses carry the production default 'unknown'
+    resp = _resp(first.id, engine_version="unknown")
+    # host + manifest have no engine_version either (production scenario)
+    detail = _detail(
+        pk,
+        [resp],
+        manifest={"host": {**HOST, "engine_version": None}, "date": "2026-06-24"},
+    )
+    md = render_report_md(detail, GLOSSARY)
+    # The rendered report must NOT contain the fabricated "unknown" string for engine version
+    # Check frontmatter engine_version key
+    fm = md.split("---\n")[1]
+    assert "engine_version: unknown" not in fm, (
+        "Frontmatter must not emit engine_version: unknown"
+    )
+    # Check Hardware section — neither bare 'unknown' nor '(unknown)' as version
+    hw_idx = md.index("## Hardware & Konfiguration")
+    hw_section = md[hw_idx : md.index("\n## ", hw_idx + 1)]
+    assert "unknown" not in hw_section, (
+        "Hardware section must not mention 'unknown' as engine version"
+    )
+    # The absence of a known version must render as 'n. v.'
+    assert "n. v." in hw_section, (
+        "Hardware section must show 'n. v.' when engine_version is absent"
+    )

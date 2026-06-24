@@ -1,9 +1,9 @@
 """Cross-run / cross-machine aggregation of scores.csv → one Hardware×Quality table.
 
 The quality analogue of report.py (which aggregates raw.csv into report.md). Pure:
-reads scores.csv rows, groups by (chip, machine, model, variant, pack), computes a
-weighted quality % (scale-max 5 — the 1..5 pack convention), and renders Markdown +
-a concatenated scores_all.csv. Reuses no engine code; stdlib csv only.
+reads scores.csv rows, groups by (chip, ram_gb, pack, pack_version, model, quant, variant),
+computes a weighted quality % (scale-max 5 — the 1..5 pack convention), and renders
+Markdown + a concatenated scores_all.csv. Reuses no engine code; stdlib csv only.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from pathlib import Path
 
 SCALE_MAX = 5  # packs use a 1..5 scale; scores.csv doesn't carry it, so assume the convention
 
-# (chip, ram_gb, machine, pack, pack_version, model, quant, variant)
-GroupKey = tuple[str, str, str, str, str, str, str, str]
+# (chip, ram_gb, pack, pack_version, model, quant, variant)
+GroupKey = tuple[str, str, str, str, str, str, str]
 
 
 def load_scores_csv(path: str | Path) -> list[dict[str, str]]:
@@ -41,7 +41,6 @@ def load_all_scores(runs_dir: str | Path) -> list[dict[str, str]]:
 class AggRow:
     chip: str
     ram_gb: str
-    machine: str
     pack: str
     pack_version: str
     model: str
@@ -62,7 +61,6 @@ def _group_key(row: dict[str, str]) -> GroupKey:
     return (
         row.get("chip", ""),
         row.get("ram_gb", ""),
-        row.get("machine", ""),
         row.get("pack", ""),
         row.get("pack_version", ""),
         row.get("model", ""),
@@ -111,12 +109,11 @@ def aggregate(rows: list[dict[str, str]]) -> list[AggRow]:
             AggRow(
                 chip=k[0],
                 ram_gb=k[1],
-                machine=k[2],
-                pack=k[3],
-                pack_version=k[4],
-                model=k[5],
-                quant=k[6],
-                variant=k[7],
+                pack=k[2],
+                pack_version=k[3],
+                model=k[4],
+                quant=k[5],
+                variant=k[6],
                 quality_pct=quality,
                 n_dims=len(dim_scores),
                 ttft_p50=first.get("ttft_p50", ""),
@@ -142,15 +139,15 @@ def render_aggregate_md(agg: list[AggRow], *, date_str: str = "") -> str:
         lines.append(f"> **Datum:** {date_str}")
         lines.append("")
     lines.append(
-        "| Chip | RAM | Maschine | Modell | Quant | Variante | Pack | Qualität % | "
+        "| Chip | RAM | Modell | Quant | Variante | Pack | Qualität % | "
         "TTFT P50 (s) | Decode (tok/s) | System-Peak (GB) | Modell-Delta (GB) | Power |"
     )
-    lines.append("|---|---|---|---|---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|")
+    lines.append("|---|---|---|---|---|---|:-:|:-:|:-:|:-:|:-:|:-:|")
     for a in agg:
         q = f"{a.quality_pct:.1f}" if a.quality_pct is not None else "—"
         pack_cell = (a.pack or "—") + (f" v{a.pack_version}" if a.pack_version else "")
         lines.append(
-            f"| {a.chip or '—'} | {a.ram_gb or '—'} | {a.machine or '—'} | {a.model or '—'} | "
+            f"| {a.chip or '—'} | {a.ram_gb or '—'} | {a.model or '—'} | "
             f"{a.quant or '—'} | {a.variant or '—'} | {pack_cell} | {q} | "
             f"{a.ttft_p50 or '—'} | {a.decode_med or '—'} | {a.peak_ram_gb or '—'} | "
             f"{a.model_delta_gb or '—'} | {a.power or '—'} |"
