@@ -460,7 +460,11 @@
 <div class="card">
   <div class="card-title">Export</div>
   <div class="flex gap-2">
-    <a href="/export-bundle/{{ run_dir.name }}" class="btn btn-primary"
+    <a href="/export-report/{{ run_dir.name }}" class="btn btn-primary"
+       title="Vollständiger Report als Markdown: alle Prompts, Antworten, Messwerte, Begründungen, Methode + Glossar — intern verlinkt.">Voller Report (.md)</a>
+    <a href="/export-report/{{ run_dir.name }}?judging=0" class="btn btn-secondary"
+       title="Report OHNE qualitative Bewertung + eingebetteter Bewertungs-Auftrag (ausfüllbare Scorecard) — zum Ausfüllen durch eine Cloud-KI wie Claude.">Report zum Bewerten (.md)</a>
+    <a href="/export-bundle/{{ run_dir.name }}" class="btn btn-secondary"
        title="Ganzes Bundle als .zip (bundle.json + responses.jsonl + scores.csv …) – portabel zwischen Maschinen.">Bundle .zip</a>
     {% for fname in ["scorecard.md", "scores.csv", "perf.csv", "report.md"] %}
       {% if (run_dir / fname).exists() %}

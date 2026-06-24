@@ -137,6 +137,29 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{name}"'},
         )
 
+    @app.get("/export-report/{name}")
+    def export_report(name: str, judging: int = 1) -> Any:
+        """The complete bundle as one internally-linked Obsidian Markdown report. With
+        `judging=0` the qualitative judgement is stripped and a Bewertungs-Auftrag (fillable
+        scorecard + instructions) is embedded instead — to hand to a cloud AI for evaluation."""
+        from ramcheck.gui.glossary import GLOSSARY
+        from ramcheck.gui.report_md import render_report_md
+
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
+            raise HTTPException(status_code=404)
+        detail = bundles.bundle_detail(rd)
+        if detail is None:
+            raise HTTPException(status_code=404)
+        include = bool(judging)
+        md = render_report_md(detail, GLOSSARY, include_judging=include)
+        fname = f"{name}.md" if include else f"{name}-zum-bewerten.md"
+        return Response(
+            md,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(request: Request, name: str) -> HTMLResponse:
         rd = (runs_dir / name).resolve()
