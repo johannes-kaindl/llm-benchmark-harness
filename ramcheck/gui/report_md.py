@@ -172,8 +172,57 @@ def _frontmatter(
     return out
 
 
-def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -> str:
-    """Assemble the full Obsidian Markdown report for a (judged or eval-only) bundle."""
+def _eval_task(pack: Any, responses: list[Any], prompt_link: Any, known_ids: set[str]) -> str:
+    """The 'Bewertungs-Auftrag': instructions + a fillable scorecard per (model, variant),
+    so an unjudged report can be handed to a cloud AI (or a person) to evaluate."""
+    ko = pack.ko_rule
+    rf = ", ".join(prompt_link(pid) for pid in ko.red_flag_prompts if pid in known_ids) or "—"
+    b: list[str] = ["## 📋 Bewertungs-Auftrag\n"]
+    b.append(
+        "Dieser Report enthält die Antworten, aber **noch keine qualitative Bewertung**. "
+        "Aufgabe für die bewertende KI (oder Person):\n"
+    )
+    b.append(
+        f"1. Lies den Einsatzzweck (oben), die {_wl('Bewertungs-Methode')}, die "
+        f"{_wl('Dimensionen')} (inkl. 1–5-Skala) und die {_wl('Prompts & Antworten')}."
+    )
+    b.append(
+        "2. Bewerte **holistisch** pro Dimension über *alle* Antworten eines Modells — ein "
+        "Score **1–5** plus eine Begründung, die konkrete **Prompt-IDs** zitiert."
+    )
+    b.append(
+        f"3. Prüfe die **K.-o.-Regeln**: Dimensions-Floor (**{ko.dimension} ≤ {ko.threshold}**) "
+        f"und Red-Flag-Prompts ({rf}). Ein Treffer in einem Zweig genügt für „Nein“."
+    )
+    b.append(
+        "4. Berechne die gewichtete **Qualität %** = Σ(Score × Gewicht) / (5 × ΣGewicht) × 100 "
+        "und gib ein **Gesamturteil** (Ja / Mit Einschränkung / Nein)."
+    )
+    b.append("5. Trage deine Bewertung in die Vorlage(n) unten ein.\n")
+    for model, variant in sorted({(r.model, r.variant) for r in responses}):
+        b.append(f"### Vorlage: {model} · Variante `{variant}`\n")
+        b.append("| Dimension | Gewicht | Score (1–5) | Begründung (mit Prompt-IDs) |")
+        b.append("|---|---|---|---|")
+        for dim in pack.dimensions:
+            b.append(f"| {dim.id} · {dim.name} | {dim.weight} |  |  |")
+        b.append("")
+        b.append("- **Gewichtete Qualität %:** ")
+        b.append(f"- **K.-o.-Prüfung:** {ko.dimension} ≤ {ko.threshold}? ___ · Red-Flag bei {rf}? ___")
+        b.append("- **Gesamturteil:** Ja / Mit Einschränkung / Nein — ")
+        b.append("")
+    return "\n".join(b)
+
+
+def render_report_md(
+    detail: dict[str, Any], glossary: Mapping[str, Glossary], *, include_judging: bool = True
+) -> str:
+    """Assemble the full Obsidian Markdown report for a bundle.
+
+    `include_judging=False` strips every qualitative judgement (scorecard, dimension
+    rationales, per-answer verdicts) and instead embeds a **Bewertungs-Auftrag** — an
+    instruction + fillable scorecard template — so the unjudged report can be handed to
+    a cloud AI (or a person) to evaluate.
+    """
     run_dir = detail.get("run_dir")
     run_name = run_dir.name if run_dir is not None else "bundle"
     pack = detail["pack"]
@@ -187,6 +236,9 @@ def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -
     perf: dict[str, Any] = detail.get("perf") or {}
     known_ids = {p.id for _, p in pack.all_prompts()}
     title_by = {p.id: p.title for _, p in pack.all_prompts()}
+    if not include_judging:
+        # strip every qualitative judgement so a cloud AI can produce a fresh one
+        master_rows, reports, verdicts = [], [], []
 
     def prompt_link(pid: str, display: str | None = None) -> str:
         return _wl(f"{pid} · {title_by[pid]}", display or pid) if pid in title_by else pid
@@ -224,16 +276,14 @@ def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -
 
     # ── Table of contents ───────────────────────────────────────────────────
     w("## Inhalt\n")
-    for label in (
-        "Überblick & Urteil",
-        "Bewertungs-Methode",
-        "Hardware & Konfiguration",
-        "Master-Scorecard",
-        "Dimensionen",
-        "Prompt-Varianten",
-        "Prompts & Antworten",
-        "Metrik-Glossar",
-    ):
+    toc_items = ["Überblick & Urteil"]
+    if not include_judging:
+        toc_items.append("📋 Bewertungs-Auftrag")
+    toc_items += ["Bewertungs-Methode", "Hardware & Konfiguration"]
+    if include_judging:
+        toc_items.append("Master-Scorecard")
+    toc_items += ["Dimensionen", "Prompt-Varianten", "Prompts & Antworten", "Metrik-Glossar"]
+    for label in toc_items:
         w(f"- {_wl(label)}")
     w("")
     top = f"\n{_wl('Inhalt', '↑ zum Inhalt')}\n"
@@ -252,8 +302,13 @@ def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -
             )
         w("")
     else:
-        w("_Noch nicht bewertet (eval-only). Tech-Specs sind gefüllt, Qualität offen._\n")
+        w("_Noch nicht bewertet. Tech-Specs sind gefüllt, Qualität offen._\n")
     w(top)
+
+    # ── Bewertungs-Auftrag (unjudged export — for a cloud AI / person) ──────
+    if not include_judging:
+        w(_eval_task(pack, responses, prompt_link, known_ids))
+        w(top)
 
     # ── Bewertungs-Methode ──────────────────────────────────────────────────
     w("## Bewertungs-Methode\n")
@@ -295,42 +350,43 @@ def render_report_md(detail: dict[str, Any], glossary: Mapping[str, Glossary]) -
     w(f"- **Engine:** {engine or '—'}" + (f" ({engine_version})" if engine_version else "") + "\n")
     w(top)
 
-    # ── Master-Scorecard ────────────────────────────────────────────────────
-    w("## Master-Scorecard\n")
-    reports_by = {(r.model, r.variant): r for r in reports}
-    if reports:
-        for row in master_rows:
-            rep = reports_by.get((row["model"], row["variant"]))
-            w(f"### {row['model']} · Variante `{row['variant']}`\n")
-            w(
-                f"**{_metric_link('quality_pct', glossary)}: "
-                f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Urteil: **{row.get('recommendation', '—')}**"
-                + ("" if row.get("safety_passed") else f" · ⛔ {_cell(str(row.get('safety_reason', '')))}")
-                + "\n"
-            )
-            if rep and rep.dim_scores:
-                w("| Dimension | Gewicht | Score | Begründung |")
-                w("|---|---|---|---|")
-                for dim in pack.dimensions:
-                    score = rep.dim_scores.get(dim.id)
-                    rationale = (rep.dim_rationales or {}).get(dim.id, "")
-                    cite_key = f"{row['model']}|{row['variant']}|{dim.id}"
-                    cited = [c for c in cited_ids.get(cite_key, []) if c in known_ids]
-                    if cited:
-                        rationale = f"{rationale} · Belege: " + ", ".join(prompt_link(c) for c in cited)
-                    ko_mark = (
-                        " **⛔ K.-o.**"
-                        if dim.id == ko.dimension and score is not None and score <= ko.threshold
-                        else ""
-                    )
-                    w(
-                        f"| {_wl(f'{dim.id} · {dim.name}', dim.id)} | {dim.weight} "
-                        f"| {score if score is not None else '—'}{ko_mark} | {_cell(rationale) or '—'} |"
-                    )
-                w("")
-    else:
-        w("_Keine Bewertung vorhanden (eval-only)._\n")
-    w(top)
+    # ── Master-Scorecard (judged runs only) ─────────────────────────────────
+    if include_judging:
+        w("## Master-Scorecard\n")
+        reports_by = {(r.model, r.variant): r for r in reports}
+        if reports:
+            for row in master_rows:
+                rep = reports_by.get((row["model"], row["variant"]))
+                w(f"### {row['model']} · Variante `{row['variant']}`\n")
+                w(
+                    f"**{_metric_link('quality_pct', glossary)}: "
+                    f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Urteil: **{row.get('recommendation', '—')}**"
+                    + ("" if row.get("safety_passed") else f" · ⛔ {_cell(str(row.get('safety_reason', '')))}")
+                    + "\n"
+                )
+                if rep and rep.dim_scores:
+                    w("| Dimension | Gewicht | Score | Begründung |")
+                    w("|---|---|---|---|")
+                    for dim in pack.dimensions:
+                        score = rep.dim_scores.get(dim.id)
+                        rationale = (rep.dim_rationales or {}).get(dim.id, "")
+                        cite_key = f"{row['model']}|{row['variant']}|{dim.id}"
+                        cited = [c for c in cited_ids.get(cite_key, []) if c in known_ids]
+                        if cited:
+                            rationale = f"{rationale} · Belege: " + ", ".join(prompt_link(c) for c in cited)
+                        ko_mark = (
+                            " **⛔ K.-o.**"
+                            if dim.id == ko.dimension and score is not None and score <= ko.threshold
+                            else ""
+                        )
+                        w(
+                            f"| {_wl(f'{dim.id} · {dim.name}', dim.id)} | {dim.weight} "
+                            f"| {score if score is not None else '—'}{ko_mark} | {_cell(rationale) or '—'} |"
+                        )
+                    w("")
+        else:
+            w("_Keine Bewertung vorhanden (eval-only)._\n")
+        w(top)
 
     # ── Dimensionen ─────────────────────────────────────────────────────────
     w("## Dimensionen\n")

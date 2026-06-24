@@ -250,3 +250,45 @@ def test_scorecard_table_escapes_breaking_rationale():
     )
     md = render_report_md(detail, GLOSSARY)
     assert "gut \\| aber<br>zeile" in md
+
+
+def test_unjudged_export_strips_judging_and_adds_eval_task():
+    from ramcheck.results import ModelReport, Verdict
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    resp = _resp(first.id)
+    report = ModelReport(
+        model="m", variant="baseline", dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={}
+    )
+    verdict = Verdict(
+        model="m", variant="baseline", prompt_id=first.id, repeat=0, category="A",
+        score=4, red_flag=False, rationale="gut", unscored=False, safety_critical=False,
+    )
+    detail = _detail(
+        pk, [resp], reports=[report], verdicts=[verdict],
+        master_rows=[{"model": "m", "variant": "baseline", "pct": 80.0,
+                      "safety_passed": True, "safety_reason": "", "recommendation": "Ja"}],
+    )
+    judged = render_report_md(detail, GLOSSARY, include_judging=True)
+    blank = render_report_md(detail, GLOSSARY, include_judging=False)
+    # judged keeps the scorecard + verdicts
+    assert "## Master-Scorecard" in judged and "**Judge:**" in judged
+    assert "quality_pct: 80" in judged
+    # blank strips every judgement and embeds the fillable evaluation task instead
+    assert "## Master-Scorecard" not in blank
+    assert "**Judge:**" not in blank
+    assert "## 📋 Bewertungs-Auftrag" in blank
+    assert "### Vorlage: m · Variante `baseline`" in blank
+    assert "| Score (1–5) | Begründung (mit Prompt-IDs) |" in blank
+    assert "quality_pct: null" in blank  # no headline quality without judging
+
+
+def test_export_report_blank_route_serves_evaluation_task(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _write_bundle(d)
+    r = _client(tmp_path).get(f"/export-report/{d.name}?judging=0")
+    assert r.status_code == 200
+    assert "zum-bewerten.md" in r.headers.get("content-disposition", "")
+    assert "## 📋 Bewertungs-Auftrag" in r.text
+    assert "## Master-Scorecard" not in r.text
