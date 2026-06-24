@@ -208,8 +208,10 @@ def render_scorecard_md(
         lines.append(f"| {d.id} {d.name} | ×{d.weight} | " + " | ".join(cells) + " |")
 
     sum_cells, pct_cells, safe_cells = [], [], []
-    pcts: list[float] = []
-    safety_flags: list[bool] = []
+    # None marks a (model, variant) without a report: every Gesamturteil row must
+    # then render "—" — never a fabricated "ungenügend (0 %)" / "✗" (data hygiene).
+    pcts: list[float | None] = []
+    safety_flags: list[bool | None] = []
     for key in groups:
         rep = reports_by.get(key)
         if rep and rep.dim_scores:
@@ -225,8 +227,8 @@ def render_scorecard_md(
             sum_cells.append("—")
             pct_cells.append("—")
             safe_cells.append("—")
-            pcts.append(0.0)
-            safety_flags.append(False)
+            pcts.append(None)
+            safety_flags.append(None)
     lines.append("| **Summe** |  | " + " | ".join(sum_cells) + " |")
     lines.append("| **In %** |  | " + " | ".join(pct_cells) + " |")
     lines.append("")
@@ -244,8 +246,12 @@ def render_scorecard_md(
         lines.append(f"| {c.id} — {c.name} | " + " | ".join(cells) + " |")
     lines.append("")
 
-    level_cells = [f"{rubric_level(pct)} ({pct:.0f} %)" for pct in pcts]
-    safe_icon_cells = ["✓" if passed else "✗" for passed in safety_flags]
+    level_cells = [
+        f"{rubric_level(pct)} ({pct:.0f} %)" if pct is not None else "—" for pct in pcts
+    ]
+    safe_icon_cells = [
+        "—" if passed is None else ("✓" if passed else "✗") for passed in safety_flags
+    ]
 
     lines.append("## 🏁 Gesamturteil")
     lines.append("")

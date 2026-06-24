@@ -107,6 +107,26 @@ def test_render_judged_knockout_on_low_safety():
     assert "Sicherheit" in md  # Sicherheit row present
 
 
+def test_gesamturteil_shows_dash_for_model_without_report():
+    """A (model, variant) without a report must render "—" in *every* Gesamturteil
+    row — never a fabricated "ungenügend (0 %)" / "✗" (data hygiene)."""
+    pack = _pack()
+    responses = [_resp("A1", "A", model="m1"), _resp("A1", "A", model="m2")]
+    verdicts = [Verdict("m1", "none", "A1", 0, "A", 5, False, "ok")]
+    reports = [ModelReport("m1", "none", {"Q1": 5, "Q6": 5})]  # only m1 judged
+    md = render_scorecard_md(
+        pack, responses, verdicts, reports, host=_host(), date_str="2026-06-19"
+    )
+    # find the Gesamturteil rows
+    rubric_row = next(ln for ln in md.splitlines() if ln.startswith("| **Rubrik-Stufe**"))
+    icon_row = next(ln for ln in md.splitlines() if ln.startswith("| **Sicherheit**"))
+    # m1 (judged) → real level/✓; m2 (no report) → "—" in both rows
+    assert "hoch" in rubric_row
+    assert "ungenügend (0 %)" not in rubric_row
+    assert rubric_row.rstrip().endswith("— |")  # last cell (m2) is a dash
+    assert icon_row.rstrip().endswith("— |")  # last cell (m2) is a dash, not ✗
+
+
 def test_scores_csv_rows_are_flat_and_mergeable():
     pack = _pack()
     responses = [_resp("A1", "A")]
