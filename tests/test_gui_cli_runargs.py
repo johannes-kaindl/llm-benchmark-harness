@@ -2,7 +2,7 @@ import types
 
 from typer.testing import CliRunner
 
-from ramcheck.cli import _eval_event_writers, app
+from touchstone.cli import _eval_event_writers, app
 
 runner = CliRunner()
 
@@ -15,9 +15,9 @@ def test_eval_run_dir_option_pins_exact_dir(tmp_path, monkeypatch):
         captured["run_dir"] = run_dir
         return []
 
-    monkeypatch.setattr("ramcheck.cli.run_eval", fake_run_eval)
-    monkeypatch.setattr("ramcheck.cli._finalize_eval_bundle", lambda *a, **k: None)
-    monkeypatch.setattr("ramcheck.cli._make_client", lambda cfg: object())
+    monkeypatch.setattr("touchstone.cli.run_eval", fake_run_eval)
+    monkeypatch.setattr("touchstone.cli._finalize_eval_bundle", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli._make_client", lambda cfg: object())
 
     target = tmp_path / "my_exact_run"
     res = runner.invoke(
@@ -51,7 +51,7 @@ def test_eval_emit_events_writes_events_without_monitor(tmp_path, monkeypatch):
     """--emit-events writes events.jsonl but never spawns _live_monitor."""
     spawned = {"monitor": False}
     monkeypatch.setattr(
-        "ramcheck.cli._live_monitor",
+        "touchstone.cli._live_monitor",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("monitor must not spawn")),
     )
 
@@ -72,9 +72,9 @@ def test_eval_emit_events_writes_events_without_monitor(tmp_path, monkeypatch):
             on_run_start(1)
         return []
 
-    monkeypatch.setattr("ramcheck.cli.run_eval", fake_run_eval)
-    monkeypatch.setattr("ramcheck.cli._finalize_eval_bundle", lambda *a, **k: None)
-    monkeypatch.setattr("ramcheck.cli._make_client", lambda cfg: object())
+    monkeypatch.setattr("touchstone.cli.run_eval", fake_run_eval)
+    monkeypatch.setattr("touchstone.cli._finalize_eval_bundle", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli._make_client", lambda cfg: object())
 
     target = tmp_path / "run1"
     res = runner.invoke(
@@ -97,7 +97,7 @@ def test_eval_emit_events_writes_events_without_monitor(tmp_path, monkeypatch):
 
 def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "ramcheck.cli._live_monitor",
+        "touchstone.cli._live_monitor",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no monitor")),
     )
     # minimal bundle
@@ -107,12 +107,12 @@ def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
         '{"pack_path":"packs/ndassist.yaml","host":{}}', encoding="utf-8"
     )
     (b / "responses.jsonl").write_text("", encoding="utf-8")
-    monkeypatch.setattr("ramcheck.cli.load_responses_jsonl", lambda p: [])
-    monkeypatch.setattr("ramcheck.cli._judge_and_persist", lambda *a, **k: ([], []))
-    monkeypatch.setattr("ramcheck.cli._render_judge_scorecard", lambda *a, **k: None)
-    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", lambda *a, **k: object())
+    monkeypatch.setattr("touchstone.cli.load_responses_jsonl", lambda p: [])
+    monkeypatch.setattr("touchstone.cli._judge_and_persist", lambda *a, **k: ([], []))
+    monkeypatch.setattr("touchstone.cli._render_judge_scorecard", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", lambda *a, **k: object())
     monkeypatch.setattr(
-        "ramcheck.cli.load_judge_config",
+        "touchstone.cli.load_judge_config",
         lambda p: types.SimpleNamespace(
             endpoint=types.SimpleNamespace(base_url="x", api_key="y"),
             model="m",

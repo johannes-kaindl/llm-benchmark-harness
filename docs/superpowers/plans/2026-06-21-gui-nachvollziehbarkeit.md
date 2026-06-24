@@ -14,14 +14,14 @@
 
 | File | Responsibility |
 |---|---|
-| `ramcheck/judge.py` (modify) | nested Dimensions-Schema im Prompt + Beleg-Pflicht; `parse_dimension_report`; `score_dimensions` füllt `dim_rationales`; `write_reports_jsonl`/`load_reports_jsonl` |
-| `ramcheck/cli.py` (modify) | `_render_judge_scorecard` schreibt `reports.jsonl` (deckt beide Judge-Pfade) |
-| `ramcheck/models.py` (modify) | `ResourceSample.cpu_pct` |
-| `ramcheck/sampler.py` (modify) | `psutil.cpu_percent` in `sample_once` + prime in `start` |
-| `ramcheck/gui/bundles.py` (modify) | Reports aus `reports.jsonl` (Fallback `scores.csv`); `bundle_detail()` reiches Objekt |
-| `ramcheck/gui/app.py` (modify) | Read-Routen liefern `bundle_detail`; Verlinkungs-Anker |
-| `ramcheck/gui/templates/{result,pack,overview}.html` (modify) | Drill-down · Kriterien+Methode · bedeutungstragende Übersicht |
-| `ramcheck/gui/static/sparkline.js` (new) | RAM/CPU-Verlaufs-Chart (Inline-SVG, build-frei) |
+| `touchstone/judge.py` (modify) | nested Dimensions-Schema im Prompt + Beleg-Pflicht; `parse_dimension_report`; `score_dimensions` füllt `dim_rationales`; `write_reports_jsonl`/`load_reports_jsonl` |
+| `touchstone/cli.py` (modify) | `_render_judge_scorecard` schreibt `reports.jsonl` (deckt beide Judge-Pfade) |
+| `touchstone/models.py` (modify) | `ResourceSample.cpu_pct` |
+| `touchstone/sampler.py` (modify) | `psutil.cpu_percent` in `sample_once` + prime in `start` |
+| `touchstone/gui/bundles.py` (modify) | Reports aus `reports.jsonl` (Fallback `scores.csv`); `bundle_detail()` reiches Objekt |
+| `touchstone/gui/app.py` (modify) | Read-Routen liefern `bundle_detail`; Verlinkungs-Anker |
+| `touchstone/gui/templates/{result,pack,overview}.html` (modify) | Drill-down · Kriterien+Methode · bedeutungstragende Übersicht |
+| `touchstone/gui/static/sparkline.js` (new) | RAM/CPU-Verlaufs-Chart (Inline-SVG, build-frei) |
 | `tests/test_gui_*.py`, `tests/test_judge.py` (new/modify) | per §9 der Spec |
 | `AGENTS.md` (modify) | `reports.jsonl` + `cpu_pct` |
 
@@ -32,13 +32,13 @@ Tasks: Daten-Fundament zuerst (1–3), dann Read (4), dann Views (5–6), dann A
 ## Task 1: Judge erfasst `dim_rationales` (verschachteltes Schema + Beleg)
 
 **Files:**
-- Modify: `ramcheck/judge.py` (`_build_dimension_prompt:121`, `parse_dimension_scores:78`, `score_dimensions:219`)
+- Modify: `touchstone/judge.py` (`_build_dimension_prompt:121`, `parse_dimension_scores:78`, `score_dimensions:219`)
 - Modify: `tests/test_judge.py` (die zwei Dimensions-Tests heben)
 
 - [ ] **Step 1: Write the failing test** — append to `tests/test_judge.py`:
 
 ```python
-from ramcheck.judge import parse_dimension_report
+from touchstone.judge import parse_dimension_report
 
 
 def test_parse_dimension_report_nested_scores_and_rationales(_pack):
@@ -55,14 +55,14 @@ def test_parse_dimension_report_tolerates_bare_int(_pack):
     assert rationales["Q1"] == ""
 ```
 
-`_pack` fixture: if `tests/test_judge.py` has no pack fixture, add `def _pack():\n    from ramcheck.pack import load_pack\n    return load_pack("packs/ndassist.yaml")` as a `@pytest.fixture`. (Check the file first; reuse an existing pack fixture if present.)
+`_pack` fixture: if `tests/test_judge.py` has no pack fixture, add `def _pack():\n    from touchstone.pack import load_pack\n    return load_pack("packs/ndassist.yaml")` as a `@pytest.fixture`. (Check the file first; reuse an existing pack fixture if present.)
 
 - [ ] **Step 2: Run to verify fail**
 
 Run: `uv run pytest tests/test_judge.py -k dimension_report -v`
 Expected: FAIL — `parse_dimension_report` undefined.
 
-- [ ] **Step 3: Implement `parse_dimension_report` + rewire** in `ramcheck/judge.py`.
+- [ ] **Step 3: Implement `parse_dimension_report` + rewire** in `touchstone/judge.py`.
 
 Replace `parse_dimension_scores` (judge.py:78-89) with both the new report parser and a thin back-compat wrapper:
 
@@ -138,13 +138,13 @@ def score_dimensions(
 
 - [ ] **Step 5: Run + types + lint**
 
-Run: `uv run pytest tests/test_judge.py -q && uv run mypy ramcheck/ && uv run ruff check . && uv run ruff format .`
+Run: `uv run pytest tests/test_judge.py -q && uv run mypy touchstone/ && uv run ruff check . && uv run ruff format .`
 Expected: all green.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ramcheck/judge.py tests/test_judge.py
+git add touchstone/judge.py tests/test_judge.py
 git commit -m "feat(judge): capture per-dimension rationale (nested schema + prompt_id evidence)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -155,16 +155,16 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 2: `reports.jsonl` persistence (both judge paths)
 
 **Files:**
-- Modify: `ramcheck/judge.py` (add `write_reports_jsonl` + `load_reports_jsonl`)
-- Modify: `ramcheck/cli.py` (`_render_judge_scorecard:586` writes it — covers both paths)
+- Modify: `touchstone/judge.py` (add `write_reports_jsonl` + `load_reports_jsonl`)
+- Modify: `touchstone/cli.py` (`_render_judge_scorecard:586` writes it — covers both paths)
 - Test: `tests/test_gui_reports.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_gui_reports.py
-from ramcheck.judge import load_reports_jsonl, write_reports_jsonl
-from ramcheck.results import ModelReport
+from touchstone.judge import load_reports_jsonl, write_reports_jsonl
+from touchstone.results import ModelReport
 
 
 def test_reports_jsonl_roundtrip(tmp_path):
@@ -197,7 +197,7 @@ def test_missing_reports_jsonl_returns_empty(tmp_path):
 Run: `uv run pytest tests/test_gui_reports.py -v`
 Expected: FAIL — functions undefined.
 
-- [ ] **Step 3: Implement** in `ramcheck/judge.py` (next to `load_judgements_jsonl:260`):
+- [ ] **Step 3: Implement** in `touchstone/judge.py` (next to `load_judgements_jsonl:260`):
 
 ```python
 def write_reports_jsonl(path: str | Path, reports: list[ModelReport]) -> None:
@@ -227,11 +227,11 @@ def load_reports_jsonl(path: str | Path) -> list[ModelReport]:
 - [ ] **Step 4: Wire into `_render_judge_scorecard`** (cli.py:586) — it runs in BOTH judge branches, so one write covers both. Add after the scores.csv block (after cli.py:603):
 
 ```python
-    from ramcheck.judge import write_reports_jsonl
+    from touchstone.judge import write_reports_jsonl
     write_reports_jsonl(bundle / "reports.jsonl", reports)
 ```
 
-(Place the import at the top of cli.py with the other `ramcheck.judge` imports instead, if cleaner — it already imports from `ramcheck.judge`.)
+(Place the import at the top of cli.py with the other `touchstone.judge` imports instead, if cleaner — it already imports from `touchstone.judge`.)
 
 - [ ] **Step 5: Add a CLI integration test** that judge writes reports.jsonl in the default (non-emit) path:
 
@@ -239,7 +239,7 @@ def load_reports_jsonl(path: str | Path) -> list[ModelReport]:
 # tests/test_gui_reports.py — append
 import json
 from typer.testing import CliRunner
-from ramcheck.cli import app
+from touchstone.cli import app
 
 runner = CliRunner()
 
@@ -248,28 +248,28 @@ def test_judge_writes_reports_jsonl(tmp_path, monkeypatch):
     b = tmp_path / "bundle"; b.mkdir()
     (b / "bundle.json").write_text(json.dumps({"pack_path": "packs/ndassist.yaml", "host": {}}), encoding="utf-8")
     (b / "responses.jsonl").write_text("", encoding="utf-8")
-    from ramcheck.results import ModelReport, Verdict
-    monkeypatch.setattr("ramcheck.cli.load_responses_jsonl", lambda p: [])
-    monkeypatch.setattr("ramcheck.cli._judge_and_persist",
+    from touchstone.results import ModelReport, Verdict
+    monkeypatch.setattr("touchstone.cli.load_responses_jsonl", lambda p: [])
+    monkeypatch.setattr("touchstone.cli._judge_and_persist",
                         lambda *a, **k: ([], [ModelReport("m", "none", {"Q1": 3}, {"Q1": "x"})]))
-    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", lambda *a, **k: object())
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", lambda *a, **k: object())
     import types
-    monkeypatch.setattr("ramcheck.cli.load_judge_config", lambda p: types.SimpleNamespace(
+    monkeypatch.setattr("touchstone.cli.load_judge_config", lambda p: types.SimpleNamespace(
         endpoint=types.SimpleNamespace(base_url="x", api_key="y"), model="m", temperature=0.0))
     res = runner.invoke(app, ["judge", "--bundle", str(b), "--judge-config", "judge.yaml"])
     assert res.exit_code == 0, res.output
     assert (b / "reports.jsonl").exists()
-    from ramcheck.judge import load_reports_jsonl
+    from touchstone.judge import load_reports_jsonl
     assert load_reports_jsonl(b / "reports.jsonl")[0].dim_rationales["Q1"] == "x"
 ```
 
 - [ ] **Step 6: Run + types + commit**
 
-Run: `uv run pytest tests/test_gui_reports.py tests/test_cli_judge_web.py -q && uv run mypy ramcheck/`
+Run: `uv run pytest tests/test_gui_reports.py tests/test_cli_judge_web.py -q && uv run mypy touchstone/`
 Expected: green (judge path still works; reports.jsonl written).
 
 ```bash
-git add ramcheck/judge.py ramcheck/cli.py tests/test_gui_reports.py
+git add touchstone/judge.py touchstone/cli.py tests/test_gui_reports.py
 git commit -m "feat(judge): persist ModelReport as reports.jsonl (both judge paths)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -280,15 +280,15 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 3: CPU sampling (`ResourceSample.cpu_pct`)
 
 **Files:**
-- Modify: `ramcheck/models.py` (`ResourceSample`), `ramcheck/sampler.py` (`HostSampler`)
+- Modify: `touchstone/models.py` (`ResourceSample`), `touchstone/sampler.py` (`HostSampler`)
 - Test: `tests/test_gui_cpu_sample.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_gui_cpu_sample.py
-from ramcheck.merge import load_samples_jsonl
-from ramcheck.models import ResourceSample
+from touchstone.merge import load_samples_jsonl
+from touchstone.models import ResourceSample
 
 
 def test_resource_sample_has_cpu_pct_defaulting_none():
@@ -310,7 +310,7 @@ def test_old_resources_jsonl_loads_without_cpu(tmp_path):
 Run: `uv run pytest tests/test_gui_cpu_sample.py -v`
 Expected: FAIL — `cpu_pct` unknown.
 
-- [ ] **Step 3: Add the field** — in `ramcheck/models.py`, `ResourceSample` (after `throttled: bool`, as the LAST field):
+- [ ] **Step 3: Add the field** — in `touchstone/models.py`, `ResourceSample` (after `throttled: bool`, as the LAST field):
 
 ```python
     cpu_pct: float | None = None  # system CPU load %, None for ticks recorded before cpu sampling
@@ -321,7 +321,7 @@ Expected: FAIL — `cpu_pct` unknown.
 Run: `uv run pytest tests/test_gui_cpu_sample.py -v`
 Expected: PASS.
 
-- [ ] **Step 5: Fill it in the sampler.** In `ramcheck/sampler.py`: prime in `HostSampler.start` (sampler.py:209) so the first non-interval call isn't a bogus 0.0:
+- [ ] **Step 5: Fill it in the sampler.** In `touchstone/sampler.py`: prime in `HostSampler.start` (sampler.py:209) so the first non-interval call isn't a bogus 0.0:
 
 ```python
     def start(self) -> None:
@@ -338,11 +338,11 @@ And add to the `ResourceSample(...)` in `sample_once` (sampler.py:227, after `th
 
 - [ ] **Step 6: Run + types + lint + commit**
 
-Run: `uv run pytest -q && uv run mypy ramcheck/ && uv run ruff check .`
+Run: `uv run pytest -q && uv run mypy touchstone/ && uv run ruff check .`
 Expected: green (full suite — `RAW_CSV_COLUMNS` guard untouched, all sample consumers read only existing fields).
 
 ```bash
-git add ramcheck/models.py ramcheck/sampler.py tests/test_gui_cpu_sample.py
+git add touchstone/models.py touchstone/sampler.py tests/test_gui_cpu_sample.py
 git commit -m "feat(sampler): sample system CPU load into resources.jsonl (additive)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -353,7 +353,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 4: `bundles.py` — reports.jsonl + reiches Detail-Objekt
 
 **Files:**
-- Modify: `ramcheck/gui/bundles.py`
+- Modify: `touchstone/gui/bundles.py`
 - Test: `tests/test_gui_bundle_detail.py`
 
 - [ ] **Step 1: Prefer reports.jsonl over scores.csv reconstruction.** In `bundles._recompute_verdict` (bundles.py:77), replace the `_reports_from_scores(run_dir, pk)` call with a reports-first loader:
@@ -362,7 +362,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 def _load_reports(run_dir: Path, pk: Any) -> list[Any]:
     """Prefer reports.jsonl (carries dim_rationales); fall back to lossy scores.csv
     reconstruction (rationales empty → UI shows 'Begründung nicht erfasst')."""
-    from ramcheck.judge import load_reports_jsonl
+    from touchstone.judge import load_reports_jsonl
     reports = load_reports_jsonl(run_dir / "reports.jsonl")
     if reports:
         return reports
@@ -377,9 +377,9 @@ and call `_load_reports(run_dir, pk)` in `_recompute_verdict` (bundles.py:93). K
 # tests/test_gui_bundle_detail.py
 import json
 from pathlib import Path
-from ramcheck.gui import bundles
-from ramcheck.judge import write_reports_jsonl
-from ramcheck.results import ModelReport
+from touchstone.gui import bundles
+from touchstone.judge import write_reports_jsonl
+from touchstone.results import ModelReport
 
 
 def _mk_judged(tmp_path):
@@ -424,11 +424,11 @@ Expected: FAIL — `bundle_detail` undefined.
 def bundle_detail(run_dir: Path) -> dict[str, Any] | None:
     """Rich structure for the result view: pack + answers + verdicts + reports
     (reports.jsonl preferred) + the active K.-o. branch + cited prompt_ids."""
-    from ramcheck import scorecard
-    from ramcheck.judge import load_judgements_jsonl
-    from ramcheck.merge import load_samples_jsonl
-    from ramcheck.pack import load_pack
-    from ramcheck.qualrun import load_responses_jsonl
+    from touchstone import scorecard
+    from touchstone.judge import load_judgements_jsonl
+    from touchstone.merge import load_samples_jsonl
+    from touchstone.pack import load_pack
+    from touchstone.qualrun import load_responses_jsonl
 
     m = _manifest(run_dir)
     pack_path = m.get("pack_path")
@@ -485,11 +485,11 @@ def _ko_branches(pk: Any, verdicts: list[Any], rows: list[dict[str, Any]]) -> li
 
 - [ ] **Step 5: Run + types + lint + commit**
 
-Run: `uv run pytest tests/test_gui_bundle_detail.py tests/test_gui_bundles.py -q && uv run mypy ramcheck/gui/ && uv run ruff check .`
+Run: `uv run pytest tests/test_gui_bundle_detail.py tests/test_gui_bundles.py -q && uv run mypy touchstone/gui/ && uv run ruff check .`
 Expected: green.
 
 ```bash
-git add ramcheck/gui/bundles.py tests/test_gui_bundle_detail.py
+git add touchstone/gui/bundles.py tests/test_gui_bundle_detail.py
 git commit -m "feat(gui): bundle_detail — reports.jsonl-first + KO-branch + cited prompt_ids
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -500,7 +500,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 5: `app.py` Read-Routen liefern das Detail-Objekt
 
 **Files:**
-- Modify: `ramcheck/gui/app.py` (`result:84`, `overview:68`, `pack_explorer:73`)
+- Modify: `touchstone/gui/app.py` (`result:84`, `overview:68`, `pack_explorer:73`)
 - Test: `tests/test_gui_app_detail.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -511,10 +511,10 @@ import json
 import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
-from ramcheck.judge import write_reports_jsonl
-from ramcheck.results import ModelReport
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
+from touchstone.judge import write_reports_jsonl
+from touchstone.results import ModelReport
 
 
 class _FakeLauncher:
@@ -577,13 +577,13 @@ Delete the now-unused `_compute_master_rows` if nothing else references it (grep
 
 - [ ] **Step 4: Run + types + commit**
 
-Run: `uv run pytest tests/test_gui_app_detail.py tests/test_gui_app_read.py -q && uv run mypy ramcheck/gui/`
+Run: `uv run pytest tests/test_gui_app_detail.py tests/test_gui_app_read.py -q && uv run mypy touchstone/gui/`
 Expected: green (after Task 6 templates exist; if running this task standalone, the assertions about rendered text pass once Task 6 lands — keep the route returning 200 here, assert text in Task 6).
 
 > **Sequencing note:** the text-content assertions (rationale, "holistisch") depend on the Task-6 templates. Implement Task 5 route wiring + a 200-status assertion first, then Task 6 adds the rendering and flips the content assertions green. Keep both tasks in one branch.
 
 ```bash
-git add ramcheck/gui/app.py tests/test_gui_app_detail.py
+git add touchstone/gui/app.py tests/test_gui_app_detail.py
 git commit -m "feat(gui): result/pack routes serve the rich bundle_detail
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -594,11 +594,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ## Task 6: Templates — Drill-down · Kriterien+Methode · Übersicht + Chart
 
 **Files:**
-- Modify: `ramcheck/gui/templates/{result,pack,overview}.html`
-- Create: `ramcheck/gui/static/sparkline.js`
+- Modify: `touchstone/gui/templates/{result,pack,overview}.html`
+- Create: `touchstone/gui/static/sparkline.js`
 - Not TDD (presentation); the Task-5 route tests assert the content.
 
-- [ ] **Step 1: `result.html`** — render the ratified drill-down from `detail` (the approved mockup `/tmp/ramcheck-mockup-ergebnis.html` is the visual reference): Kopf (Modell·Variante·Hardware·Seed, Aufgabe-Klartext, Urteil-Badge mit Grund, %); **K.-o.-Box** rendering `detail.ko` — show the active branch (red_flag_prompts non-empty → link to that prompt's per-response verdict; else → the holistic dim_rationale of `pack.ko_rule.dimension`); **gewichtete Master-Scorecard** from `detail.master_rows`/`detail.reports` — each dimension expands to its `dim_rationales[dim]`, with `detail.cited_ids` rendered as anchors (`<a href="#prompt-E1">E1</a>`); **Antworten nach Kategorie** from `detail.pack.categories` × `detail.responses`/`detail.verdicts`, each answer `id="prompt-{id}"` (the link target), aufklappbar (Aufgabe, Green/Red-Flags, response_text, Verdict score+rationale); **Perf + RAM/CPU-Chart** (Task-6 Step 3). Empty-state when `detail.reports` empty → „noch nicht bewertet — `ramcheck judge` ausführen".
+- [ ] **Step 1: `result.html`** — render the ratified drill-down from `detail` (the approved mockup `/tmp/touchstone-mockup-ergebnis.html` is the visual reference): Kopf (Modell·Variante·Hardware·Seed, Aufgabe-Klartext, Urteil-Badge mit Grund, %); **K.-o.-Box** rendering `detail.ko` — show the active branch (red_flag_prompts non-empty → link to that prompt's per-response verdict; else → the holistic dim_rationale of `pack.ko_rule.dimension`); **gewichtete Master-Scorecard** from `detail.master_rows`/`detail.reports` — each dimension expands to its `dim_rationales[dim]`, with `detail.cited_ids` rendered as anchors (`<a href="#prompt-E1">E1</a>`); **Antworten nach Kategorie** from `detail.pack.categories` × `detail.responses`/`detail.verdicts`, each answer `id="prompt-{id}"` (the link target), aufklappbar (Aufgabe, Green/Red-Flags, response_text, Verdict score+rationale); **Perf + RAM/CPU-Chart** (Task-6 Step 3). Empty-state when `detail.reports` empty → „noch nicht bewertet — `touchstone judge` ausführen".
 
 - [ ] **Step 2: `pack.html`** — full criteria reference (scale legend, dimensions ×weight+about, ko_rule, prompt_variants full text, per-category prompts with flags) **plus the abrufbare method explainer (L9)**: a collapsible panel whose copy mirrors `docs/explanation/design-decisions.md` „Bewertungs-Methode" — must contain the word „holistisch" and explain: Dimensionen holistisch über alle Antworten · Σ Score×Gewicht/Max · die zwei K.-o.-Zweige · belegte Begründung mit klickbaren prompt_ids. `overview.html` links to it.
 
@@ -611,12 +611,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 Run: `uv run pytest tests/test_gui_app_detail.py tests/test_gui_app_read.py -q && uv run pytest -q && uv run ruff check . && uv run ruff format --check .`
 Expected: green — the rationale + "holistisch" assertions from Task 5 now pass.
 
-- [ ] **Step 6: Manual visual check** — `uv run ramcheck gui --no-open`, open the printed URL, confirm `/result/<real ndassist bundle>` shows the drill-down with the Q6 rationale + clickable prompt_id, the pack explainer panel, and the RAM/CPU sparkline.
+- [ ] **Step 6: Manual visual check** — `uv run touchstone gui --no-open`, open the printed URL, confirm `/result/<real ndassist bundle>` shows the drill-down with the Q6 rationale + clickable prompt_id, the pack explainer panel, and the RAM/CPU sparkline.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ramcheck/gui/templates/ ramcheck/gui/static/sparkline.js
+git add touchstone/gui/templates/ touchstone/gui/static/sparkline.js
 git commit -m "feat(gui): traceable result drill-down + criteria/method explainer + RAM/CPU chart
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -628,7 +628,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Full suite + lint + types**
 
-Run: `uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run mypy ramcheck/`
+Run: `uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run mypy touchstone/`
 Expected: all green.
 
 - [ ] **Step 2: Live smoke (manual, needs judge endpoint :1234)** — re-judge the ndassist bundle (delete its `judgements.jsonl` + `reports.jsonl` first) → confirm `reports.jsonl` carries rationales that cite prompt_ids → `/result` shows „Warum Q6 = 2" with a clickable E1 link; run an `eval` to confirm the CPU spur appears in `resources.jsonl`.

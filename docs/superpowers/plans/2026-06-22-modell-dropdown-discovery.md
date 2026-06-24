@@ -13,16 +13,16 @@
 ## Pre-flight
 
 - **Working dir:** `/Users/Shared/code/llm-benchmark-harness`; Tests via `uv run pytest` aus dem Repo-Root.
-- **Gates je Task:** jeweilige Testdatei; am Ende (Task 5): `uv run pytest -q`, `uv run mypy ramcheck`, `uv run ruff check ramcheck tests`, `uv run ruff format --check ramcheck tests`.
+- **Gates je Task:** jeweilige Testdatei; am Ende (Task 5): `uv run pytest -q`, `uv run mypy touchstone`, `uv run ruff check touchstone tests`, `uv run ruff format --check touchstone tests`.
 - **Trailer:** `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. **Branch:** `feat/modell-dropdown-discovery`. Kein Push (Controller am Ende).
 - **JS-Bug-Lehre:** TestClient prüft nur Markup, nicht laufendes JS — die echte JS-Verifikation ist der headless-Chrome-Smoke in Task 5. `model_picker.js` bleibt **nicht-deferred** geladen (sonst registriert sich `modelPicker` zu spät, der Picker ist tot).
 
 ## Verifizierte Fakten
 
-- `ramcheck/client.py`: `OpenAIStreamClient(base_url: str, api_key: str = "not-needed", *, engine="openai-compat", engine_version="unknown")`; `self._client = OpenAI(base_url=base_url, api_key=api_key)` (lazy, kein Connect beim Bau). SDK: `self._client.models.list().data` → Elemente mit `.id`.
-- `ramcheck/config.py`: `Endpoint(base_url, api_key="not-needed")`, `Config.endpoint`, `load_config(path) -> Config`.
-- `ramcheck/gui/configs.py`: hat `config_models`, `models_by_config`; importiert `from ramcheck.config import ModelSpec` (+ `ValidationError`).
-- `ramcheck/gui/app.py`: `/config`-Route baut `config_files = sorted(str(p) for p in Path(".").glob("config*.yaml"))`, importiert `from ramcheck.gui import bundles, compare, configs as configs_mod` (configs_mod ist vorhanden — aus dem Picker-Feature) und nutzt `_confine_cwd`. `/runs/eval` unverändert.
+- `touchstone/client.py`: `OpenAIStreamClient(base_url: str, api_key: str = "not-needed", *, engine="openai-compat", engine_version="unknown")`; `self._client = OpenAI(base_url=base_url, api_key=api_key)` (lazy, kein Connect beim Bau). SDK: `self._client.models.list().data` → Elemente mit `.id`.
+- `touchstone/config.py`: `Endpoint(base_url, api_key="not-needed")`, `Config.endpoint`, `load_config(path) -> Config`.
+- `touchstone/gui/configs.py`: hat `config_models`, `models_by_config`; importiert `from touchstone.config import ModelSpec` (+ `ValidationError`).
+- `touchstone/gui/app.py`: `/config`-Route baut `config_files = sorted(str(p) for p in Path(".").glob("config*.yaml"))`, importiert `from touchstone.gui import bundles, compare, configs as configs_mod` (configs_mod ist vorhanden — aus dem Picker-Feature) und nutzt `_confine_cwd`. `/runs/eval` unverändert.
 - `model_picker.js`: Alpine-Komponente `modelPicker(byConfig)` mit `config`, `models`, `adhoc`, `_nextK`, `syncFromConfig()`, `addAdhoc()`, `removeAdhoc(k)`, `count()`, `modelsJson()`. In `config.html` **nicht-deferred** eingebunden; `x-data='modelPicker({{ models_by_config | tojson }})'`.
 - Test-Muster: `gui_app.create_app(runs_dir=tmp_path, registry=RunRegistry(runs_dir=tmp_path, launcher=Fake))` + `TestClient`. Reale `config*.yaml` liegen im cwd.
 
@@ -30,11 +30,11 @@
 
 | Datei | Verantwortung |
 |---|---|
-| `ramcheck/client.py` *(ändern)* | `list_models()` + optionaler `timeout` |
-| `ramcheck/gui/configs.py` *(ändern)* | `discover_endpoint_models` (DI) + `order_configs` |
-| `ramcheck/gui/app.py` *(ändern)* | Route `GET /endpoint-models`; `/config` nutzt `order_configs` |
-| `ramcheck/gui/static/model_picker.js` *(ändern)* | Discovery-State + `fetchEndpointModels` + `addFromEndpoint` |
-| `ramcheck/gui/templates/config.html` *(ändern)* | Endpoint-Dropdown + „Hinzufügen" + Status |
+| `touchstone/client.py` *(ändern)* | `list_models()` + optionaler `timeout` |
+| `touchstone/gui/configs.py` *(ändern)* | `discover_endpoint_models` (DI) + `order_configs` |
+| `touchstone/gui/app.py` *(ändern)* | Route `GET /endpoint-models`; `/config` nutzt `order_configs` |
+| `touchstone/gui/static/model_picker.js` *(ändern)* | Discovery-State + `fetchEndpointModels` + `addFromEndpoint` |
+| `touchstone/gui/templates/config.html` *(ändern)* | Endpoint-Dropdown + „Hinzufügen" + Status |
 | `tests/test_client_models.py` *(neu)* | `list_models` |
 | `tests/test_gui_configs.py` *(ändern)* | `discover_endpoint_models` + `order_configs` |
 | `tests/test_gui_endpoint_models.py` *(neu)* | Route + `/config`-Ordering + Markup |
@@ -45,7 +45,7 @@
 ## Task 1: `client.py` — `list_models()` + `timeout`
 
 **Files:**
-- Modify: `ramcheck/client.py`
+- Modify: `touchstone/client.py`
 - Test: `tests/test_client_models.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -56,7 +56,7 @@ from __future__ import annotations
 
 import types
 
-from ramcheck.client import OpenAIStreamClient
+from touchstone.client import OpenAIStreamClient
 
 
 def test_list_models_returns_ids():
@@ -83,7 +83,7 @@ Expected: FAIL — `OpenAIStreamClient.__init__() got an unexpected keyword argu
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/client.py`, change `__init__` to accept `timeout` and add `list_models`:
+In `touchstone/client.py`, change `__init__` to accept `timeout` and add `list_models`:
 
 ```python
     def __init__(
@@ -114,7 +114,7 @@ Expected: PASS (2 passed).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/client.py tests/test_client_models.py
+git add touchstone/client.py tests/test_client_models.py
 git commit -m "feat(client): list_models() + optional timeout (endpoint model discovery)"
 ```
 
@@ -123,7 +123,7 @@ git commit -m "feat(client): list_models() + optional timeout (endpoint model di
 ## Task 2: `configs.py` — `discover_endpoint_models` + `order_configs`
 
 **Files:**
-- Modify: `ramcheck/gui/configs.py`
+- Modify: `touchstone/gui/configs.py`
 - Test: `tests/test_gui_configs.py`
 
 - [ ] **Step 1: Write the failing test (append to tests/test_gui_configs.py)**
@@ -154,16 +154,16 @@ def test_order_configs_puts_embed_and_vlm_last():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_gui_configs.py -k "discover or order_configs" -q`
-Expected: FAIL — `module 'ramcheck.gui.configs' has no attribute 'discover_endpoint_models'`.
+Expected: FAIL — `module 'touchstone.gui.configs' has no attribute 'discover_endpoint_models'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/gui/configs.py`, add imports and the two functions:
+In `touchstone/gui/configs.py`, add imports and the two functions:
 
 ```python
 from collections.abc import Callable
 
-from ramcheck.config import ModelSpec, load_config  # extend the existing import line
+from touchstone.config import ModelSpec, load_config  # extend the existing import line
 
 
 def order_configs(paths: list[str]) -> list[str]:
@@ -187,7 +187,7 @@ def discover_endpoint_models(
     if lister is None:
 
         def lister() -> list[str]:
-            from ramcheck.client import OpenAIStreamClient
+            from touchstone.client import OpenAIStreamClient
 
             cfg = load_config(config_path)
             client = OpenAIStreamClient(
@@ -209,7 +209,7 @@ def discover_endpoint_models(
     return {"models": out, "error": None}
 ```
 
-> Note: the existing top import is `from ramcheck.config import ModelSpec` — change it to `from ramcheck.config import ModelSpec, load_config`. Add `from collections.abc import Callable` near the other imports. `Any` is already imported (used by `models_by_config`).
+> Note: the existing top import is `from touchstone.config import ModelSpec` — change it to `from touchstone.config import ModelSpec, load_config`. Add `from collections.abc import Callable` near the other imports. `Any` is already imported (used by `models_by_config`).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -219,7 +219,7 @@ Expected: PASS (all configs tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/configs.py tests/test_gui_configs.py
+git add touchstone/gui/configs.py tests/test_gui_configs.py
 git commit -m "feat(gui): discover_endpoint_models (DI, never raises) + order_configs (embed/vlm last)"
 ```
 
@@ -228,7 +228,7 @@ git commit -m "feat(gui): discover_endpoint_models (DI, never raises) + order_co
 ## Task 3: `/endpoint-models` route + `/config` ordering
 
 **Files:**
-- Modify: `ramcheck/gui/app.py`
+- Modify: `touchstone/gui/app.py`
 - Test: `tests/test_gui_endpoint_models.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -242,9 +242,9 @@ import re
 
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui import configs as configs_mod
-from ramcheck.gui.control import RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui import configs as configs_mod
+from touchstone.gui.control import RunRegistry
 
 
 class _FakeLauncher:
@@ -300,7 +300,7 @@ Expected: FAIL — `/endpoint-models` 404 (route missing); default-config still 
 
 - [ ] **Step 3: Write minimal implementation**
 
-In `ramcheck/gui/app.py` `config_get`, replace the `config_files = sorted(...)` line:
+In `touchstone/gui/app.py` `config_get`, replace the `config_files = sorted(...)` line:
 
 ```python
         config_files = configs_mod.order_configs(
@@ -335,7 +335,7 @@ Expected: PASS (4 passed).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/app.py tests/test_gui_endpoint_models.py
+git add touchstone/gui/app.py tests/test_gui_endpoint_models.py
 git commit -m "feat(gui): /endpoint-models route + non-embed default config ordering"
 ```
 
@@ -344,8 +344,8 @@ git commit -m "feat(gui): /endpoint-models route + non-embed default config orde
 ## Task 4: Picker dropdown — `model_picker.js` + `config.html`
 
 **Files:**
-- Modify: `ramcheck/gui/static/model_picker.js`
-- Modify: `ramcheck/gui/templates/config.html`
+- Modify: `touchstone/gui/static/model_picker.js`
+- Modify: `touchstone/gui/templates/config.html`
 - Test: `tests/test_gui_endpoint_models.py` (append markup assertions)
 
 - [ ] **Step 1: Write the failing test (append)**
@@ -479,7 +479,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/static/model_picker.js ramcheck/gui/templates/config.html tests/test_gui_endpoint_models.py
+git add touchstone/gui/static/model_picker.js touchstone/gui/templates/config.html tests/test_gui_endpoint_models.py
 git commit -m "feat(gui): endpoint-model dropdown in the picker (fetch /endpoint-models, add to selection)"
 ```
 
@@ -507,9 +507,9 @@ Add to the GUI/control section:
 
 ```bash
 uv run pytest -q          # expect green (baseline 298 + new)
-uv run mypy ramcheck
-uv run ruff check ramcheck tests
-uv run ruff format --check ramcheck tests   # if it reformats: run `uv run ruff format ramcheck tests`, re-stage
+uv run mypy touchstone
+uv run ruff check touchstone tests
+uv run ruff format --check touchstone tests   # if it reformats: run `uv run ruff format touchstone tests`, re-stage
 ```
 
 - [ ] **Step 3: Headless-Chrome JS-Smoke (Pflicht — verifiziert laufendes JS)**
@@ -520,8 +520,8 @@ Run a real browser against a GUI whose `/endpoint-models` is forced to return mo
 # 1) tiny app override that stubs discovery (so the smoke doesn't need a live endpoint)
 cat > /tmp/smoke_disc.py <<'PY'
 from pathlib import Path
-from ramcheck.gui import app as gui_app, configs as cm
-from ramcheck.gui.control import RunRegistry, RealProcessLauncher
+from touchstone.gui import app as gui_app, configs as cm
+from touchstone.gui.control import RunRegistry, RealProcessLauncher
 cm.discover_endpoint_models = lambda config: {"models": ["smoke-model-A", "smoke-model-B"], "error": None}
 app = gui_app.create_app(runs_dir=Path("runs"), registry=RunRegistry(runs_dir=Path("runs"), launcher=RealProcessLauncher()))
 PY

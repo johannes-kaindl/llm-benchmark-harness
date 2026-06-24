@@ -1,6 +1,6 @@
 import csv
 
-from ramcheck import aggregate as agg
+from touchstone import aggregate as agg
 
 HEADER = [
     "machine",

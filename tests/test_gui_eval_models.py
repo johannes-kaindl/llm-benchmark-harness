@@ -6,10 +6,10 @@ import json
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from ramcheck.cli import app as cli_app
-from ramcheck.config import ModelSpec
-from ramcheck.gui import app as gui_app
-from ramcheck.gui import control
+from touchstone.cli import app as cli_app
+from touchstone.config import ModelSpec
+from touchstone.gui import app as gui_app
+from touchstone.gui import control
 
 
 class _Rec:
@@ -171,7 +171,7 @@ def test_route_resume_ignores_even_invalid_models_json(tmp_path):
 
 
 def test_eval_cmd_applies_override_and_skips_on_resume(tmp_path, monkeypatch):
-    import ramcheck.cli as cli
+    import touchstone.cli as cli
 
     captured: dict[str, list[str]] = {}
 

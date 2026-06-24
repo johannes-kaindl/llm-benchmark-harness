@@ -10,5 +10,5 @@ steps:
       - uv sync --frozen
       - uv run ruff check .
       - uv run ruff format --check .
-      - uv run mypy ramcheck/
+      - uv run mypy touchstone/
       - uv run pytest -q

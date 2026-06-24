@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
-from ramcheck.gui.hwlabel import label_mismatch
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
+from touchstone.gui.hwlabel import label_mismatch
 
 
 class _FakeLauncher:

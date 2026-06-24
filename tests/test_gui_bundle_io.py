@@ -8,9 +8,9 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui import bundles
-from ramcheck.gui.control import RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui import bundles
+from touchstone.gui.control import RunRegistry
 
 PACK = "packs/ndassist.yaml"
 
@@ -33,7 +33,7 @@ def _client(tmp_path):
 
 def _resp_dict(model, variant):
     """One EvalResponse round-trip dict for responses.jsonl."""
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     return EvalResponse(
         pack_id="ndassist",
@@ -72,7 +72,7 @@ def _resp_dict(model, variant):
 
 def _write_bundle(d, *, groups, scores_by_group, blank_dims=()):
     """Build a self-contained judged bundle under d using the real in-repo pack."""
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     d.mkdir(parents=True, exist_ok=True)
     pk = load_pack(PACK)
@@ -103,7 +103,7 @@ def _write_bundle(d, *, groups, scores_by_group, blank_dims=()):
 
 
 def test_export_bundle_zips_only_ledger_files(tmp_path):
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     d = tmp_path / "2026_eval_nd"
     dims = load_pack(PACK).dimensions
@@ -161,7 +161,7 @@ def _zip_bundle(d, *, files=("bundle.json", "responses.jsonl", "scores.csv")):
 
 def _judged_zip(tmp_path, name="2026_eval_nd"):
     """Build a judged bundle in a scratch dir (outside runs_dir) and return its zip bytes."""
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     src = tmp_path / "_scratch" / name
     dims = load_pack(PACK).dimensions

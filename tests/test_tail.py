@@ -1,4 +1,4 @@
-from ramcheck.tail import read_new
+from touchstone.tail import read_new
 
 
 def test_missing_file_yields_nothing(tmp_path):

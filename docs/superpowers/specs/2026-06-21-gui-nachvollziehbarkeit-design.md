@@ -1,4 +1,4 @@
-# GUI als Labor — Phase 1: Nachvollziehbarkeit (`ramcheck gui`) — Design (Ink. 7)
+# GUI als Labor — Phase 1: Nachvollziehbarkeit (`touchstone gui`) — Design (Ink. 7)
 
 **Datum:** 2026-06-21
 **Status:** ratifiziert (Brainstorming abgeschlossen) + nach adversarialer Code-Review geschärft — vor Implementierungsplan
@@ -10,7 +10,7 @@
 
 Die Ink.-6-GUI war ein Walking Skeleton: technisch lauffähig, aber als **Produkt unbrauchbar** — die Ansichten zeigen Schlagwörter und nackte Zahlen („ndassist", „Nein", „29%") ohne den Kontext, der sie bedeutet. Damit verfehlt sie genau die **eine Anforderung, die das WebUI rechtfertigt**: Transparenz/Nachvollziehbarkeit.
 
-Der Zweck (im Brainstorming geschärft): **`ramcheck` ist ein Labor.** Es dient dazu, **falsifizierbare Aussagen** der Form „Modell X auf Hardware Y mit Settings Z und Prompt A taugt für Aufgabe B" zu bilden und zu prüfen — durch kontrollierte Variation einzelner Variablen. Die Arbeitsschleife ist **sehen → nachvollziehen → ändern → erneut prüfen**.
+Der Zweck (im Brainstorming geschärft): **`touchstone` ist ein Labor.** Es dient dazu, **falsifizierbare Aussagen** der Form „Modell X auf Hardware Y mit Settings Z und Prompt A taugt für Aufgabe B" zu bilden und zu prüfen — durch kontrollierte Variation einzelner Variablen. Die Arbeitsschleife ist **sehen → nachvollziehen → ändern → erneut prüfen**.
 
 Phase 1 baut das **Fundament dieser Schleife**: *sehen & nachvollziehen*. „Nein" muss lückenlos durchklickbar sein bis zur Wurzel. **Wichtig (Review-Kernpunkt):** die Master-Dimensionen werden **holistisch** bewertet (ein Judge-Call über *alle* Antworten), es gibt **keine** strukturelle Dimension→Prompt-Zuordnung im Pack. Die Nachvollziehbarkeit einer Dimension läuft deshalb **über ihre Begründung** (die der Judge mit konkreten prompt_id-Belegen liefert), nicht über eine erfundene per-Aufgabe-Verlinkung (siehe L8).
 
@@ -18,7 +18,7 @@ Phase 1 baut das **Fundament dieser Schleife**: *sehen & nachvollziehen*. „Nei
 
 | # | Entscheidung | Begründung |
 |---|---|---|
-| **L1** | **`ramcheck` ist ein Labor, kein Dashboard.** Erstklassige Objekte sind perspektivisch **Variablen** (Hardware · Modell · Kontext-Window · Sampling · System-Prompt · Input-Material · Bewertungskriterien · Bewertungsmodell). | Zweck: nachvollziehbare, falsifizierbare Aussagen entwickeln und prüfen — jede Variable einzeln. |
+| **L1** | **`touchstone` ist ein Labor, kein Dashboard.** Erstklassige Objekte sind perspektivisch **Variablen** (Hardware · Modell · Kontext-Window · Sampling · System-Prompt · Input-Material · Bewertungskriterien · Bewertungsmodell). | Zweck: nachvollziehbare, falsifizierbare Aussagen entwickeln und prüfen — jede Variable einzeln. |
 | **L2** | **Nachvollziehbarkeit zuerst (Phase 1), Variablen-Entkopplung + Bedienung danach (Phase 2).** | Reihenfolge der Schleife; löst den akuten Schmerz; geringes Wegwerf-Risiko (Read liest die Ausgangs-, Entkopplung die Eingangs-Seite); Verständnis schärft erst das Entkopplungs-Design. |
 | **L3** | **Drei verknüpfte Ansichten** (Ergebnis · Kriterien · Übersicht), Leitprinzip **Drill-down + keine Sackgassen**. | Eine kohärente App, ein Fluss — gegen die „Dashboard, das man verlassen muss"-Kritik. |
 | **L4** | **`dim_rationales` erfassen + `reports.jsonl` als `ModelReport`-Persistenz.** Konkretes Judge-JSON-Schema + atomarer Batch-Write (siehe §4.1). | Ohne Per-Dimension-Begründung ist „Warum Q6 = 2?" unbeantwortbar (heute `dim_rationales={}`, `judge.py:224`). `reports.jsonl` schließt zugleich die `ModelReport`-Persistenz-Lücke und **löst die fragile `scores.csv`-Rekonstruktion ab** (Ink.-6-Blocker). |
@@ -43,7 +43,7 @@ Der Drill-down eines Laufs (Modell·Variante·Hardware·Seed), lückenlos von ob
 3. **Antworten, nach Kategorie** (die natürliche Pack-Struktur A–E — *das* ist die „alle Aufgaben durchblättern"-Navigation, getrennt von der Dimensions-Herleitung). Je Prompt aufklappbar: die Aufgabe (Input-Text), Green/Red-Flags, die **vollständige Modell-Antwort**, das per-Antwort-Verdict (Score, Red-Flag, `rationale`). Reasoning-only-Antworten (`content_empty` + `reasoning_chars>0`) markiert. Sprungziel der prompt_id-Links aus 2(b).
 4. **Perf + Ressourcen-Verlauf.** TTFT P50/P95, Decode-Median; **RAM- und CPU-Verlauf** mit **Max + Ø** (aus `resources.jsonl`), Throttle/Akku-Flag.
 
-**Empty-States (nie blank/500):** un-judged / eval-only Bundle → die Master-Scorecard-Sektion zeigt explizit „noch nicht bewertet — `ramcheck judge` ausführen" (spiegelt den bestehenden `scorecard.md`-Zweig). `dim_rationale` aus dem `scores.csv`-Fallback fehlt → „Begründung nicht erfasst" statt Lüge.
+**Empty-States (nie blank/500):** un-judged / eval-only Bundle → die Master-Scorecard-Sektion zeigt explizit „noch nicht bewertet — `touchstone judge` ausführen" (spiegelt den bestehenden `scorecard.md`-Zweig). `dim_rationale` aus dem `scores.csv`-Fallback fehlt → „Begründung nicht erfasst" statt Lüge.
 
 ### 3.2 Kriterien-Ansicht „was prüft dieser Test" — `/packs/{pack}`
 
@@ -83,7 +83,7 @@ Heute ist die Dimensions-Bewertung ein **flaches** `{Q1:<int>}`-Schema (`_build_
 Wiederverwendet (verifiziert vorhanden): `load_pack`, `qualrun.load_responses_jsonl`, `judge.load_judgements_jsonl`, `merge.load_samples_jsonl`, `scorecard.weighted_total/passes_ko/recommendation/mean_score/category_averages/master_rows`, `ModelReport.as_dict`.
 
 Neu/überarbeitet:
-- `ramcheck/reports.py` *(oder in `judge.py`)*: `reports.jsonl`-Loader (Writer nutzt `as_dict`).
+- `touchstone/reports.py` *(oder in `judge.py`)*: `reports.jsonl`-Loader (Writer nutzt `as_dict`).
 - `bundles.py`: reichhaltiges Detail-Objekt je Lauf — verknüpft Pack + Antworten + Verdicts + Reports (aus `reports.jsonl`, Fallback `scores.csv`) + Ressourcen-Spur; bedeutungstragende Übersichts-Zeile. Parst prompt_id-Zitate aus `dim_rationales` für die Links.
 - `app.py` Read-Routen liefern die reichen Strukturen + Verlinkungs-Anker (Dimension↔zitierte Prompts, Aufgabe↔Antwort).
 - Templates `{result,pack,overview}.html` komplett überarbeitet; leichtes RAM/CPU-Verlaufs-Chart (Inline-SVG/Canvas, build-frei).
@@ -97,7 +97,7 @@ Die Antworten-nach-Kategorie-Liste (3.3 Schritt 3) ist die vollständige Durchsi
 ## 7 · Error-Handling
 
 - **Alt-Bundle ohne `reports.jsonl`/`cpu_pct`:** Fallback (Rekonstruktion bzw. weggelassene CPU-Spur), nie Crash — die Ink.-6-Regel „ein korruptes Bundle 500t nie die ganze Seite" bleibt.
-- **Un-judged / eval-only:** Master-Scorecard-Sektion zeigt „noch nicht bewertet — `ramcheck judge` ausführen" (kein Blank/500). Teil-gejudgte/partielle Dimensionen: fehlende Scores überspringen, partiellen Report rendern.
+- **Un-judged / eval-only:** Master-Scorecard-Sektion zeigt „noch nicht bewertet — `touchstone judge` ausführen" (kein Blank/500). Teil-gejudgte/partielle Dimensionen: fehlende Scores überspringen, partiellen Report rendern.
 - **Fehlende `dim_rationale`** (Fallback-Pfad): „Begründung nicht erfasst" statt Lüge.
 - **Reasoning-only / leere Antworten:** als solche markieren.
 - **Judge-Resume:** `reports.jsonl` wird ganz neu geschrieben (Reports aus prior+fresh neu berechnet), halb-geschriebene Schlusszeile beim Laden toleriert.
@@ -134,14 +134,14 @@ Konsistent mit dem Repo (I/O dependency-injected, pure Logik unit-getestet, mypy
 
 | Datei | Änderung |
 |---|---|
-| `ramcheck/judge.py` | verschachteltes Dimensions-Schema im Prompt + **Beleg-Pflicht**; `parse_dimension_report` (+ `parse_dimension_scores`-Wrapper); `score_dimensions` füllt `dim_rationales` |
-| `ramcheck/reports.py` *(oder `judge.py`)* | **neu** — `reports.jsonl`-Loader (Writer via `ModelReport.as_dict`) |
-| `ramcheck/cli.py` | beide Judge-Pfade schreiben `reports.jsonl` (atomarer Batch-Write am Finalize) |
-| `ramcheck/models.py`, `ramcheck/sampler.py` | `ResourceSample.cpu_pct: float\|None=None` (letztes Feld) + `psutil.cpu_percent`-Sampling (geprimet); Loader-Default für Alt-Ticks |
-| `ramcheck/gui/bundles.py` | Reports aus `reports.jsonl` (Fallback `scores.csv`); reiches Detail-Objekt; prompt_id-Zitate parsen; K.-o.-Zweig→Wurzel |
-| `ramcheck/gui/app.py` | Read-Routen liefern reiche Strukturen + Verlinkungs-Anker |
-| `ramcheck/gui/templates/{result,pack,overview}.html` | komplett überarbeitet (Drill-down · Kriterien-Referenz · bedeutungstragende Übersicht) |
-| `ramcheck/gui/static/` | leichtes RAM/CPU-Verlaufs-Chart (Inline-SVG/Canvas) |
+| `touchstone/judge.py` | verschachteltes Dimensions-Schema im Prompt + **Beleg-Pflicht**; `parse_dimension_report` (+ `parse_dimension_scores`-Wrapper); `score_dimensions` füllt `dim_rationales` |
+| `touchstone/reports.py` *(oder `judge.py`)* | **neu** — `reports.jsonl`-Loader (Writer via `ModelReport.as_dict`) |
+| `touchstone/cli.py` | beide Judge-Pfade schreiben `reports.jsonl` (atomarer Batch-Write am Finalize) |
+| `touchstone/models.py`, `touchstone/sampler.py` | `ResourceSample.cpu_pct: float\|None=None` (letztes Feld) + `psutil.cpu_percent`-Sampling (geprimet); Loader-Default für Alt-Ticks |
+| `touchstone/gui/bundles.py` | Reports aus `reports.jsonl` (Fallback `scores.csv`); reiches Detail-Objekt; prompt_id-Zitate parsen; K.-o.-Zweig→Wurzel |
+| `touchstone/gui/app.py` | Read-Routen liefern reiche Strukturen + Verlinkungs-Anker |
+| `touchstone/gui/templates/{result,pack,overview}.html` | komplett überarbeitet (Drill-down · Kriterien-Referenz · bedeutungstragende Übersicht) |
+| `touchstone/gui/static/` | leichtes RAM/CPU-Verlaufs-Chart (Inline-SVG/Canvas) |
 | `docs/explanation/design-decisions.md` | **neu** — Abschnitt „Bewertungs-Methode": holistische Dimensionen, belegte Begründung als Nachvollziehbarkeits-Brücke, zwei K.-o.-Zweige, gewichtete Master-Scorecard (Quelle für das abrufbare UI-Erklär-Element, L9) |
 | `tests/` | neue + **geänderte** Tests je §9 (inkl. `test_judge.py` Schema-Hebung) |
 | `AGENTS.md` | `reports.jsonl` (ModelReport-Persistenz, beide Judge-Pfade) + `cpu_pct` im Sampler dokumentieren |

@@ -46,10 +46,10 @@ Alles aus dem **vorhandenen** Bundle (Phase-1-Loader), **ohne** `EvalResponse`/`
 
 ## 5 · Read-/Render-Schicht
 
-- `ramcheck/gui/compare.py` *(neu)* — `compare_detail(run_dir, axis)` (§4) + `_cpu_for_window(samples, responses)` (V6) + `_relations_summary(values)` (Text) + Divergenz-Sortierung. Pure, unit-testbar.
-- `ramcheck/gui/app.py` — Route `/compare/{bundle}` (confined wie `/result`); `axis`-Query gegen `{model, variant}` validiert; `variant`-Projektion als Query bei `axis=model`.
-- `ramcheck/gui/templates/compare_axis.html` *(neu)* — die 3 Schichten.
-- `ramcheck/gui/static/scatter.js` *(neu)* — Inline-SVG-Scatter (x=Speed, y=Qualität, r=RAM), build-frei.
+- `touchstone/gui/compare.py` *(neu)* — `compare_detail(run_dir, axis)` (§4) + `_cpu_for_window(samples, responses)` (V6) + `_relations_summary(values)` (Text) + Divergenz-Sortierung. Pure, unit-testbar.
+- `touchstone/gui/app.py` — Route `/compare/{bundle}` (confined wie `/result`); `axis`-Query gegen `{model, variant}` validiert; `variant`-Projektion als Query bei `axis=model`.
+- `touchstone/gui/templates/compare_axis.html` *(neu)* — die 3 Schichten.
+- `touchstone/gui/static/scatter.js` *(neu)* — Inline-SVG-Scatter (x=Speed, y=Qualität, r=RAM), build-frei.
 - `result.html` / `overview.html` — Link „↔ Vergleichen ({Achse})", nur wenn >1 Achsenwert (aus `model_variant_groups`, auch eval-only).
 - **Abgrenzung:** die bestehende `/compare` (Cross-Run-`aggregate`-Tabelle) bleibt unverändert; der neue Innerhalb-Bundle-Vergleich ist `/compare/{bundle}`. Menü-/Namensführung im Plan.
 
@@ -90,11 +90,11 @@ Alles aus dem **vorhandenen** Bundle (Phase-1-Loader), **ohne** `EvalResponse`/`
 
 | Datei | Änderung |
 |---|---|
-| `ramcheck/gui/compare.py` | **neu** — `compare_detail` + `_cpu_for_window` + `_relations_summary` + Divergenz (pure); Qualität via `master_rows`⨝`reports` |
-| `ramcheck/gui/app.py` | **neu** Route `/compare/{bundle}` (confined, `axis`+`variant` validiert); „↔ Vergleichen"-Link-Daten |
-| `ramcheck/gui/templates/compare_axis.html` | **neu** — 3-Schichten-Ansicht |
-| `ramcheck/gui/templates/{result,overview}.html` | „↔ Vergleichen ({Achse})"-Link, nur bei >1 Achsenwert |
-| `ramcheck/gui/static/scatter.js` | **neu** — Inline-SVG-Scatter (x=Speed, y=Qualität, r=RAM) |
+| `touchstone/gui/compare.py` | **neu** — `compare_detail` + `_cpu_for_window` + `_relations_summary` + Divergenz (pure); Qualität via `master_rows`⨝`reports` |
+| `touchstone/gui/app.py` | **neu** Route `/compare/{bundle}` (confined, `axis`+`variant` validiert); „↔ Vergleichen"-Link-Daten |
+| `touchstone/gui/templates/compare_axis.html` | **neu** — 3-Schichten-Ansicht |
+| `touchstone/gui/templates/{result,overview}.html` | „↔ Vergleichen ({Achse})"-Link, nur bei >1 Achsenwert |
+| `touchstone/gui/static/scatter.js` | **neu** — Inline-SVG-Scatter (x=Speed, y=Qualität, r=RAM) |
 | `tests/` | neue Tests je §8 (inkl. 2×2-Fixture, CPU-„n. v."-State) |
 | `AGENTS.md` | `/compare/{bundle}` (Innerhalb-Bundle-Achsen-Vergleich) vs. `/compare` (Cross-Run-Aggregat) abgrenzen |
 

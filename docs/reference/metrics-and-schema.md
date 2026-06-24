@@ -36,7 +36,7 @@ peak_rss_mb, sys_used_mb, swap_delta_mb, mem_pressure_max, throttled, power_sour
 seed, warmup, is_cold_start, ok, error
 ```
 
-Quelle der Wahrheit: `ramcheck/models.py::RAW_CSV_COLUMNS` (wird beim Import gegen
+Quelle der Wahrheit: `touchstone/models.py::RAW_CSV_COLUMNS` (wird beim Import gegen
 `RunRecord` geprüft).
 
 ## `report.md` — Spalten (SSOT-Tabelle)
@@ -62,4 +62,4 @@ Prefill (tok/s) · Peak-RAM / Druck / Swap · Qual. · Flow · Konsist. (CV%) ·
 | `power_check` | `pmset` (Power-Source) + `powermetrics` (Throttle, braucht sudo). |
 | `engine` / `engine_version` | Optionaler Override für den Report-Header. |
 | `vlm.image_path` | Bild für das `vlm`-Szenario. |
-| `embed.{model,num_chunks,chunk_tokens}` | Parameter für `ramcheck embed`. |
+| `embed.{model,num_chunks,chunk_tokens}` | Parameter für `touchstone embed`. |

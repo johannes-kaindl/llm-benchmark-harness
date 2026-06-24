@@ -1,4 +1,4 @@
-# Judge-Endpoint für `ramcheck judge`. Pluggable: lokal (offline, kostenlos) oder
+# Judge-Endpoint für `touchstone judge`. Pluggable: lokal (offline, kostenlos) oder
 # Cloud (beste Score-Qualität). Kopiere nach judge.yaml und passe an.
 #
 # Lokaler Judge (LM Studio, offline) — ein möglichst starkes lokales Modell:

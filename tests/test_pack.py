@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ramcheck.pack import Pack, load_pack
+from touchstone.pack import Pack, load_pack
 
 
 def _minimal(**kw):

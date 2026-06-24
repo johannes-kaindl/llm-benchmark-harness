@@ -1,7 +1,7 @@
 # tests/test_gui_control_sentinel.py
 import os
 
-from ramcheck.gui import control
+from touchstone.gui import control
 
 
 def test_write_read_roundtrip(tmp_path):

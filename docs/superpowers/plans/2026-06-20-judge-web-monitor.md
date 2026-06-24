@@ -1,8 +1,8 @@
-# Judge Web-Monitor (`ramcheck judge --web`) Implementation Plan
+# Judge Web-Monitor (`touchstone judge --web`) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A read-only browser live-monitor for `ramcheck judge`, showing score distribution, red-flags, a verdict table, and an end-of-run weighted master-scorecard preview.
+**Goal:** A read-only browser live-monitor for `touchstone judge`, showing score distribution, red-flags, a verdict table, and an end-of-run weighted master-scorecard preview.
 
 **Architecture:** Generalise `webmon.py` into transport (SSE + tail + serve) plus a pluggable *view module* selected by `--view eval|judge`. A new `judge_events.py` is the judge view (event contract + `build_view` + HTML, no resource panel). The judge run gains additive callbacks that append a separate `judge_events.jsonl`; the master `%`/safety math is computed in the host process and shipped pre-rendered. Default `judge` (no `--web`) is byte-identical.
 
@@ -16,11 +16,11 @@
 
 | File | Responsibility |
 |---|---|
-| `ramcheck/judge_events.py` | **new** — judge view: event constructors, `parse_line`, `build_view` (histogram/mean/red/ETA/master fold), `INDEX_HTML`, `TAILS_RESOURCES=False` |
-| `ramcheck/events.py` | eval view: gains `INDEX_HTML` (moved out of webmon) + `TAILS_RESOURCES=True` |
-| `ramcheck/webmon.py` | transport only: view-module dispatch (`--view`), HTML/aggregation from the view, tail `resources.jsonl` only when the view wants it |
-| `ramcheck/runner.py` | `_WebMonitorProcess` gains an additive `view` param, passed to the subprocess |
-| `ramcheck/cli.py` | `_live_monitor`/`_hold_monitor` gain `view`; `judge` refactored into `_judge_and_persist`/`_render_judge_scorecard`; new `_judge_event_writers`/`_master_rows`; `judge` gains `--web/--port/--no-open` |
+| `touchstone/judge_events.py` | **new** — judge view: event constructors, `parse_line`, `build_view` (histogram/mean/red/ETA/master fold), `INDEX_HTML`, `TAILS_RESOURCES=False` |
+| `touchstone/events.py` | eval view: gains `INDEX_HTML` (moved out of webmon) + `TAILS_RESOURCES=True` |
+| `touchstone/webmon.py` | transport only: view-module dispatch (`--view`), HTML/aggregation from the view, tail `resources.jsonl` only when the view wants it |
+| `touchstone/runner.py` | `_WebMonitorProcess` gains an additive `view` param, passed to the subprocess |
+| `touchstone/cli.py` | `_live_monitor`/`_hold_monitor` gain `view`; `judge` refactored into `_judge_and_persist`/`_render_judge_scorecard`; new `_judge_event_writers`/`_master_rows`; `judge` gains `--web/--port/--no-open` |
 | `AGENTS.md` | `judge --web` in command list + gotcha (judge view never tails `resources.jsonl`) |
 | `tests/test_judge_events.py` | **new** — pure tests for the judge view |
 | `tests/test_webmon.py`, `tests/test_cli_judge_web.py` | view dispatch + CLI writer + backward-compat |
@@ -32,14 +32,14 @@ The view interface (uniform across `events.py` and `judge_events.py`): module at
 ## Task 1: `judge_events.py` — event constructors + parsing
 
 **Files:**
-- Create: `ramcheck/judge_events.py`
+- Create: `touchstone/judge_events.py`
 - Test: `tests/test_judge_events.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_judge_events.py
-from ramcheck import judge_events as je
+from touchstone import judge_events as je
 
 
 def test_constructors_have_type_tags():
@@ -74,12 +74,12 @@ def test_parse_line_tolerates_garbage():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_judge_events.py -q`
-Expected: FAIL — `ModuleNotFoundError: No module named 'ramcheck.judge_events'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'touchstone.judge_events'`
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# ramcheck/judge_events.py
+# touchstone/judge_events.py
 """Judge view for the live monitor — the scoring counterpart to events.py.
 
 The judge loop fires callbacks (on_judge_start / on_verdict / master / on_judge_done);
@@ -188,7 +188,7 @@ Expected: PASS (4 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/judge_events.py tests/test_judge_events.py
+git add touchstone/judge_events.py tests/test_judge_events.py
 git commit -m "feat(judge_events): event contract + defensive parse for the judge view"
 ```
 
@@ -197,7 +197,7 @@ git commit -m "feat(judge_events): event contract + defensive parse for the judg
 ## Task 2: `judge_events.py` — `build_view` (histogram / mean / red / ETA / master fold)
 
 **Files:**
-- Modify: `ramcheck/judge_events.py` (append dataclasses + `build_view`)
+- Modify: `touchstone/judge_events.py` (append dataclasses + `build_view`)
 - Test: `tests/test_judge_events.py` (append)
 
 - [ ] **Step 1: Write the failing test**
@@ -270,11 +270,11 @@ def test_build_view_masters_and_finished():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_judge_events.py -q`
-Expected: FAIL — `AttributeError: module 'ramcheck.judge_events' has no attribute 'build_view'`
+Expected: FAIL — `AttributeError: module 'touchstone.judge_events' has no attribute 'build_view'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Append to `ramcheck/judge_events.py`:
+Append to `touchstone/judge_events.py`:
 
 ```python
 VerdictKey = tuple[str, str, str, int]  # (model, variant, prompt_id, repeat)
@@ -444,7 +444,7 @@ Expected: PASS (9 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/judge_events.py tests/test_judge_events.py
+git add touchstone/judge_events.py tests/test_judge_events.py
 git commit -m "feat(judge_events): build_view — histogram, mean, red, ETA, master fold, key-dedup"
 ```
 
@@ -453,7 +453,7 @@ git commit -m "feat(judge_events): build_view — histogram, mean, red, ETA, mas
 ## Task 3: `judge_events.py` — `INDEX_HTML` dashboard
 
 **Files:**
-- Modify: `ramcheck/judge_events.py` (add `INDEX_HTML`)
+- Modify: `touchstone/judge_events.py` (add `INDEX_HTML`)
 - Test: `tests/test_judge_events.py` (append)
 
 - [ ] **Step 1: Write the failing test**
@@ -471,15 +471,15 @@ def test_index_html_is_judge_dashboard():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_judge_events.py::test_index_html_is_judge_dashboard -q`
-Expected: FAIL — `AttributeError: module 'ramcheck.judge_events' has no attribute 'INDEX_HTML'`
+Expected: FAIL — `AttributeError: module 'touchstone.judge_events' has no attribute 'INDEX_HTML'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Append to `ramcheck/judge_events.py`:
+Append to `touchstone/judge_events.py`:
 
 ```python
 INDEX_HTML = """<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><title>ramcheck judge monitor</title>
+<html lang="de"><head><meta charset="utf-8"><title>touchstone judge monitor</title>
 <style>
  body{font-family:system-ui,sans-serif;margin:1.5rem;background:#111;color:#eee}
  h1{font-size:1.1rem} h2{font-size:1rem;margin-top:1.5rem}
@@ -493,7 +493,7 @@ INDEX_HTML = """<!doctype html>
  .ok{color:#5c5} .fail{color:#e66} .muted{color:#999}
 </style></head>
 <body>
-<h1>ramcheck — live judge monitor</h1>
+<h1>touchstone — live judge monitor</h1>
 <div class="bar"><div id="barfill"></div></div>
 <div class="grid">
  <div class="card"><div class="muted">Fortschritt</div><div class="num"><span id="done">0</span>/<span id="total">0</span></div></div>
@@ -529,7 +529,7 @@ es.addEventListener('view',e=>{let v;try{v=JSON.parse(e.data)}catch(_){return}
   const safe=m.safety_passed?'<span class="ok">ja</span>':`<span class="fail">nein</span> <span class="muted">(${esc(m.safety_reason)})</span>`;
   return `<tr><td>${esc(m.model)} \\u00b7 ${esc(m.variant)}</td><td>${m.pct.toFixed(1)} %</td><td>${safe}</td><td>${esc(m.recommendation)}</td></tr>`;
  }).join('');});
-es.onerror=()=>{document.title='ramcheck judge monitor (offline)';};
+es.onerror=()=>{document.title='touchstone judge monitor (offline)';};
 </script></body></html>"""
 ```
 
@@ -541,7 +541,7 @@ Expected: PASS (10 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/judge_events.py tests/test_judge_events.py
+git add touchstone/judge_events.py tests/test_judge_events.py
 git commit -m "feat(judge_events): read-only judge dashboard HTML (no load panel)"
 ```
 
@@ -552,13 +552,13 @@ git commit -m "feat(judge_events): read-only judge dashboard HTML (no load panel
 This is a refactor: move the eval `INDEX_HTML` from `webmon.py` into `events.py`, give the eval view a `TAILS_RESOURCES=True` flag, and make `webmon` resolve a *view module* (only `eval` registered yet). External behaviour is unchanged — existing `test_webmon.py` stays green.
 
 **Files:**
-- Modify: `ramcheck/events.py` (add `INDEX_HTML` + `TAILS_RESOURCES`)
-- Modify: `ramcheck/webmon.py:24-149` (dispatch via view module)
+- Modify: `touchstone/events.py` (add `INDEX_HTML` + `TAILS_RESOURCES`)
+- Modify: `touchstone/webmon.py:24-149` (dispatch via view module)
 - Test: existing `tests/test_webmon.py` (regression — no change)
 
 - [ ] **Step 1: Add `INDEX_HTML` + `TAILS_RESOURCES` to `events.py`**
 
-At the top of `ramcheck/events.py` (after the imports / type-tag constants), add:
+At the top of `touchstone/events.py` (after the imports / type-tag constants), add:
 
 ```python
 TAILS_RESOURCES = True
@@ -568,13 +568,13 @@ Then append the eval dashboard HTML — **move it verbatim** from `webmon.py` (c
 
 - [ ] **Step 2: Rewrite `webmon.make_handler` + `main` to dispatch on a view module**
 
-Replace `ramcheck/webmon.py` lines 18–22 imports and the `make_handler`/`main` functions with:
+Replace `touchstone/webmon.py` lines 18–22 imports and the `make_handler`/`main` functions with:
 
 ```python
-from ramcheck import events as events_mod
-from ramcheck import judge_events as judge_events_mod
-from ramcheck import loadview as loadview_mod
-from ramcheck import tail as tail_mod
+from touchstone import events as events_mod
+from touchstone import judge_events as judge_events_mod
+from touchstone import loadview as loadview_mod
+from touchstone import tail as tail_mod
 
 POLL_S = 0.25
 
@@ -654,7 +654,7 @@ def make_handler(
 
 
 def main(argv: list[str] | None = None) -> None:
-    ap = argparse.ArgumentParser(description="ramcheck live monitor server")
+    ap = argparse.ArgumentParser(description="touchstone live monitor server")
     ap.add_argument("--bundle", required=True)
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--events", default="events.jsonl")
@@ -675,13 +675,13 @@ Expected: PASS — eval index still serves HTML with `EventSource`, SSE still st
 
 - [ ] **Step 4: Lint + type-check the touched files**
 
-Run: `uv run ruff check ramcheck/webmon.py ramcheck/events.py && uv run mypy ramcheck/webmon.py ramcheck/events.py ramcheck/judge_events.py`
+Run: `uv run ruff check touchstone/webmon.py touchstone/events.py && uv run mypy touchstone/webmon.py touchstone/events.py touchstone/judge_events.py`
 Expected: clean
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/webmon.py ramcheck/events.py
+git add touchstone/webmon.py touchstone/events.py
 git commit -m "refactor(webmon): transport + pluggable view module (eval HTML → events.py)"
 ```
 
@@ -690,7 +690,7 @@ git commit -m "refactor(webmon): transport + pluggable view module (eval HTML �
 ## Task 5: `webmon` + `runner` — register judge view, `_WebMonitorProcess` view param
 
 **Files:**
-- Modify: `ramcheck/runner.py:336-354` (`_WebMonitorProcess.__init__` + `start`)
+- Modify: `touchstone/runner.py:336-354` (`_WebMonitorProcess.__init__` + `start`)
 - Test: `tests/test_webmon.py` (append)
 
 - [ ] **Step 1: Write the failing test**
@@ -774,7 +774,7 @@ Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'vi
 
 - [ ] **Step 3: Add the `view` param to `_WebMonitorProcess`**
 
-In `ramcheck/runner.py`, change `_WebMonitorProcess.__init__` (line ~336):
+In `touchstone/runner.py`, change `_WebMonitorProcess.__init__` (line ~336):
 
 ```python
     def __init__(
@@ -805,7 +805,7 @@ Expected: PASS (all webmon tests, incl. the 2 new ones)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/runner.py tests/test_webmon.py
+git add touchstone/runner.py tests/test_webmon.py
 git commit -m "feat(webmon): register judge view + thread --view through _WebMonitorProcess"
 ```
 
@@ -814,12 +814,12 @@ git commit -m "feat(webmon): register judge view + thread --view through _WebMon
 ## Task 6: `cli.py` — `view` param on `_live_monitor` / `_hold_monitor`
 
 **Files:**
-- Modify: `ramcheck/cli.py:209-226` (`_live_monitor`)
+- Modify: `touchstone/cli.py:209-226` (`_live_monitor`)
 - Test: covered by Task 9's CLI test (no standalone test — pure pass-through)
 
 - [ ] **Step 1: Thread `view` through `_live_monitor`**
 
-In `ramcheck/cli.py`, change the `_live_monitor` signature + the `_WebMonitorProcess` construction:
+In `touchstone/cli.py`, change the `_live_monitor` signature + the `_WebMonitorProcess` construction:
 
 ```python
 @contextlib.contextmanager
@@ -839,13 +839,13 @@ def _live_monitor(
 
 - [ ] **Step 2: Verify eval path still type-checks and runs**
 
-Run: `uv run mypy ramcheck/cli.py && uv run pytest tests/ -q -k "webmon or events or eval or cli"`
+Run: `uv run mypy touchstone/cli.py && uv run pytest tests/ -q -k "webmon or events or eval or cli"`
 Expected: clean + PASS (eval `--web` wiring still passes `events_name` only; `view` defaults to `eval`)
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add ramcheck/cli.py
+git add touchstone/cli.py
 git commit -m "feat(cli): view param on _live_monitor (default eval, pass-through)"
 ```
 
@@ -856,12 +856,12 @@ git commit -m "feat(cli): view param on _live_monitor (default eval, pass-throug
 Pure refactor of the existing `judge` command into two reusable helpers. No behaviour change; the existing judge flow stays identical.
 
 **Files:**
-- Modify: `ramcheck/cli.py:446-499` (the `judge` command body)
+- Modify: `touchstone/cli.py:446-499` (the `judge` command body)
 - Test: existing judge/CLI tests stay green
 
 - [ ] **Step 1: Add the two helpers above the `judge` command**
 
-Insert into `ramcheck/cli.py` (just before `@app.command()` / `def judge`):
+Insert into `touchstone/cli.py` (just before `@app.command()` / `def judge`):
 
 ```python
 def _judge_and_persist(
@@ -913,7 +913,7 @@ def _render_judge_scorecard(
 ```
 
 > Note: `ModelReport` must be imported in `cli.py`. If it is not already, add it to the
-> `from ramcheck.results import ...` line (alongside `EvalResponse`, `Verdict`).
+> `from touchstone.results import ...` line (alongside `EvalResponse`, `Verdict`).
 
 - [ ] **Step 2: Replace the body of the `judge` command (from `jpath = ...` to the end) with helper calls**
 
@@ -934,13 +934,13 @@ Expected: PASS (same count as before this task)
 
 - [ ] **Step 4: Lint + type-check**
 
-Run: `uv run ruff check ramcheck/cli.py && uv run mypy ramcheck/`
+Run: `uv run ruff check touchstone/cli.py && uv run mypy touchstone/`
 Expected: clean
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/cli.py
+git add touchstone/cli.py
 git commit -m "refactor(cli): extract _judge_and_persist + _render_judge_scorecard (no behaviour change)"
 ```
 
@@ -949,7 +949,7 @@ git commit -m "refactor(cli): extract _judge_and_persist + _render_judge_scoreca
 ## Task 8: `cli.py` — `_judge_event_writers` + `_master_rows`
 
 **Files:**
-- Modify: `ramcheck/cli.py` (add the two helpers near `_eval_event_writers`)
+- Modify: `touchstone/cli.py` (add the two helpers near `_eval_event_writers`)
 - Test: `tests/test_cli_judge_web.py` (new)
 
 - [ ] **Step 1: Write the failing test**
@@ -958,8 +958,8 @@ git commit -m "refactor(cli): extract _judge_and_persist + _render_judge_scoreca
 # tests/test_cli_judge_web.py
 import json
 
-from ramcheck import cli
-from ramcheck.results import Verdict
+from touchstone import cli
+from touchstone.results import Verdict
 
 
 def _v(prompt_id, score, red=False, unscored=False, model="m", variant="v"):
@@ -1023,14 +1023,14 @@ def test_judge_event_writers_masters_and_done(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_cli_judge_web.py -q`
-Expected: FAIL — `AttributeError: module 'ramcheck.cli' has no attribute '_judge_event_writers'`
+Expected: FAIL — `AttributeError: module 'touchstone.cli' has no attribute '_judge_event_writers'`
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `ramcheck/cli.py` (import the module + add helpers near `_eval_event_writers`). First ensure the import exists at the top:
+Add to `touchstone/cli.py` (import the module + add helpers near `_eval_event_writers`). First ensure the import exists at the top:
 
 ```python
-from ramcheck import judge_events as judge_events_mod
+from touchstone import judge_events as judge_events_mod
 ```
 
 Then add:
@@ -1148,13 +1148,13 @@ Expected: PASS (3 tests)
 
 - [ ] **Step 5: Lint + type-check**
 
-Run: `uv run ruff check ramcheck/cli.py && uv run mypy ramcheck/`
+Run: `uv run ruff check touchstone/cli.py && uv run mypy touchstone/`
 Expected: clean
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/test_cli_judge_web.py
+git add touchstone/cli.py tests/test_cli_judge_web.py
 git commit -m "feat(cli): judge event writers + host-side master rows"
 ```
 
@@ -1163,7 +1163,7 @@ git commit -m "feat(cli): judge event writers + host-side master rows"
 ## Task 9: `cli.py` — `judge --web` branch + backward-compat guard
 
 **Files:**
-- Modify: `ramcheck/cli.py` (`judge` command signature + body)
+- Modify: `touchstone/cli.py` (`judge` command signature + body)
 - Test: `tests/test_cli_judge_web.py` (append)
 
 - [ ] **Step 1: Write the failing test (backward-compat — default path writes no judge_events.jsonl)**
@@ -1172,17 +1172,17 @@ git commit -m "feat(cli): judge event writers + host-side master rows"
 # append to tests/test_cli_judge_web.py
 import typer.testing
 
-from ramcheck import judge as judge_mod
-from ramcheck import scorecard as scorecard_mod_t
+from touchstone import judge as judge_mod
+from touchstone import scorecard as scorecard_mod_t
 
 
 def test_judge_without_web_writes_no_judge_events(tmp_path, monkeypatch):
     # Minimal bundle: one response, a fake judge backend, no --web.
-    from ramcheck.cli import app
+    from touchstone.cli import app
     from tests.fixtures_judge import write_minimal_bundle, FakeBackendFactory  # see Step 3 note
 
     bundle = write_minimal_bundle(tmp_path)
-    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", FakeBackendFactory)
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", FakeBackendFactory)
     runner = typer.testing.CliRunner()
     result = runner.invoke(
         app,
@@ -1267,13 +1267,13 @@ Expected: PASS (all tests, incl. backward-compat guard)
 
 - [ ] **Step 5: Lint + type-check**
 
-Run: `uv run ruff check . && uv run ruff format --check . && uv run mypy ramcheck/`
+Run: `uv run ruff check . && uv run ruff format --check . && uv run mypy touchstone/`
 Expected: clean
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/test_cli_judge_web.py tests/fixtures_judge.py
+git add touchstone/cli.py tests/test_cli_judge_web.py tests/fixtures_judge.py
 git commit -m "feat(cli): judge --web live monitor branch (default path byte-identical)"
 ```
 
@@ -1289,7 +1289,7 @@ git commit -m "feat(cli): judge --web live monitor branch (default path byte-ide
 In `AGENTS.md`, in the `## Commands` block, add after the existing `judge` line:
 
 ```bash
-uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml --web  # + live judge monitor
+uv run touchstone judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml --web  # + live judge monitor
 ```
 
 In the `## Gotchas` block, append:
@@ -1297,7 +1297,7 @@ In the `## Gotchas` block, append:
 ```markdown
 - **The judge monitor never tails `resources.jsonl`.** `judge --web` runs the judge on a
   *different* endpoint (a cloud/local judge), so the bundle's `resources.jsonl` (from the
-  earlier `eval` run) is stale and irrelevant. The judge view (`ramcheck/judge_events.py`,
+  earlier `eval` run) is stale and irrelevant. The judge view (`touchstone/judge_events.py`,
   `TAILS_RESOURCES=False`) shows score distribution / red-flags / a master-scorecard preview
   instead of a load panel. The master `%`/safety values are computed in the host process and
   shipped pre-rendered — the monitor never sees the `Pack`.
@@ -1307,7 +1307,7 @@ Also update the module map in `## Architecture principles` (the live-monitoring 
 
 - [ ] **Step 2: Full verification (the whole gate)**
 
-Run: `uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run mypy ramcheck/`
+Run: `uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run mypy touchstone/`
 Expected: ALL PASS — every test green, lint clean, format clean, mypy strict clean.
 
 - [ ] **Step 3: Commit**
@@ -1325,12 +1325,12 @@ Pick an eval bundle, remove its judgements so it re-judges fresh, and run with `
 # bundle from the handoff (gitignored, already evaluated):
 cp -r runs/2026-06-20_104844_eval_ndassist /tmp/judgesmoke
 rm -f /tmp/judgesmoke/judgements.jsonl /tmp/judgesmoke/judge_events.jsonl
-uv run ramcheck judge --bundle /tmp/judgesmoke --judge-config judge.yaml --web
+uv run touchstone judge --bundle /tmp/judgesmoke --judge-config judge.yaml --web
 ```
 
 Verify in the browser: progress counts up, histogram + red-flag + Ø-score fill in live, the
 master-scorecard preview appears at the end, Ctrl-C shuts the monitor down cleanly (no zombie
-process — check `pgrep -f ramcheck.webmon` returns nothing after). Report what you observed.
+process — check `pgrep -f touchstone.webmon` returns nothing after). Report what you observed.
 
 ---
 

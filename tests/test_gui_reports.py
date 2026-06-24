@@ -4,9 +4,9 @@ import types
 
 from typer.testing import CliRunner
 
-from ramcheck.cli import app
-from ramcheck.judge import load_reports_jsonl, write_reports_jsonl
-from ramcheck.results import ModelReport
+from touchstone.cli import app
+from touchstone.judge import load_reports_jsonl, write_reports_jsonl
+from touchstone.results import ModelReport
 
 runner = CliRunner()
 
@@ -45,14 +45,14 @@ def test_judge_writes_reports_jsonl(tmp_path, monkeypatch):
         json.dumps({"pack_path": "packs/ndassist.yaml", "host": {}}), encoding="utf-8"
     )
     (b / "responses.jsonl").write_text("", encoding="utf-8")
-    monkeypatch.setattr("ramcheck.cli.load_responses_jsonl", lambda p: [])
+    monkeypatch.setattr("touchstone.cli.load_responses_jsonl", lambda p: [])
     monkeypatch.setattr(
-        "ramcheck.cli._judge_and_persist",
+        "touchstone.cli._judge_and_persist",
         lambda *a, **k: ([], [ModelReport("m", "none", {"Q1": 3}, {"Q1": "x"})]),
     )
-    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", lambda *a, **k: object())
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", lambda *a, **k: object())
     monkeypatch.setattr(
-        "ramcheck.cli.load_judge_config",
+        "touchstone.cli.load_judge_config",
         lambda p: types.SimpleNamespace(
             endpoint=types.SimpleNamespace(base_url="x", api_key="y"), model="m", temperature=0.0
         ),

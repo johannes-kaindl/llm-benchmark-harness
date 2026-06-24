@@ -3,8 +3,8 @@ import json
 
 import typer.testing
 
-from ramcheck import cli
-from ramcheck.results import EvalResponse, Verdict
+from touchstone import cli
+from touchstone.results import EvalResponse, Verdict
 
 
 def _v(prompt_id, score, red=False, unscored=False, model="m", variant="v"):
@@ -158,7 +158,7 @@ class _FakeJudgeBackend:
 
 def test_judge_without_web_writes_no_judge_events(tmp_path, monkeypatch):
     bundle = _write_min_bundle(tmp_path)
-    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", _FakeJudgeBackend)
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", _FakeJudgeBackend)
     result = typer.testing.CliRunner().invoke(
         cli.app,
         ["judge", "--bundle", str(bundle), "--judge-config", str(bundle / "judge.yaml")],
@@ -173,9 +173,9 @@ def _patch_monitor(monkeypatch):
     def _fake_live_monitor(*args, **kwargs):
         yield (None, None)
 
-    monkeypatch.setattr("ramcheck.cli._live_monitor", _fake_live_monitor)
-    monkeypatch.setattr("ramcheck.cli._hold_monitor", lambda *a, **k: None)
-    monkeypatch.setattr("ramcheck.cli.OpenAIJudgeBackend", _FakeJudgeBackend)
+    monkeypatch.setattr("touchstone.cli._live_monitor", _fake_live_monitor)
+    monkeypatch.setattr("touchstone.cli._hold_monitor", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", _FakeJudgeBackend)
 
 
 def test_judge_web_writes_full_event_stream(tmp_path, monkeypatch):
@@ -206,7 +206,7 @@ def test_judge_web_writes_full_event_stream(tmp_path, monkeypatch):
 
 
 def test_judge_model_override_replaces_config_model():
-    from ramcheck.judge import JudgeConfig, JudgeEndpoint
+    from touchstone.judge import JudgeConfig, JudgeEndpoint
 
     jc = JudgeConfig(endpoint=JudgeEndpoint(base_url="http://x/v1"), model="qwen", temperature=0.0)
 

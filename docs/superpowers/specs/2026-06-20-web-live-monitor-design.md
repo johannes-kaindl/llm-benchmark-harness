@@ -1,4 +1,4 @@
-# Web Live-Monitor (`ramcheck eval --web`) — Design (Ink. 3)
+# Web Live-Monitor (`touchstone eval --web`) — Design (Ink. 3)
 
 **Datum:** 2026-06-20
 **Status:** ratifiziert (Brainstorming abgeschlossen, vor Implementierungsplan)
@@ -42,7 +42,7 @@ Mehrkosten) — und trägt obendrauf asyncio-Thread-Bridge + neue Runtime-Deps. 
 ## 3 · Prozess-Topologie
 
 ```
- ramcheck eval --pack … --config … --web [--port 0] [--no-open]
+ touchstone eval --pack … --config … --web [--port 0] [--no-open]
  │
  │  (Hauptprozess — Messung, unverändert)
  ├─ run_eval(...)  ──fires──▶ on_run_start / on_cell_start / on_cell_done   (D6)
@@ -53,7 +53,7 @@ Mehrkosten) — und trägt obendrauf asyncio-Thread-Bridge + neue Runtime-Deps. 
  │     └─ schreibt responses.jsonl (append, dann Finalize-Rewrite — NICHT getailt)
  │
  └─ spawnt _WebMonitorProcess  (wie _SamplerProcess)
-        │  python -m ramcheck.webmon --bundle <run_dir> --port <p>
+        │  python -m touchstone.webmon --bundle <run_dir> --port <p>
         │  tailt events.jsonl + resources.jsonl, serviert SSE
         └─ druckt gebundenen Port auf stdout ▶ Hauptprozess öffnet Browser (webbrowser.open)
 ```
@@ -112,7 +112,7 @@ Die Writer-Closures (events.jsonl append+flush) leben im **CLI** (`eval_cmd`), n
 ## 6 · Komponenten
 
 ```
-ramcheck/webmon.py        Monitor-Subprozess-Entry (python -m ramcheck.webmon).
+touchstone/webmon.py        Monitor-Subprozess-Entry (python -m touchstone.webmon).
                           stdlib ThreadingHTTPServer, bind 127.0.0.1:<port>.
                             GET /         → statische HTML-Shell (inline CSS + Vanilla-JS EventSource)
                             GET /events   → text/event-stream: Snapshot-on-connect + Tail-Deltas
@@ -131,8 +131,8 @@ cli.py  eval_cmd          + Option --web / --port / --no-open. Wenn --web:
 ```
 
 Schwere Logik in **pure** Modulen (`events`/`tail`/`loadview`) → ohne Server testbar. Der HTTP-
-Handler ist dünner Glue. (`webmon.py`, `events.py` etc. unter `ramcheck/` oder `ramcheck/web/` — im
-Implementierungsplan festzulegen; Default: flach in `ramcheck/`, konsistent mit der Modul-Ebene.)
+Handler ist dünner Glue. (`webmon.py`, `events.py` etc. unter `touchstone/` oder `touchstone/web/` — im
+Implementierungsplan festzulegen; Default: flach in `touchstone/`, konsistent mit der Modul-Ebene.)
 
 ## 7 · Fehlerbehandlung & Kanten
 
@@ -191,10 +191,10 @@ Finalize) · `throttle_source`-Feld im Sampler.
 
 ## 11 · Datei-Manifest (neu/geändert)
 
-- **neu:** `ramcheck/webmon.py`, `ramcheck/events.py`, `ramcheck/tail.py`, `ramcheck/loadview.py`
-  (oder gebündelt unter `ramcheck/web/` — Plan-Entscheidung)
-- **neu:** statische Monitor-Shell (HTML/CSS/JS — inline in `webmon.py` oder `ramcheck/web/static/`)
-- **geändert:** `ramcheck/qualrun.py` (3 optionale Callbacks), `ramcheck/runner.py`
-  (`_WebMonitorProcess`), `ramcheck/cli.py` (`eval_cmd`: `--web`/`--port`/`--no-open` + Wiring)
+- **neu:** `touchstone/webmon.py`, `touchstone/events.py`, `touchstone/tail.py`, `touchstone/loadview.py`
+  (oder gebündelt unter `touchstone/web/` — Plan-Entscheidung)
+- **neu:** statische Monitor-Shell (HTML/CSS/JS — inline in `webmon.py` oder `touchstone/web/static/`)
+- **geändert:** `touchstone/qualrun.py` (3 optionale Callbacks), `touchstone/runner.py`
+  (`_WebMonitorProcess`), `touchstone/cli.py` (`eval_cmd`: `--web`/`--port`/`--no-open` + Wiring)
 - **geändert:** `AGENTS.md` (§9), Tests unter `tests/`
 - **unverändert:** keine `pyproject.toml`-Deps (stdlib-only)

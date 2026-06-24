@@ -1,6 +1,6 @@
 import json
 
-from ramcheck.loadview import latest_load
+from touchstone.loadview import latest_load
 
 
 def _write(p, rows):

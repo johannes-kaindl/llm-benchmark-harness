@@ -1,10 +1,10 @@
-# GUI-Steuerzentrale (`ramcheck gui`) — Implementation Plan
+# GUI-Steuerzentrale (`touchstone gui`) — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a persistent, local benchmarking control-center (`ramcheck gui`) as a walking skeleton through all 7 stations (configure → start → watch live → evaluate → compare → export).
+**Goal:** Build a persistent, local benchmarking control-center (`touchstone gui`) as a walking skeleton through all 7 stations (configure → start → watch live → evaluate → compare → export).
 
-**Architecture:** A long-lived FastAPI server (optional `[gui]` extra) that **spawns** `ramcheck eval/judge` as subprocesses (out-of-process control-plane), tails their `events.jsonl` for live progress, and reuses the existing pure functions (`load_pack`, `scorecard`, `aggregate`, `build_view`). `runs/` stays the SSOT; the only new state is a transient **Run-Sentinel** (`run.json`) that triples as run_dir-handle, cross-process one-run lock, and discovery anchor.
+**Architecture:** A long-lived FastAPI server (optional `[gui]` extra) that **spawns** `touchstone eval/judge` as subprocesses (out-of-process control-plane), tails their `events.jsonl` for live progress, and reuses the existing pure functions (`load_pack`, `scorecard`, `aggregate`, `build_view`). `runs/` stays the SSOT; the only new state is a transient **Run-Sentinel** (`run.json`) that triples as run_dir-handle, cross-process one-run lock, and discovery anchor.
 
 **Tech Stack:** Python 3.12 · FastAPI/Starlette · uvicorn · Jinja2 · HTMX/Alpine (vendored) · pytest/mypy/ruff. Spec: [`docs/superpowers/specs/2026-06-21-gui-steuerzentrale-design.md`](../specs/2026-06-21-gui-steuerzentrale-design.md).
 
@@ -14,18 +14,18 @@
 
 | File | Responsibility |
 |---|---|
-| `ramcheck/cli.py` (modify) | add `--run-dir`/`--emit-events` to `eval`; decouple event-writers from `_live_monitor`; add lazy `gui` command; move `_master_rows` out |
-| `ramcheck/scorecard.py` (modify) | host the now-public `master_rows()` helper (shared by CLI + GUI) |
-| `ramcheck/gui/__init__.py` (new) | package marker |
-| `ramcheck/gui/control.py` (new) | Run-Sentinel I/O + `ProcessLauncher` protocol/impl + `RunRegistry` (one-run lock) |
-| `ramcheck/gui/bundles.py` (new) | discovery/classification of `runs/` + per-bundle verdict recompute |
-| `ramcheck/gui/live.py` (new) | tail + `build_view` → live view dicts (SSE source) |
-| `ramcheck/gui/app.py` (new) | FastAPI factory: the 7 station routes + start/stop/SSE |
-| `ramcheck/gui/templates/` (new) | Jinja2 app-shell + station fragments |
-| `ramcheck/gui/static/` (new) | vendored htmx.min.js, alpine.min.js, app.css |
+| `touchstone/cli.py` (modify) | add `--run-dir`/`--emit-events` to `eval`; decouple event-writers from `_live_monitor`; add lazy `gui` command; move `_master_rows` out |
+| `touchstone/scorecard.py` (modify) | host the now-public `master_rows()` helper (shared by CLI + GUI) |
+| `touchstone/gui/__init__.py` (new) | package marker |
+| `touchstone/gui/control.py` (new) | Run-Sentinel I/O + `ProcessLauncher` protocol/impl + `RunRegistry` (one-run lock) |
+| `touchstone/gui/bundles.py` (new) | discovery/classification of `runs/` + per-bundle verdict recompute |
+| `touchstone/gui/live.py` (new) | tail + `build_view` → live view dicts (SSE source) |
+| `touchstone/gui/app.py` (new) | FastAPI factory: the 7 station routes + start/stop/SSE |
+| `touchstone/gui/templates/` (new) | Jinja2 app-shell + station fragments |
+| `touchstone/gui/static/` (new) | vendored htmx.min.js, alpine.min.js, app.css |
 | `pyproject.toml` (modify) | `[gui]` optional-dependency group |
 | `tests/test_gui_*.py` (new) | per-module tests (core ones run without FastAPI; route tests skip if `[gui]` missing) |
-| `AGENTS.md` (modify) | `ramcheck gui` command + architecture notes |
+| `AGENTS.md` (modify) | `touchstone gui` command + architecture notes |
 
 Tasks are ordered so the **greenfield core (Sentinel + control-plane)** lands first, then discovery/live, then the FastAPI surface, then the front-end, then wiring + smoke.
 
@@ -36,7 +36,7 @@ Tasks are ordered so the **greenfield core (Sentinel + control-plane)** lands fi
 **Why:** Today `eval_cmd` invents `base_out / f"{ts}_eval_{pk.id}"` itself; the GUI must know the run_dir at spawn time to tail it. Add an option that pins the exact dir. (`judge` already takes `--bundle` as its dir — no change needed there.)
 
 **Files:**
-- Modify: `ramcheck/cli.py:510-531` (eval_cmd signature + run_dir resolution)
+- Modify: `touchstone/cli.py:510-531` (eval_cmd signature + run_dir resolution)
 - Test: `tests/test_gui_cli_runargs.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -45,7 +45,7 @@ Tasks are ordered so the **greenfield core (Sentinel + control-plane)** lands fi
 # tests/test_gui_cli_runargs.py
 from typer.testing import CliRunner
 
-from ramcheck.cli import app
+from touchstone.cli import app
 
 runner = CliRunner()
 
@@ -58,9 +58,9 @@ def test_eval_run_dir_option_pins_exact_dir(tmp_path, monkeypatch):
         captured["run_dir"] = run_dir
         return []
 
-    monkeypatch.setattr("ramcheck.cli.run_eval", fake_run_eval)
-    monkeypatch.setattr("ramcheck.cli._finalize_eval_bundle", lambda *a, **k: None)
-    monkeypatch.setattr("ramcheck.cli._make_client", lambda cfg: object())
+    monkeypatch.setattr("touchstone.cli.run_eval", fake_run_eval)
+    monkeypatch.setattr("touchstone.cli._finalize_eval_bundle", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli._make_client", lambda cfg: object())
 
     target = tmp_path / "my_exact_run"
     res = runner.invoke(
@@ -92,14 +92,14 @@ Replace the run_dir resolution block (`cli.py:525-531`) with:
 ```python
     if resume is not None:
         run_dir = resume
-        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/] [dim](resume)[/]")
+        console.print(f"[bold]touchstone eval[/] [{pk.id}] → [cyan]{run_dir}[/] [dim](resume)[/]")
     elif run_dir_opt is not None:
         run_dir = run_dir_opt
-        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
+        console.print(f"[bold]touchstone eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
     else:
         base_out = out or cfg.output_path()
         run_dir = base_out / f"{_timestamp()}_eval_{pk.id}"
-        console.print(f"[bold]ramcheck eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
+        console.print(f"[bold]touchstone eval[/] [{pk.id}] → [cyan]{run_dir}[/]")
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -110,7 +110,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/test_gui_cli_runargs.py
+git add touchstone/cli.py tests/test_gui_cli_runargs.py
 git commit -m "feat(cli): eval --run-dir for host-pinned run dir (GUI control-plane)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -123,7 +123,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** The GUI tails `events.jsonl` itself (no second HTTP server). Today the event-writers are lexically fused inside `with _live_monitor(...)`. Decouple them so `--emit-events` writes events **without** spawning webmon, and use **truncate** mode for that path (fixes the `finished=True` latch on resume). The no-flag default path stays byte-identical.
 
 **Files:**
-- Modify: `ramcheck/cli.py` — `_eval_event_writers` (add `append` param), `eval_cmd` (`--emit-events`, restructured emit path)
+- Modify: `touchstone/cli.py` — `_eval_event_writers` (add `append` param), `eval_cmd` (`--emit-events`, restructured emit path)
 - Test: `tests/test_gui_cli_runargs.py` (extend), reuse `tests/test_eval_web.py` as the byte-identity guard
 
 - [ ] **Step 1: Write the failing tests**
@@ -133,7 +133,7 @@ Append to `tests/test_gui_cli_runargs.py`:
 ```python
 from types import SimpleNamespace
 
-from ramcheck.cli import _eval_event_writers
+from touchstone.cli import _eval_event_writers
 
 
 def test_eval_event_writers_truncate_mode_overwrites(tmp_path):
@@ -151,7 +151,7 @@ def test_eval_emit_events_writes_events_without_monitor(tmp_path, monkeypatch):
     """--emit-events writes events.jsonl but never spawns _live_monitor."""
     spawned = {"monitor": False}
     monkeypatch.setattr(
-        "ramcheck.cli._live_monitor",
+        "touchstone.cli._live_monitor",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("monitor must not spawn")),
     )
 
@@ -161,9 +161,9 @@ def test_eval_emit_events_writes_events_without_monitor(tmp_path, monkeypatch):
             on_run_start(1)
         return []
 
-    monkeypatch.setattr("ramcheck.cli.run_eval", fake_run_eval)
-    monkeypatch.setattr("ramcheck.cli._finalize_eval_bundle", lambda *a, **k: None)
-    monkeypatch.setattr("ramcheck.cli._make_client", lambda cfg: object())
+    monkeypatch.setattr("touchstone.cli.run_eval", fake_run_eval)
+    monkeypatch.setattr("touchstone.cli._finalize_eval_bundle", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli._make_client", lambda cfg: object())
 
     target = tmp_path / "run1"
     res = runner.invoke(
@@ -260,13 +260,13 @@ Expected: PASS — new behavior works AND the existing `--web` writer tests stil
 
 - [ ] **Step 6: Full suite + types**
 
-Run: `uv run pytest -q && uv run mypy ramcheck/`
+Run: `uv run pytest -q && uv run mypy touchstone/`
 Expected: all green (no regression in the no-flag default path).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ramcheck/cli.py tests/test_gui_cli_runargs.py
+git add touchstone/cli.py tests/test_gui_cli_runargs.py
 git commit -m "feat(cli): eval --emit-events (writers without monitor) + truncate-per-spawn
 
 Decouples the event-writers from the _live_monitor context so the GUI can tail
@@ -283,16 +283,16 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** Both Station 1 (overview verdict badge) and Station 5 (result view) recompute the per-(model,variant) verdict. Lift `cli._master_rows` to a public `scorecard.master_rows` so GUI and CLI share one implementation (no duplicate scoring).
 
 **Files:**
-- Modify: `ramcheck/scorecard.py` (add `master_rows`), `ramcheck/cli.py` (import + delete local, keep `_master_rows` as thin alias for back-compat of the judge path)
+- Modify: `touchstone/scorecard.py` (add `master_rows`), `touchstone/cli.py` (import + delete local, keep `_master_rows` as thin alias for back-compat of the judge path)
 - Test: `tests/test_gui_master_rows.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_gui_master_rows.py
-from ramcheck import scorecard
-from ramcheck.pack import load_pack
-from ramcheck.results import EvalResponse, ModelReport, Verdict
+from touchstone import scorecard
+from touchstone.pack import load_pack
+from touchstone.results import EvalResponse, ModelReport, Verdict
 
 
 def _resp(model="m", variant="baseline"):
@@ -377,13 +377,13 @@ def _master_rows(
 
 - [ ] **Step 5: Run tests + types + the judge-monitor regression**
 
-Run: `uv run pytest tests/test_gui_master_rows.py tests/test_cli_judge_web.py -q && uv run mypy ramcheck/`
+Run: `uv run pytest tests/test_gui_master_rows.py tests/test_cli_judge_web.py -q && uv run mypy touchstone/`
 Expected: PASS (judge path unchanged, new helper green).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ramcheck/scorecard.py ramcheck/cli.py tests/test_gui_master_rows.py
+git add touchstone/scorecard.py touchstone/cli.py tests/test_gui_master_rows.py
 git commit -m "refactor(scorecard): promote master_rows to public (shared by CLI + GUI)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -391,13 +391,13 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 4: `[gui]` extra + `ramcheck gui` lazy command
+## Task 4: `[gui]` extra + `touchstone gui` lazy command
 
-**Why:** GUI deps must be optional; core/CLI/CI must run without FastAPI. `ramcheck gui` lazily imports the server and prints an install hint if the extra is missing.
+**Why:** GUI deps must be optional; core/CLI/CI must run without FastAPI. `touchstone gui` lazily imports the server and prints an install hint if the extra is missing.
 
 **Files:**
-- Modify: `pyproject.toml` (`[gui]` group), `ramcheck/cli.py` (gui command)
-- Create: `ramcheck/gui/__init__.py`
+- Modify: `pyproject.toml` (`[gui]` group), `touchstone/cli.py` (gui command)
+- Create: `touchstone/gui/__init__.py`
 - Test: `tests/test_gui_cli_command.py`
 
 - [ ] **Step 1: Add the optional-dependency group**
@@ -405,7 +405,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 In `pyproject.toml` under `[project.optional-dependencies]`, after `tokenizer = [...]`:
 
 ```toml
-# Local control-center web UI (ramcheck gui). Build-free: vendored HTMX/Alpine assets.
+# Local control-center web UI (touchstone gui). Build-free: vendored HTMX/Alpine assets.
 gui = [
     "fastapi>=0.110",
     "uvicorn>=0.29",
@@ -417,8 +417,8 @@ gui = [
 - [ ] **Step 2: Create the package marker**
 
 ```python
-# ramcheck/gui/__init__.py
-"""Optional web control-center (ramcheck gui). Imported only when the server runs;
+# touchstone/gui/__init__.py
+"""Optional web control-center (touchstone gui). Imported only when the server runs;
 the harness core never imports this package."""
 ```
 
@@ -428,19 +428,19 @@ the harness core never imports this package."""
 # tests/test_gui_cli_command.py
 from typer.testing import CliRunner
 
-from ramcheck.cli import app
+from touchstone.cli import app
 
 runner = CliRunner()
 
 
 def test_gui_command_without_extra_prints_install_hint(monkeypatch):
-    """If FastAPI isn't importable, `ramcheck gui` exits 1 with an install hint, no traceback."""
+    """If FastAPI isn't importable, `touchstone gui` exits 1 with an install hint, no traceback."""
     import builtins
 
     real_import = builtins.__import__
 
     def block_gui(name, *a, **k):
-        if name.startswith("ramcheck.gui.app"):
+        if name.startswith("touchstone.gui.app"):
             raise ImportError("No module named 'fastapi'")
         return real_import(name, *a, **k)
 
@@ -468,7 +468,7 @@ def gui(
 ) -> None:
     """Launch the local web control-center (requires the [gui] extra)."""
     try:
-        from ramcheck.gui.app import serve
+        from touchstone.gui.app import serve
     except ImportError:
         console.print(
             "[red]GUI-Abhängigkeiten fehlen.[/] Installiere sie mit "
@@ -489,8 +489,8 @@ Expected: PASS.
 
 ```bash
 uv sync --extra gui
-git add pyproject.toml uv.lock ramcheck/gui/__init__.py ramcheck/cli.py tests/test_gui_cli_command.py
-git commit -m "feat(cli): ramcheck gui command + optional [gui] extra (lazy import)
+git add pyproject.toml uv.lock touchstone/gui/__init__.py touchstone/cli.py tests/test_gui_cli_command.py
+git commit -m "feat(cli): touchstone gui command + optional [gui] extra (lazy import)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -502,7 +502,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** The sentinel (`run.json` in the run dir) is the linchpin: run_dir handle + cross-process one-run lock + discovery anchor. Pure file I/O + liveness check, fully unit-testable.
 
 **Files:**
-- Create: `ramcheck/gui/control.py` (sentinel part)
+- Create: `touchstone/gui/control.py` (sentinel part)
 - Test: `tests/test_gui_control_sentinel.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -511,7 +511,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 # tests/test_gui_control_sentinel.py
 import os
 
-from ramcheck.gui import control
+from touchstone.gui import control
 
 
 def test_write_read_roundtrip(tmp_path):
@@ -558,14 +558,14 @@ def test_mark_and_clear(tmp_path):
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_gui_control_sentinel.py -v`
-Expected: FAIL — `ramcheck.gui.control` does not exist.
+Expected: FAIL — `touchstone.gui.control` does not exist.
 
 - [ ] **Step 3: Implement the sentinel part of `control.py`**
 
 ```python
-# ramcheck/gui/control.py
+# touchstone/gui/control.py
 """Out-of-process control-plane for the GUI: a run-sentinel (run.json) + a registry that
-spawns/stops ramcheck measurement subprocesses and enforces one-run-at-a-time.
+spawns/stops touchstone measurement subprocesses and enforces one-run-at-a-time.
 
 The sentinel is transient steuer-state, NOT measurement truth (runs/ stays SSOT). It lives
 in the active run dir and triples as: (1) the run_dir handle, (2) a cross-process lock that
@@ -660,8 +660,8 @@ Expected: PASS.
 - [ ] **Step 5: Types + commit**
 
 ```bash
-uv run mypy ramcheck/gui/
-git add ramcheck/gui/control.py tests/test_gui_control_sentinel.py
+uv run mypy touchstone/gui/
+git add touchstone/gui/control.py tests/test_gui_control_sentinel.py
 git commit -m "feat(gui): run-sentinel (run.json) — run_dir handle + lock + discovery anchor
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -674,7 +674,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** The registry chooses the run_dir host-side, writes the sentinel, spawns the subprocess via an injectable `ProcessLauncher` (real = Popen; fake = test), and enforces G8 via the sentinel lock (survives GUI restart).
 
 **Files:**
-- Modify: `ramcheck/gui/control.py` (add launcher + registry)
+- Modify: `touchstone/gui/control.py` (add launcher + registry)
 - Test: `tests/test_gui_control_registry.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -683,7 +683,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 # tests/test_gui_control_registry.py
 import pytest
 
-from ramcheck.gui import control
+from touchstone.gui import control
 
 
 class FakeLauncher:
@@ -768,7 +768,7 @@ Expected: FAIL — `RunRegistry`, `RunInProgress`, `ProcessLauncher` not defined
 
 - [ ] **Step 3: Implement launcher + registry**
 
-Append to `ramcheck/gui/control.py`:
+Append to `touchstone/gui/control.py`:
 
 ```python
 import subprocess
@@ -797,13 +797,13 @@ class ProcessLauncher(Protocol):
 
 
 class RealProcessLauncher:
-    """Spawns `sys.executable -m ramcheck …` (inherits the GUI's venv/interpreter)."""
+    """Spawns `sys.executable -m touchstone …` (inherits the GUI's venv/interpreter)."""
 
     def __init__(self) -> None:
         self._procs: dict[int, subprocess.Popen[bytes]] = {}
 
     def spawn(self, argv: list[str]) -> int:
-        proc = subprocess.Popen([sys.executable, "-m", "ramcheck", *argv])
+        proc = subprocess.Popen([sys.executable, "-m", "touchstone", *argv])
         self._procs[proc.pid] = proc
         return proc.pid
 
@@ -874,7 +874,7 @@ class RunRegistry:
         return RunHandle("judge", bundle, pid)
 
     def _new_run_dir(self, pack_path: str) -> Path:
-        from ramcheck.pack import load_pack
+        from touchstone.pack import load_pack
         pk = load_pack(pack_path)
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         return self.runs_dir / f"{ts}_eval_{pk.id}"
@@ -905,7 +905,7 @@ In `judge()` add `emit_events: bool = typer.Option(False, "--emit-events", ...)`
 # add to tests/test_gui_cli_runargs.py
 def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "ramcheck.cli._live_monitor",
+        "touchstone.cli._live_monitor",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no monitor")),
     )
     # minimal bundle
@@ -913,13 +913,13 @@ def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
     b.mkdir()
     (b / "bundle.json").write_text('{"pack_path":"packs/ndassist.yaml","host":{}}', encoding="utf-8")
     (b / "responses.jsonl").write_text("", encoding="utf-8")
-    monkeypatch.setattr("ramcheck.cli.load_responses_jsonl", lambda p: [])
-    monkeypatch.setattr("ramcheck.cli._judge_and_persist", lambda *a, **k: ([], []))
-    monkeypatch.setattr("ramcheck.cli._render_judge_scorecard", lambda *a, **k: None)
+    monkeypatch.setattr("touchstone.cli.load_responses_jsonl", lambda p: [])
+    monkeypatch.setattr("touchstone.cli._judge_and_persist", lambda *a, **k: ([], []))
+    monkeypatch.setattr("touchstone.cli._render_judge_scorecard", lambda *a, **k: None)
     monkeypatch.setattr(
-        "ramcheck.cli.OpenAIJudgeBackend", lambda *a, **k: object()
+        "touchstone.cli.OpenAIJudgeBackend", lambda *a, **k: object()
     )
-    monkeypatch.setattr("ramcheck.cli.load_judge_config", lambda p: __import__("types").SimpleNamespace(
+    monkeypatch.setattr("touchstone.cli.load_judge_config", lambda p: __import__("types").SimpleNamespace(
         endpoint=__import__("types").SimpleNamespace(base_url="x", api_key="y"), model="m", temperature=0.0))
     res = runner.invoke(app, ["judge", "--bundle", str(b), "--judge-config", "judge.yaml", "--emit-events"])
     assert res.exit_code == 0, res.output
@@ -928,13 +928,13 @@ def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
 
 - [ ] **Step 5: Run tests + types**
 
-Run: `uv run pytest tests/test_gui_control_registry.py tests/test_gui_cli_runargs.py -q && uv run mypy ramcheck/`
+Run: `uv run pytest tests/test_gui_control_registry.py tests/test_gui_cli_runargs.py -q && uv run mypy touchstone/`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ramcheck/gui/control.py ramcheck/cli.py tests/test_gui_control_registry.py tests/test_gui_cli_runargs.py
+git add touchstone/gui/control.py touchstone/cli.py tests/test_gui_control_registry.py tests/test_gui_cli_runargs.py
 git commit -m "feat(gui): ProcessLauncher + RunRegistry (one-run sentinel lock) + judge --emit-events
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -947,7 +947,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** Station 1/6 need a classified list of `runs/`; Station 5 needs per-bundle detail with the recomputed verdict. `bundle.json` carries no status/verdict — both are derived.
 
 **Files:**
-- Create: `ramcheck/gui/bundles.py`
+- Create: `touchstone/gui/bundles.py`
 - Test: `tests/test_gui_bundles.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -956,7 +956,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 # tests/test_gui_bundles.py
 import json
 
-from ramcheck.gui import bundles
+from touchstone.gui import bundles
 
 
 def _mk(d, *, bundle=False, scores=False, responses=False, sentinel_state=None):
@@ -1017,7 +1017,7 @@ Expected: FAIL — module missing.
 - [ ] **Step 3: Implement `bundles.py`**
 
 ```python
-# ramcheck/gui/bundles.py
+# touchstone/gui/bundles.py
 """Read-only discovery of runs/: classify each dir and (for judged bundles) recompute the
 verdict via the shared scorecard math. bundle.json carries neither status nor verdict."""
 
@@ -1028,7 +1028,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ramcheck.gui import control
+from touchstone.gui import control
 
 
 @dataclass
@@ -1095,10 +1095,10 @@ def _judged_summary(run_dir: Path) -> BundleSummary:
 
 def _recompute_verdict(run_dir: Path) -> tuple[str | None, bool | None]:
     """Recompute the (best) verdict via the shared scorecard.master_rows."""
-    from ramcheck import scorecard
-    from ramcheck.judge import load_judgements_jsonl
-    from ramcheck.pack import load_pack
-    from ramcheck.qualrun import load_responses_jsonl
+    from touchstone import scorecard
+    from touchstone.judge import load_judgements_jsonl
+    from touchstone.pack import load_pack
+    from touchstone.qualrun import load_responses_jsonl
 
     m = _manifest(run_dir)
     pack_path = m.get("pack_path")
@@ -1122,7 +1122,7 @@ def _reports_from_scores(run_dir: Path, pk: Any) -> list[Any]:
     """Reconstruct ModelReport.dim_scores from scores.csv (metric_type='dimension' rows)."""
     import csv
 
-    from ramcheck.results import ModelReport
+    from touchstone.results import ModelReport
 
     p = run_dir / "scores.csv"
     if not p.exists():
@@ -1179,8 +1179,8 @@ Expected: PASS (or skip if the bundle isn't present).
 - [ ] **Step 6: Types + commit**
 
 ```bash
-uv run mypy ramcheck/gui/
-git add ramcheck/gui/bundles.py tests/test_gui_bundles.py
+uv run mypy touchstone/gui/
+git add touchstone/gui/bundles.py tests/test_gui_bundles.py
 git commit -m "feat(gui): bundle discovery/classification + verdict recompute (scorecard.master_rows)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -1193,15 +1193,15 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** The SSE source. Reuses `tail.read_new` + `events/judge_events.build_view` verbatim (no aggregation duplicated). Per spawn, eval tails truncate-fresh `events.jsonl` (offset 0); judge tails `judge_events.jsonl`.
 
 **Files:**
-- Create: `ramcheck/gui/live.py`
+- Create: `touchstone/gui/live.py`
 - Test: `tests/test_gui_live.py`
 
 - [ ] **Step 1: Write the failing tests**
 
 ```python
 # tests/test_gui_live.py
-from ramcheck import events as ev
-from ramcheck.gui import live
+from touchstone import events as ev
+from touchstone.gui import live
 
 
 def test_eval_stream_folds_events(tmp_path):
@@ -1225,7 +1225,7 @@ def test_stream_tolerates_missing_file(tmp_path):
 
 
 def test_judge_stream_uses_judge_view(tmp_path):
-    from ramcheck import judge_events as je
+    from touchstone import judge_events as je
     p = tmp_path / "judge_events.jsonl"
     p.write_text(je.dumps(je.judge_start_event(1.0, 3)) + "\n", encoding="utf-8")
     stream = live.LiveStream(p, kind="judge")
@@ -1240,7 +1240,7 @@ Expected: FAIL — module missing.
 - [ ] **Step 3: Implement `live.py`**
 
 ```python
-# ramcheck/gui/live.py
+# touchstone/gui/live.py
 """Live SSE source: tail an event file and fold it with the existing pure build_view.
 The aggregation math (histogram, ETA, dedup) is reused verbatim; only the transport is new."""
 
@@ -1249,9 +1249,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ramcheck import events as events_mod
-from ramcheck import judge_events as judge_events_mod
-from ramcheck import tail
+from touchstone import events as events_mod
+from touchstone import judge_events as judge_events_mod
+from touchstone import tail
 
 _VIEWS = {"eval": events_mod, "judge": judge_events_mod}
 
@@ -1290,8 +1290,8 @@ Expected: PASS.
 - [ ] **Step 5: Types + commit**
 
 ```bash
-uv run mypy ramcheck/gui/
-git add ramcheck/gui/live.py tests/test_gui_live.py
+uv run mypy touchstone/gui/
+git add touchstone/gui/live.py tests/test_gui_live.py
 git commit -m "feat(gui): LiveStream — tail + build_view reuse (SSE source)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -1304,7 +1304,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** The read half of the 7 stations. `create_app(runs_dir, registry)` returns a FastAPI app; routes render Jinja fragments from the reuse layer. Tested with `TestClient`.
 
 **Files:**
-- Create: `ramcheck/gui/app.py` (factory + read routes; templates referenced are added in Task 11 but minimal inline strings keep tests green here)
+- Create: `touchstone/gui/app.py` (factory + read routes; templates referenced are added in Task 11 but minimal inline strings keep tests green here)
 - Test: `tests/test_gui_app_read.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1318,8 +1318,8 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from ramcheck.gui import app as gui_app  # noqa: E402
-from ramcheck.gui.control import RunRegistry  # noqa: E402
+from touchstone.gui import app as gui_app  # noqa: E402
+from touchstone.gui.control import RunRegistry  # noqa: E402
 
 
 class _FakeLauncher:
@@ -1372,7 +1372,7 @@ Expected: FAIL — `create_app` missing.
 - [ ] **Step 3: Implement the factory + read routes**
 
 ```python
-# ramcheck/gui/app.py
+# touchstone/gui/app.py
 """FastAPI control-center. create_app() wires the 7 station routes over the reuse layer.
 Templates/static are mounted from this package; routes return HTMX-friendly HTML."""
 
@@ -1386,17 +1386,17 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ramcheck import aggregate as aggregate_mod
-from ramcheck.gui import bundles
-from ramcheck.gui.control import RunRegistry
-from ramcheck.pack import load_pack
+from touchstone import aggregate as aggregate_mod
+from touchstone.gui import bundles
+from touchstone.gui.control import RunRegistry
+from touchstone.pack import load_pack
 
 _PKG = Path(__file__).parent
 _templates = Jinja2Templates(directory=str(_PKG / "templates"))
 
 
 def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
-    app = FastAPI(title="ramcheck", docs_url=None, redoc_url=None)
+    app = FastAPI(title="touchstone", docs_url=None, redoc_url=None)
     static_dir = _PKG / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -1448,11 +1448,11 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
 - [ ] **Step 4: Add the minimal templates needed for these tests to pass**
 
-Create `ramcheck/gui/templates/base.html`, `overview.html`, `pack.html`, `result.html`, `compare.html` as minimal valid pages (Task 11 styles them). Minimum to pass the assertions:
+Create `touchstone/gui/templates/base.html`, `overview.html`, `pack.html`, `result.html`, `compare.html` as minimal valid pages (Task 11 styles them). Minimum to pass the assertions:
 
 ```html
-<!-- ramcheck/gui/templates/base.html -->
-<!doctype html><html><head><meta charset="utf-8"><title>ramcheck</title>
+<!-- touchstone/gui/templates/base.html -->
+<!doctype html><html><head><meta charset="utf-8"><title>touchstone</title>
 <script src="/static/htmx.min.js"></script><link rel="stylesheet" href="/static/app.css"></head>
 <body><nav><a href="/">Übersicht</a> · <a href="/compare">Vergleich</a></nav>
 <main>{% block body %}{% endblock %}</main></body></html>
@@ -1495,8 +1495,8 @@ Expected: PASS.
 - [ ] **Step 6: Types + commit**
 
 ```bash
-uv run mypy ramcheck/gui/
-git add ramcheck/gui/app.py ramcheck/gui/templates/ tests/test_gui_app_read.py
+uv run mypy touchstone/gui/
+git add touchstone/gui/app.py touchstone/gui/templates/ tests/test_gui_app_read.py
 git commit -m "feat(gui): FastAPI factory + read routes (overview/pack/result/compare/export)
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -1509,7 +1509,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** Station 3 (steering) + Station 4 (live). POST endpoints drive the registry; GET `/live/{name}` streams the folded view.
 
 **Files:**
-- Modify: `ramcheck/gui/app.py` (replace `_register_control_routes`)
+- Modify: `touchstone/gui/app.py` (replace `_register_control_routes`)
 - Test: `tests/test_gui_app_control.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1521,8 +1521,8 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-from ramcheck.gui import app as gui_app  # noqa: E402
-from ramcheck.gui.control import RunInProgress, RunRegistry  # noqa: E402
+from touchstone.gui import app as gui_app  # noqa: E402
+from touchstone.gui.control import RunInProgress, RunRegistry  # noqa: E402
 
 
 class _FakeReg(RunRegistry):
@@ -1530,7 +1530,7 @@ class _FakeReg(RunRegistry):
         self.started = []
         self.stopped = []
     def start_eval(self, *, pack_path, config_path, resume_dir=None):
-        from ramcheck.gui.control import RunHandle
+        from touchstone.gui.control import RunHandle
         from pathlib import Path
         self.started.append(("eval", pack_path, config_path))
         return RunHandle("eval", Path("runs/x"), 1)
@@ -1577,8 +1577,8 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
     from fastapi import Form, HTTPException
     from fastapi.responses import StreamingResponse
 
-    from ramcheck.gui import live as live_mod
-    from ramcheck.gui.control import RunInProgress
+    from touchstone.gui import live as live_mod
+    from touchstone.gui.control import RunInProgress
 
     @app.post("/runs/eval")
     def start_eval(pack_path: str = Form(...), config_path: str = Form(...)) -> Any:
@@ -1598,7 +1598,7 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
 
     @app.post("/runs/stop")
     def stop_run(name: str = Form(...)) -> Any:
-        from ramcheck.gui.control import RunHandle, read_sentinel
+        from touchstone.gui.control import RunHandle, read_sentinel
         s = read_sentinel(runs_dir / name)
         if s is None:
             raise HTTPException(status_code=404)
@@ -1630,8 +1630,8 @@ Expected: PASS.
 - [ ] **Step 5: Full GUI suite + types + commit**
 
 ```bash
-uv run pytest tests/test_gui_*.py -q && uv run mypy ramcheck/gui/
-git add ramcheck/gui/app.py tests/test_gui_app_control.py
+uv run pytest tests/test_gui_*.py -q && uv run mypy touchstone/gui/
+git add touchstone/gui/app.py tests/test_gui_app_control.py
 git commit -m "feat(gui): control routes (start/stop/resume) + live SSE stream
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -1644,17 +1644,17 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Why:** The net-new presentation half (G11) and the `serve()` entry point Task 4's command imports. Not TDD — route tests already assert content; this is the styled UI from the approved mockup.
 
 **Files:**
-- Create: `ramcheck/gui/static/htmx.min.js`, `alpine.min.js`, `app.css`
-- Modify: `ramcheck/gui/templates/*.html` (style to the mockup: sidebar nav, run card, badge table)
-- Modify: `ramcheck/gui/app.py` (add `serve()`)
+- Create: `touchstone/gui/static/htmx.min.js`, `alpine.min.js`, `app.css`
+- Modify: `touchstone/gui/templates/*.html` (style to the mockup: sidebar nav, run card, badge table)
+- Modify: `touchstone/gui/app.py` (add `serve()`)
 
 - [ ] **Step 1: Vendor the JS assets**
 
 ```bash
-mkdir -p ramcheck/gui/static
-curl -sL https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js -o ramcheck/gui/static/htmx.min.js
-curl -sL https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js -o ramcheck/gui/static/alpine.min.js
-test -s ramcheck/gui/static/htmx.min.js && test -s ramcheck/gui/static/alpine.min.js && echo OK
+mkdir -p touchstone/gui/static
+curl -sL https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js -o touchstone/gui/static/htmx.min.js
+curl -sL https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js -o touchstone/gui/static/alpine.min.js
+test -s touchstone/gui/static/htmx.min.js && test -s touchstone/gui/static/alpine.min.js && echo OK
 ```
 
 (If offline, the plan's executor should note it and fall back to a `<script>` CDN tag in `base.html` with a TODO to vendor later — but prefer vendored.)
@@ -1667,14 +1667,14 @@ test -s ramcheck/gui/static/htmx.min.js && test -s ramcheck/gui/static/alpine.mi
 
 ```python
 def serve(*, runs_dir: Path, port: int = 0, open_browser: bool = True) -> None:
-    """Entry point for `ramcheck gui`: build the app, bind, optionally open the browser."""
+    """Entry point for `touchstone gui`: build the app, bind, optionally open the browser."""
     import socket
     import threading
     import webbrowser
 
     import uvicorn
 
-    from ramcheck.gui.control import RealProcessLauncher
+    from touchstone.gui.control import RealProcessLauncher
 
     registry = RunRegistry(runs_dir=runs_dir, launcher=RealProcessLauncher())
     app = create_app(runs_dir=runs_dir, registry=registry)
@@ -1693,12 +1693,12 @@ def serve(*, runs_dir: Path, port: int = 0, open_browser: bool = True) -> None:
 
 - [ ] **Step 5: Manual visual check**
 
-Run: `uv run ramcheck gui --no-open` then open the printed URL; confirm the overview renders the real `runs/` bundles with badges, the pack explorer shows the ndassist tree, and the compare table loads. (Functional smoke is Task 12.)
+Run: `uv run touchstone gui --no-open` then open the printed URL; confirm the overview renders the real `runs/` bundles with badges, the pack explorer shows the ndassist tree, and the compare table loads. (Functional smoke is Task 12.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ramcheck/gui/static/ ramcheck/gui/templates/ ramcheck/gui/app.py
+git add touchstone/gui/static/ touchstone/gui/templates/ touchstone/gui/app.py
 git commit -m "feat(gui): styled front-end (sidebar shell, stations, vendored htmx/alpine) + serve()
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
@@ -1714,29 +1714,29 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Full test suite + lint + types**
 
-Run: `uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run mypy ramcheck/`
+Run: `uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run mypy touchstone/`
 Expected: all green. Fix any fallout before proceeding.
 
 - [ ] **Step 2: Live smoke (manual, requires the M5 endpoint :1234 + judge :1234)**
 
-1. `uv run ramcheck gui` → browser opens.
+1. `uv run touchstone gui` → browser opens.
 2. Station "Konfig + Start": pick `packs/ndassist.yaml` + `config.m5.yaml` → **eval starten**. Overview shows the running card; progress climbs via SSE.
-3. **Stoppen** → process ends cleanly (no zombie: `pgrep -f "ramcheck eval"` empty). Bundle shows as crashed/resumable.
+3. **Stoppen** → process ends cleanly (no zombie: `pgrep -f "touchstone eval"` empty). Bundle shows as crashed/resumable.
 4. **Fortsetzen** → live view does NOT show false "fertig"; run completes.
 5. Pick a judge-config → **judge starten** → scorecard appears in the result view.
 6. Compare shows the aggregate; Export downloads `scorecard.md`.
-7. Restart `ramcheck gui` mid-run → overview shows "running"; a second start is refused (409).
+7. Restart `touchstone gui` mid-run → overview shows "running"; a second start is refused (409).
 
 - [ ] **Step 3: Update AGENTS.md**
 
-Add `ramcheck gui` to the Commands block and an architecture note under Gotchas:
+Add `touchstone gui` to the Commands block and an architecture note under Gotchas:
 
 ```markdown
-uv run ramcheck gui                            # local web control-center (needs the [gui] extra)
+uv run touchstone gui                            # local web control-center (needs the [gui] extra)
 ```
 
-> **The GUI is an optional `[gui]` extra and spawns measurement subprocesses.** `ramcheck gui`
-> (FastAPI + vendored HTMX/Alpine) never measures in-process: it spawns `ramcheck eval/judge`
+> **The GUI is an optional `[gui]` extra and spawns measurement subprocesses.** `touchstone gui`
+> (FastAPI + vendored HTMX/Alpine) never measures in-process: it spawns `touchstone eval/judge`
 > with `--run-dir <host-chosen>` `--emit-events` (writers without the webmon monitor) and tails
 > their `events.jsonl`. `runs/` stays SSOT; the GUI's only state is a transient **run-sentinel**
 > (`run.json`) that triples as run_dir handle, cross-process **one-run lock** (survives a GUI
@@ -1748,7 +1748,7 @@ uv run ramcheck gui                            # local web control-center (needs
 
 ```bash
 git add AGENTS.md
-git commit -m "docs(agents): ramcheck gui command + control-plane architecture notes
+git commit -m "docs(agents): touchstone gui command + control-plane architecture notes
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```

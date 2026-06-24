@@ -1,4 +1,4 @@
-from ramcheck import events as ev
+from touchstone import events as ev
 
 
 def test_constructors_have_type_tags():
@@ -77,7 +77,7 @@ def test_run_view_as_dict_is_json_safe():
 
 
 def test_build_view_folds_preflight():
-    from ramcheck.events import build_view, preflight_event
+    from touchstone.events import build_view, preflight_event
 
     ev_pf = preflight_event(
         1.0,

@@ -5,8 +5,8 @@ import os
 
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
 
 
 class _FakeLauncher:

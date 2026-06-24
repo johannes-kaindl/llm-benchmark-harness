@@ -1,6 +1,6 @@
 # Contributor License Agreement (CLA)
 
-`llm-ramcheck` (the *Project*) is published under the **GNU Affero General
+`llm-touchstone` (the *Project*) is published under the **GNU Affero General
 Public License v3.0 or later** (AGPL-3.0-or-later). To keep the Project healthy —
 and to keep a small, deliberate option open (see *Why this exists* below) — every
 contribution is accepted under the terms of this Agreement.

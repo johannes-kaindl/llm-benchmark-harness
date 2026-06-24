@@ -1,6 +1,6 @@
 import math
 
-from ramcheck import stats
+from touchstone import stats
 
 
 def test_percentile_interpolates_like_numpy():

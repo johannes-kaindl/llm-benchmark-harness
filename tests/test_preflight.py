@@ -1,6 +1,6 @@
-from ramcheck.config import ModelSpec
-from ramcheck.preflight import preflight_models
-from ramcheck.runner import StreamEvent
+from touchstone.config import ModelSpec
+from touchstone.preflight import preflight_models
+from touchstone.runner import StreamEvent
 
 
 class _FakeClient:

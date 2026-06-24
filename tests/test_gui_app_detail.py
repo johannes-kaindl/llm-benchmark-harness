@@ -6,10 +6,10 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
-from ramcheck.judge import write_reports_jsonl
-from ramcheck.results import ModelReport, Verdict
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
+from touchstone.judge import write_reports_jsonl
+from touchstone.results import ModelReport, Verdict
 
 
 class _FakeLauncher:

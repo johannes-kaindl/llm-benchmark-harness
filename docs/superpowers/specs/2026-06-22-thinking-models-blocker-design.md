@@ -56,7 +56,7 @@ blockt sie nie, bei reiner Reasoning-Ausgabe bleibt `ttft=nan` (nan-sicher in
 - **Sichtbares Antwort-Budget vom Denk-Budget trennen.** `pack.prompt.max_tokens` bleibt das
   *gemeinte* sichtbare Budget (gleich für alle Modelle → fairer Vergleich). Reasoning-Headroom
   ist ein **separater, pro-Modell** Aufschlag aufs Gesamt-Budget.
-- **DRY über CLI und GUI.** Die GUI spawnt `python -m ramcheck eval` als Subprocess; jede
+- **DRY über CLI und GUI.** Die GUI spawnt `python -m touchstone eval` als Subprocess; jede
   Logik in `run_eval` deckt damit beide Pfade ab. Surfacing läuft über die bestehende
   `events.jsonl`-Maschinerie, die die GUI ohnehin tailt.
 - **Engine-agnostisch.** `extra_body` wird roh an die OpenAI-API durchgereicht; der Harness

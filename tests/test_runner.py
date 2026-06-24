@@ -1,7 +1,7 @@
 import math
 
-from ramcheck.config import Config
-from ramcheck.runner import (
+from touchstone.config import Config
+from touchstone.runner import (
     StreamEvent,
     derive_rates,
     iter_cells,
@@ -248,7 +248,7 @@ def test_iter_cells_uses_scenario_default_max_tokens():
 
 
 def test_stream_once_forwards_extra_body():
-    from ramcheck.runner import StreamEvent, stream_once
+    from touchstone.runner import StreamEvent, stream_once
 
     seen = {}
 
@@ -277,7 +277,7 @@ def test_derive_rates_decode_window_starts_at_first_generated_token():
     # Reasoning model: first reasoning token at 0.3s, first content (TTFT) only at 5.9s,
     # e2e 5.95s. Using TTFT would give decode_window ≈ 0.05s → absurd tps. The fix starts
     # the window at the first generated (reasoning) token.
-    from ramcheck.runner import RequestOutcome, derive_rates
+    from touchstone.runner import RequestOutcome, derive_rates
 
     o = RequestOutcome(
         ttft_s=5.9,
@@ -297,7 +297,7 @@ def test_derive_rates_decode_window_starts_at_first_generated_token():
 
 def test_derive_rates_unchanged_without_reasoning():
     # No reasoning → t_reasoning_start is nan → gen_start = TTFT (legacy behavior preserved).
-    from ramcheck.runner import RequestOutcome, derive_rates
+    from touchstone.runner import RequestOutcome, derive_rates
 
     o = RequestOutcome(
         ttft_s=0.2,

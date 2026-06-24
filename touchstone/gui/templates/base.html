@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Touchstone{% block title_suffix %}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script defer src="/static/alpine.min.js"></script>
+</head>
+<body>
+  <!-- sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">touch<span>stone</span></div>
+    <span class="sidebar-section">Stationen</span>
+    <a href="/" class="nav-item{% if active == 'overview' %} active{% endif %}">1 · Übersicht</a>
+    <a href="/config" class="nav-item{% if active == 'config' %} active{% endif %}">3 · Konfig + Start</a>
+    <a href="/compare" class="nav-item{% if active == 'compare' %} active{% endif %}">6 · Vergleich</a>
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-footer">
+      <div>Touchstone gui</div>
+      <div class="text-xs muted" style="margin-top:2px">runs/ = SSOT</div>
+    </div>
+  </nav>
+
+  <!-- main -->
+  <main class="main">
+    {% block breadcrumb %}{% endblock %}
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

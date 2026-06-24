@@ -12,5 +12,5 @@ Base texts for the scenarios. German, deterministic.
   `config.m5.yaml` → `vlm.image_path`. Note: the `vlm` scenario needs a **vision-capable**
   model loaded on the endpoint (a text-only model will reject the image content).
 
-The `bodydouble` and `compose` prompt texts live in `ramcheck/prompts.py` (they are
+The `bodydouble` and `compose` prompt texts live in `touchstone/prompts.py` (they are
 short and fixed, so embedding them keeps the scenarios reproducible without file I/O).

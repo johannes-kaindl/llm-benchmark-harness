@@ -1,9 +1,9 @@
 import pytest
 
-from ramcheck.config import Config
-from ramcheck.pack import Pack
-from ramcheck.qualrun import iter_eval_cells, load_responses_jsonl, run_eval
-from ramcheck.runner import StreamEvent
+from touchstone.config import Config
+from touchstone.pack import Pack
+from touchstone.qualrun import iter_eval_cells, load_responses_jsonl, run_eval
+from touchstone.runner import StreamEvent
 
 
 def _config():
@@ -237,7 +237,7 @@ class CapturingClient:
     def stream(self, *, messages, model, max_tokens, temperature, seed, extra_body=None):
         self.seen.append({"max_tokens": max_tokens, "extra_body": extra_body})
         # reasoning-only: no delta_text, but reasoning present
-        from ramcheck.runner import StreamEvent
+        from touchstone.runner import StreamEvent
 
         yield StreamEvent(reasoning_text="denke nach…")
         yield StreamEvent(prompt_tokens=10, completion_tokens=5)
@@ -333,8 +333,8 @@ def test_run_eval_preflight_uses_longest_real_pack_prompt(tmp_path):
     # A reasoning model thinks proportionally to task complexity — a trivial synthetic smoke
     # ("2+2") would pass while the real prompts starve the budget (verified against gemma-4-12b-qat).
     # The pre-flight must smoke with a REAL pack prompt (the longest, worst case), not SMOKE_PROMPT.
-    from ramcheck.preflight import SMOKE_PROMPT
-    from ramcheck.runner import StreamEvent
+    from touchstone.preflight import SMOKE_PROMPT
+    from touchstone.runner import StreamEvent
 
     captured: list[str] = []
 

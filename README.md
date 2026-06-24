@@ -1,4 +1,4 @@
-# llm-ramcheck
+# llm-touchstone
 
 > 🇬🇧 English · [🇩🇪 Deutsch](README.de.md)
 
@@ -19,18 +19,18 @@ the config.
 ```bash
 uv sync
 # Latency benchmark — M1 → LM Studio (:1234), M5 → mlx_lm.server (:8080):
-uv run ramcheck run    --config config.m1.yaml
-uv run ramcheck embed  --config config.m5.yaml   # embedding throughput (separate)
-uv run ramcheck report --runs ./runs             # (re)build report.md from raw.csv
+uv run touchstone run    --config config.m1.yaml
+uv run touchstone embed  --config config.m5.yaml   # embedding throughput (separate)
+uv run touchstone report --runs ./runs             # (re)build report.md from raw.csv
 
 # Quality evaluation — run a use-case pack, then score it:
-uv run ramcheck eval   --pack packs/ndassist.yaml --config config.m5.yaml
-uv run ramcheck judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml
-uv run ramcheck aggregate --runs ./runs          # cross-machine Hardware×Quality table
+uv run touchstone eval   --pack packs/ndassist.yaml --config config.m5.yaml
+uv run touchstone judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.yaml
+uv run touchstone aggregate --runs ./runs          # cross-machine Hardware×Quality table
 
 # Web control-center (optional [gui] extra):
 uv sync --extra gui
-uv run ramcheck gui                              # configure → start → watch → evaluate → compare → export
+uv run touchstone gui                              # configure → start → watch → evaluate → compare → export
 ```
 
 ## Usage
@@ -56,11 +56,11 @@ LLM-as-judge into a weighted scorecard (`aggregate` rolls many bundles into one 
 table). Generation and judging are **two decoupled phases**, both incremental and resumable.
 A new use case is a new YAML, not new code.
 
-**Web control-center (`ramcheck gui`).** An optional local FastAPI server (the `[gui]` extra —
+**Web control-center (`touchstone gui`).** An optional local FastAPI server (the `[gui]` extra —
 build-free HTMX/Alpine, isolated from the measurement core) puts the whole workflow in the
 browser: see what each pack tests and how it's scored, configure and **start/stop** runs, watch
 them live, browse results, compare across machines, and export. It is an **out-of-process
-control-plane** — it spawns the same `ramcheck eval/judge` subprocesses the CLI does, so the
+control-plane** — it spawns the same `touchstone eval/judge` subprocesses the CLI does, so the
 measurement loop stays decoupled and `runs/` remains the single source of truth. Bound to
 127.0.0.1, one measurement at a time.
 

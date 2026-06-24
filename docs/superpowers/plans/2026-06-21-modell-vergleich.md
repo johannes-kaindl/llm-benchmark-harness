@@ -4,7 +4,7 @@
 
 **Goal:** Eine kontrollierte Vergleichs-Ansicht `/compare/{bundle}?axis=model|variant` innerhalb eines Bundles, die **Leistung = Qualität in Relation zu Kosten** (Speed + RAM + CPU) über drei Schichten zeigt (Effizienz-Scatter · Kopf-an-Kopf · per-Aufgabe-Drill-down).
 
-**Architecture:** Neues, pures `ramcheck/gui/compare.py` lädt ein Bundle über das bestehende `bundles.bundle_detail` (das den `master_rows`⨝`reports`-Join schon macht), gruppiert per `scorecard.model_variant_groups` entlang einer Achse (die andere Dimension wird auf einen Wert projiziert → maximal kontrolliert), berechnet Speed/RAM direkt aus den `EvalResponse`-Feldern und CPU GUI-seitig über die `[t_start,t_end]`-Fenster aus `resources.jsonl`. Eine neue Route + `compare_axis.html` + `scatter.js` rendern es; `result.html`/`overview.html` bekommen einen „↔ Vergleichen"-Link. Kein Datenmodell-Umbau, keine Änderung an `EvalResponse`/`merge`.
+**Architecture:** Neues, pures `touchstone/gui/compare.py` lädt ein Bundle über das bestehende `bundles.bundle_detail` (das den `master_rows`⨝`reports`-Join schon macht), gruppiert per `scorecard.model_variant_groups` entlang einer Achse (die andere Dimension wird auf einen Wert projiziert → maximal kontrolliert), berechnet Speed/RAM direkt aus den `EvalResponse`-Feldern und CPU GUI-seitig über die `[t_start,t_end]`-Fenster aus `resources.jsonl`. Eine neue Route + `compare_axis.html` + `scatter.js` rendern es; `result.html`/`overview.html` bekommen einen „↔ Vergleichen"-Link. Kein Datenmodell-Umbau, keine Änderung an `EvalResponse`/`merge`.
 
 **Tech Stack:** Python 3.12 · FastAPI · Jinja2 · pydantic-Pack · dataclasses · pytest (`uv run pytest`) · build-freies Inline-SVG-JS.
 
@@ -13,7 +13,7 @@
 ## Pre-flight (für den ausführenden Worker)
 
 - **Working dir:** `/Users/Shared/code/llm-benchmark-harness`. Tests laufen mit `uv run pytest` aus dem Repo-Root (cwd-relative `packs/ndassist.yaml` muss auflösen — das tut es vom Root).
-- **Gates nach jeder Task:** `uv run pytest <neue testdatei> -q`, am Ende Task 10: `uv run pytest -q` (alle), `uv run mypy ramcheck`, `uv run ruff check ramcheck tests`, `uv run ruff format --check ramcheck tests`.
+- **Gates nach jeder Task:** `uv run pytest <neue testdatei> -q`, am Ende Task 10: `uv run pytest -q` (alle), `uv run mypy touchstone`, `uv run ruff check touchstone tests`, `uv run ruff format --check touchstone tests`.
 - **Commit-Trailer:** `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - **Branch:** `feat/modell-vergleich` ist bereits ausgecheckt.
 
@@ -30,8 +30,8 @@
 - `stats.median(values: list[float]) -> float`, `stats.percentile(values: list[float], pct: float) -> float`.
 - `Pack` (Pydantic): `.dimensions` (`list[Dimension]` mit `.id,.name,.weight`), `.ko_rule` (`.dimension,.threshold,.red_flag_prompts`), `.categories`, `.all_prompts() -> list[tuple[Category,PackPrompt]]`, `.max_weighted() -> int`. `PackPrompt`: `.id,.title,.prompt,.safety_critical,.repeats`.
 - `ndassist.yaml`: dims Q1(3),Q2(2),Q3(2),Q4(2),Q5(3),Q6(3),Q7(1) → `max_weighted=80`; `ko_rule` Q6 ≤ 2, red_flag `[E1]`; Varianten `baseline`/`none`; Prompts A1..A5,B1..B5,C1..C5,D1..D4,E1..E5.
-- App: `create_app(*, runs_dir, registry)`, Modul-`render(name, request, **ctx)`, `_templates` (Jinja2, dir `ramcheck/gui/templates`), `/static` mount. `/result/{name}` confined via `(runs_dir/name).resolve()` + `is_relative_to`. Sidebar in `base.html`: „1 · Übersicht", „3 · Konfig + Start", „6 · Vergleich" (= cross-run `/compare`).
-- Test-Muster: `gui_app.create_app(runs_dir=tmp_path, registry=RunRegistry(runs_dir=tmp_path, launcher=Fake))`; `RunRegistry` aus `ramcheck.gui.control`. Pack-Konstante in Tests: `PACK = "packs/ndassist.yaml"`. `write_reports_jsonl` aus `ramcheck.judge`.
+- App: `create_app(*, runs_dir, registry)`, Modul-`render(name, request, **ctx)`, `_templates` (Jinja2, dir `touchstone/gui/templates`), `/static` mount. `/result/{name}` confined via `(runs_dir/name).resolve()` + `is_relative_to`. Sidebar in `base.html`: „1 · Übersicht", „3 · Konfig + Start", „6 · Vergleich" (= cross-run `/compare`).
+- Test-Muster: `gui_app.create_app(runs_dir=tmp_path, registry=RunRegistry(runs_dir=tmp_path, launcher=Fake))`; `RunRegistry` aus `touchstone.gui.control`. Pack-Konstante in Tests: `PACK = "packs/ndassist.yaml"`. `write_reports_jsonl` aus `touchstone.judge`.
 
 ---
 
@@ -39,12 +39,12 @@
 
 | Datei | Verantwortung |
 |---|---|
-| `ramcheck/gui/compare.py` *(neu)* | Pure Read/Aggregations-Schicht: `CompareDetail`/`CompareCell`/`DivergencePrompt`/`CellAnswer`/`AxisOptions`-Dataclasses, `compare_detail()`, `axis_options()`, `axis_options_for_dir()` + Helfer `_cpu_for_window`, `_cell_metrics`, `_relations_summary`, `_winners`, `_divergence`. |
-| `ramcheck/gui/app.py` *(ändern)* | Route `/compare/{name}` (confined, `axis`/Projektion validiert); `/result`- und `/`-Route reichen Vergleichs-Link-Daten an die Templates. |
-| `ramcheck/gui/templates/compare_axis.html` *(neu)* | 3-Schichten-Ansicht. |
-| `ramcheck/gui/static/scatter.js` *(neu)* | Build-freier Inline-SVG-Scatter (x=Decode, y=Qualität, r=Peak-RAM). |
-| `ramcheck/gui/templates/result.html` *(ändern)* | „↔ Vergleichen"-Link (nur bei >1 Achsenwert). |
-| `ramcheck/gui/templates/overview.html` *(ändern)* | „↔ Vergleichen"-Link je Zeile (nur bei >1 Achsenwert). |
+| `touchstone/gui/compare.py` *(neu)* | Pure Read/Aggregations-Schicht: `CompareDetail`/`CompareCell`/`DivergencePrompt`/`CellAnswer`/`AxisOptions`-Dataclasses, `compare_detail()`, `axis_options()`, `axis_options_for_dir()` + Helfer `_cpu_for_window`, `_cell_metrics`, `_relations_summary`, `_winners`, `_divergence`. |
+| `touchstone/gui/app.py` *(ändern)* | Route `/compare/{name}` (confined, `axis`/Projektion validiert); `/result`- und `/`-Route reichen Vergleichs-Link-Daten an die Templates. |
+| `touchstone/gui/templates/compare_axis.html` *(neu)* | 3-Schichten-Ansicht. |
+| `touchstone/gui/static/scatter.js` *(neu)* | Build-freier Inline-SVG-Scatter (x=Decode, y=Qualität, r=Peak-RAM). |
+| `touchstone/gui/templates/result.html` *(ändern)* | „↔ Vergleichen"-Link (nur bei >1 Achsenwert). |
+| `touchstone/gui/templates/overview.html` *(ändern)* | „↔ Vergleichen"-Link je Zeile (nur bei >1 Achsenwert). |
 | `tests/test_gui_compare.py` *(neu)* | Pure-Unit-Tests + Fixture-Builder `_write_compare_bundle`, `_two_model_bundle`. |
 | `tests/test_gui_compare_route.py` *(neu)* | Route-/Render-Tests via `TestClient`. |
 | `AGENTS.md` *(ändern)* | `/compare/{bundle}` (Innerhalb-Bundle-Achsen-Vergleich) vs. `/compare` (Cross-Run-Aggregat) abgrenzen. |
@@ -54,7 +54,7 @@
 ## Task 1: `compare.py` — Dataclasses + `axis_options` (pure)
 
 **Files:**
-- Create: `ramcheck/gui/compare.py`
+- Create: `touchstone/gui/compare.py`
 - Test: `tests/test_gui_compare.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -63,8 +63,8 @@
 # tests/test_gui_compare.py
 from __future__ import annotations
 
-from ramcheck.gui import compare
-from ramcheck.results import EvalResponse
+from touchstone.gui import compare
+from touchstone.results import EvalResponse
 
 
 def _resp(model: str, variant: str, **over) -> EvalResponse:
@@ -107,12 +107,12 @@ def test_axis_options_single_everything_not_comparable():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_gui_compare.py -q`
-Expected: FAIL — `AttributeError: module 'ramcheck.gui.compare' has no attribute 'axis_options'` (module doesn't exist yet).
+Expected: FAIL — `AttributeError: module 'touchstone.gui.compare' has no attribute 'axis_options'` (module doesn't exist yet).
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# ramcheck/gui/compare.py
+# touchstone/gui/compare.py
 """Pure read/aggregation layer for the within-bundle Modell-/Varianten-Vergleich.
 
 Reads a single bundle (via ``bundles.bundle_detail`` — which already performs the
@@ -128,11 +128,11 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ramcheck.merge import DEFAULT_TOLERANCE_S, load_samples_jsonl
-from ramcheck.models import ResourceSample, pressure_max
-from ramcheck.results import EvalResponse, Verdict
-from ramcheck.scorecard import model_variant_groups
-from ramcheck.stats import median, percentile
+from touchstone.merge import DEFAULT_TOLERANCE_S, load_samples_jsonl
+from touchstone.models import ResourceSample, pressure_max
+from touchstone.results import EvalResponse, Verdict
+from touchstone.scorecard import model_variant_groups
+from touchstone.stats import median, percentile
 
 
 @dataclass
@@ -179,7 +179,7 @@ Expected: PASS (3 passed).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/compare.py tests/test_gui_compare.py
+git add touchstone/gui/compare.py tests/test_gui_compare.py
 git commit -m "feat(compare): axis_options + module scaffold for within-bundle compare"
 ```
 
@@ -188,14 +188,14 @@ git commit -m "feat(compare): axis_options + module scaffold for within-bundle c
 ## Task 2: `_cpu_for_window` (pure, V6) — CPU aus resources.jsonl-Fenstern
 
 **Files:**
-- Modify: `ramcheck/gui/compare.py`
+- Modify: `touchstone/gui/compare.py`
 - Test: `tests/test_gui_compare.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # append to tests/test_gui_compare.py
-from ramcheck.models import ResourceSample
+from touchstone.models import ResourceSample
 
 
 def _sample(ts: float, cpu: float | None) -> ResourceSample:
@@ -232,7 +232,7 @@ Expected: FAIL — `AttributeError: ... has no attribute '_cpu_for_window'`.
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# append to ramcheck/gui/compare.py
+# append to touchstone/gui/compare.py
 def _cpu_for_window(
     samples: list[ResourceSample],
     responses: list[EvalResponse],
@@ -266,7 +266,7 @@ Expected: PASS (3 passed).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/compare.py tests/test_gui_compare.py
+git add touchstone/gui/compare.py tests/test_gui_compare.py
 git commit -m "feat(compare): _cpu_for_window with first-class 'n. v.' state (V6)"
 ```
 
@@ -275,7 +275,7 @@ git commit -m "feat(compare): _cpu_for_window with first-class 'n. v.' state (V6
 ## Task 3: Fixture-Builder + `compare_detail` Kern (Qualität-Join + Speed/RAM + single-state)
 
 **Files:**
-- Modify: `ramcheck/gui/compare.py`
+- Modify: `touchstone/gui/compare.py`
 - Test: `tests/test_gui_compare.py`
 
 - [ ] **Step 1: Write the failing test (incl. hermetic bundle builder)**
@@ -284,9 +284,9 @@ git commit -m "feat(compare): _cpu_for_window with first-class 'n. v.' state (V6
 # append to tests/test_gui_compare.py
 import json
 
-from ramcheck.judge import write_reports_jsonl
-from ramcheck.pack import load_pack
-from ramcheck.results import ModelReport, Verdict
+from touchstone.judge import write_reports_jsonl
+from touchstone.pack import load_pack
+from touchstone.results import ModelReport, Verdict
 
 PACK = "packs/ndassist.yaml"
 
@@ -418,7 +418,7 @@ Expected: FAIL — `AttributeError: ... has no attribute 'compare_detail'`.
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# append to ramcheck/gui/compare.py
+# append to touchstone/gui/compare.py
 @dataclass
 class CompareCell:
     """One axis value (a model or a variant) with quality + cost metrics."""
@@ -513,7 +513,7 @@ def compare_detail(
     """Project a bundle along ``axis`` (model|variant), holding the other dimension
     constant. Returns None if the bundle has no loadable pack.
     """
-    from ramcheck.gui import bundles  # local import avoids a cycle
+    from touchstone.gui import bundles  # local import avoids a cycle
 
     base = bundles.bundle_detail(run_dir)
     if base is None:
@@ -581,7 +581,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/compare.py tests/test_gui_compare.py
+git add touchstone/gui/compare.py tests/test_gui_compare.py
 git commit -m "feat(compare): compare_detail core — master⨝reports quality + speed/RAM per axis value"
 ```
 
@@ -590,7 +590,7 @@ git commit -m "feat(compare): compare_detail core — master⨝reports quality +
 ## Task 4: `_relations_summary` + `_winners` + `scatter_points`
 
 **Files:**
-- Modify: `ramcheck/gui/compare.py`
+- Modify: `touchstone/gui/compare.py`
 - Test: `tests/test_gui_compare.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -638,7 +638,7 @@ Expected: FAIL — `relations_summary` is `""`, `winners` is `{}`, `scatter_poin
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# append to ramcheck/gui/compare.py (helpers) and wire into compare_detail
+# append to touchstone/gui/compare.py (helpers) and wire into compare_detail
 def _relations_summary(cells: list[CompareCell], axis_label: str) -> str:
     """Descriptive relation in words (names the numbers, no hard recommendation)."""
     rated = [c for c in cells if c.pct is not None]
@@ -719,7 +719,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/compare.py tests/test_gui_compare.py
+git add touchstone/gui/compare.py tests/test_gui_compare.py
 git commit -m "feat(compare): relations summary, per-row winners, scatter points"
 ```
 
@@ -728,7 +728,7 @@ git commit -m "feat(compare): relations summary, per-row winners, scatter points
 ## Task 5: Divergenz (③, per-Prompt `Verdict.score`-Δ, V7)
 
 **Files:**
-- Modify: `ramcheck/gui/compare.py`
+- Modify: `touchstone/gui/compare.py`
 - Test: `tests/test_gui_compare.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -792,7 +792,7 @@ Expected: FAIL — `divergence` is `[]` even when verdicts exist.
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# append to ramcheck/gui/compare.py
+# append to touchstone/gui/compare.py
 @dataclass
 class CellAnswer:
     label: str
@@ -893,7 +893,7 @@ Expected: PASS (all compare unit tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/compare.py tests/test_gui_compare.py
+git add touchstone/gui/compare.py tests/test_gui_compare.py
 git commit -m "feat(compare): per-prompt divergence (V7) with repeat-mean + side-by-side answers"
 ```
 
@@ -975,8 +975,8 @@ git commit -m "test(compare): axis=model projection via synthetic 2×2 fixture"
 ## Task 7: Route `/compare/{name}` + `axis_options_for_dir`
 
 **Files:**
-- Modify: `ramcheck/gui/compare.py` (add `axis_options_for_dir`)
-- Modify: `ramcheck/gui/app.py` (route)
+- Modify: `touchstone/gui/compare.py` (add `axis_options_for_dir`)
+- Modify: `touchstone/gui/app.py` (route)
 - Test: `tests/test_gui_compare_route.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -987,8 +987,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunRegistry
 
 from test_gui_compare import _two_variant_bundle, _two_model_bundle, _write_compare_bundle
 
@@ -1075,10 +1075,10 @@ Expected: FAIL — 404 for `/compare/{name}` (route not registered) and missing 
 - [ ] **Step 3a: Add `axis_options_for_dir` to compare.py**
 
 ```python
-# append to ramcheck/gui/compare.py
+# append to touchstone/gui/compare.py
 def axis_options_for_dir(run_dir: Path) -> AxisOptions:
     """Robustly load responses.jsonl and report axis options (for overview links)."""
-    from ramcheck.qualrun import load_responses_jsonl
+    from touchstone.qualrun import load_responses_jsonl
 
     try:
         responses = load_responses_jsonl(run_dir / "responses.jsonl")
@@ -1089,10 +1089,10 @@ def axis_options_for_dir(run_dir: Path) -> AxisOptions:
 
 - [ ] **Step 3b: Register the route in app.py**
 
-In `ramcheck/gui/app.py`, ensure `compare` is imported (top of file alongside `bundles`):
+In `touchstone/gui/app.py`, ensure `compare` is imported (top of file alongside `bundles`):
 
 ```python
-from ramcheck.gui import bundles, compare
+from touchstone.gui import bundles, compare
 ```
 
 Add the route next to the existing `/compare` handler (the cross-run aggregate stays unchanged):
@@ -1131,7 +1131,7 @@ Expected: PASS after Task 8.
 - [ ] **Step 5: Commit (after Task 8 green)**
 
 ```bash
-git add ramcheck/gui/app.py ramcheck/gui/compare.py tests/test_gui_compare_route.py
+git add touchstone/gui/app.py touchstone/gui/compare.py tests/test_gui_compare_route.py
 git commit -m "feat(compare): /compare/{name} route + axis_options_for_dir"
 ```
 
@@ -1140,8 +1140,8 @@ git commit -m "feat(compare): /compare/{name} route + axis_options_for_dir"
 ## Task 8: Template `compare_axis.html` + `scatter.js`
 
 **Files:**
-- Create: `ramcheck/gui/templates/compare_axis.html`
-- Create: `ramcheck/gui/static/scatter.js`
+- Create: `touchstone/gui/templates/compare_axis.html`
+- Create: `touchstone/gui/static/scatter.js`
 - Test: `tests/test_gui_compare_route.py` (already written in Task 7; this turns it green)
 
 - [ ] **Step 1: Tests already exist (Task 7).** Run to confirm RED (template missing):
@@ -1152,7 +1152,7 @@ Expected: FAIL — `jinja2.exceptions.TemplateNotFound: compare_axis.html`.
 - [ ] **Step 2: Create `scatter.js`**
 
 ```javascript
-// ramcheck/gui/static/scatter.js
+// touchstone/gui/static/scatter.js
 /**
  * scatter.js — build-free inline-SVG efficiency scatter for the Modell-Vergleich.
  *
@@ -1227,7 +1227,7 @@ Expected: FAIL — `jinja2.exceptions.TemplateNotFound: compare_axis.html`.
 - [ ] **Step 3: Create `compare_axis.html`**
 
 ```html
-{# ramcheck/gui/templates/compare_axis.html #}
+{# touchstone/gui/templates/compare_axis.html #}
 {% extends "base.html" %}
 {% block title_suffix %} · Vergleich{% endblock %}
 {% block body %}
@@ -1368,7 +1368,7 @@ Expected: PASS (all route tests). Then run the route commit from Task 7 Step 5 i
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/templates/compare_axis.html ramcheck/gui/static/scatter.js ramcheck/gui/app.py ramcheck/gui/compare.py tests/test_gui_compare_route.py
+git add touchstone/gui/templates/compare_axis.html touchstone/gui/static/scatter.js touchstone/gui/app.py touchstone/gui/compare.py tests/test_gui_compare_route.py
 git commit -m "feat(compare): compare_axis.html 3-layer view + scatter.js + route wiring"
 ```
 
@@ -1377,9 +1377,9 @@ git commit -m "feat(compare): compare_axis.html 3-layer view + scatter.js + rout
 ## Task 9: „↔ Vergleichen"-Links in `result.html` + `overview.html`
 
 **Files:**
-- Modify: `ramcheck/gui/app.py` (pass link data into `/result` and `/`)
-- Modify: `ramcheck/gui/templates/result.html`
-- Modify: `ramcheck/gui/templates/overview.html`
+- Modify: `touchstone/gui/app.py` (pass link data into `/result` and `/`)
+- Modify: `touchstone/gui/templates/result.html`
+- Modify: `touchstone/gui/templates/overview.html`
 - Test: `tests/test_gui_compare_route.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1475,7 +1475,7 @@ Expected: PASS (all route tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ramcheck/gui/app.py ramcheck/gui/templates/result.html ramcheck/gui/templates/overview.html tests/test_gui_compare_route.py
+git add touchstone/gui/app.py touchstone/gui/templates/result.html touchstone/gui/templates/overview.html tests/test_gui_compare_route.py
 git commit -m "feat(compare): '↔ Vergleichen' link on result + overview (only when >1 axis value)"
 ```
 
@@ -1500,7 +1500,7 @@ Add to the GUI/routes section a paragraph distinguishing the two compare endpoin
   per-Aufgabe-Drill-down (per-Prompt `Verdict.score`-Δ, V7 — orthogonal zur holistischen %).
   CPU wird GUI-seitig aus `resources.jsonl`-Fenstern berechnet (`compare._cpu_for_window`); da
   `cpu_pct` erst mit Ink. 7 kam und kein Bundle seither neu lief, ist CPU heute überall **„n. v."**
-  (ein first-class getesteter Zustand). Pure Logik in `ramcheck/gui/compare.py`.
+  (ein first-class getesteter Zustand). Pure Logik in `touchstone/gui/compare.py`.
 ```
 
 - [ ] **Step 2: Run the full test suite**
@@ -1512,11 +1512,11 @@ Expected: PASS — all prior tests (239) + the new compare tests, 0 failures.
 
 Run:
 ```bash
-uv run mypy ramcheck
-uv run ruff check ramcheck tests
-uv run ruff format --check ramcheck tests
+uv run mypy touchstone
+uv run ruff check touchstone tests
+uv run ruff format --check touchstone tests
 ```
-Expected: clean (no errors). If `ruff format --check` flags files, run `uv run ruff format ramcheck tests` and re-stage.
+Expected: clean (no errors). If `ruff format --check` flags files, run `uv run ruff format touchstone tests` and re-stage.
 
 - [ ] **Step 4: Commit**
 

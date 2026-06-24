@@ -6,8 +6,8 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
-from ramcheck.gui import app as gui_app
-from ramcheck.gui.control import RunHandle, RunInProgress, RunRegistry
+from touchstone.gui import app as gui_app
+from touchstone.gui.control import RunHandle, RunInProgress, RunRegistry
 
 
 class _FakeLauncher:
@@ -190,7 +190,7 @@ def test_start_judge_conflict(tmp_path):
 
 def _mk_sentinel(run_dir, pid=42):
     """Write a minimal run.json sentinel so stop_run can find a PID."""
-    from ramcheck.gui.control import write_sentinel
+    from touchstone.gui.control import write_sentinel
 
     write_sentinel(run_dir, kind="eval", pid=pid, pack_path="p", config_path="c")
 
@@ -237,7 +237,7 @@ def test_stop_run_rejects_traversal(tmp_path):
 
 def test_live_stream_eval_sse(tmp_path):
     """SSE endpoint yields at least one event: view frame, then stops on finished."""
-    from ramcheck import events as ev
+    from touchstone import events as ev
 
     run_dir = tmp_path / "run1"
     run_dir.mkdir()
@@ -269,7 +269,7 @@ def test_live_stream_eval_sse(tmp_path):
 
 def test_live_stream_judge_sse(tmp_path):
     """SSE endpoint with kind=judge uses judge_events.jsonl and reaches finished."""
-    from ramcheck import judge_events as je
+    from touchstone import judge_events as je
 
     run_dir = tmp_path / "run_j"
     run_dir.mkdir()
@@ -360,8 +360,8 @@ def _dead_pid():
 def test_live_stream_crashed_subprocess_terminates(tmp_path):
     """A crashed run (sentinel pid dead, no run_done) must terminate the SSE stream
     with a terminal 'crashed' frame instead of busy-looping forever (MAJOR 2)."""
-    from ramcheck import events as ev
-    from ramcheck.gui.control import write_sentinel
+    from touchstone import events as ev
+    from touchstone.gui.control import write_sentinel
 
     run_dir = tmp_path / "run_crash"
     run_dir.mkdir()

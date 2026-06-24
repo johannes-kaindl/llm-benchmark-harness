@@ -1,5 +1,5 @@
 def test_evalresponse_reasoning_text_defaults_empty():
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     r = EvalResponse(
         pack_id="p",
@@ -44,7 +44,7 @@ def test_evalresponse_reasoning_text_defaults_empty():
 
 
 def test_evalresponse_reasoning_timing_defaults_safe():
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     r = EvalResponse(
         pack_id="p",
@@ -89,7 +89,7 @@ def test_evalresponse_reasoning_timing_defaults_safe():
 
 
 def test_evalresponse_carries_reasoning_timing_when_set():
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     r = EvalResponse(
         pack_id="p",
@@ -133,7 +133,7 @@ def test_evalresponse_carries_reasoning_timing_when_set():
 
 
 def test_evalresponse_carries_model_delta_when_set():
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     r = EvalResponse(
         pack_id="p",

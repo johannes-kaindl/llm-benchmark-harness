@@ -1,4 +1,4 @@
-# Judge Live-Monitor (`ramcheck judge --web`) — Design (Ink. 5)
+# Judge Live-Monitor (`touchstone judge --web`) — Design (Ink. 5)
 
 **Datum:** 2026-06-20
 **Status:** ratifiziert (Brainstorming abgeschlossen, vor Implementierungsplan)
@@ -41,7 +41,7 @@ präzedenzfest übernommen und nicht neu verhandelt.
 ## 3 · Prozess-Topologie
 
 ```
- ramcheck judge --bundle … --judge-config … --web [--port 0] [--no-open]
+ touchstone judge --bundle … --judge-config … --web [--port 0] [--no-open]
  │
  │  (Hauptprozess — Bewertung, im Kern unverändert)
  ├─ on_judge_start(total, prior)  ──▶ Writer-Closure (im CLI):
@@ -56,7 +56,7 @@ präzedenzfest übernommen und nicht neu verhandelt.
  │     ──▶ master-Event je Gruppe + judge_done-Event                                     (J6)
  │
  └─ spawnt _WebMonitorProcess  (wie eval, events_name="judge_events.jsonl", view="judge")
-        │  python -m ramcheck.webmon --bundle <dir> --port <p> --events judge_events.jsonl --view judge
+        │  python -m touchstone.webmon --bundle <dir> --port <p> --events judge_events.jsonl --view judge
         │  tailt judge_events.jsonl (NICHT resources.jsonl — J5), serviert SSE
         └─ druckt gebundenen Port auf stdout ▶ Hauptprozess öffnet Browser
 ```
@@ -152,10 +152,10 @@ Läufe, per-Verdict-Latenz (uninteressant — anderer Endpoint), Live-Token-Stre
 
 | Datei | Änderung |
 |---|---|
-| `ramcheck/judge_events.py` | **neu** — judge-View: Event-Konstruktoren + `parse_line` + `build_view` + `INDEX_HTML` + `TAILS_RESOURCES=False` |
-| `ramcheck/events.py` | eval-`INDEX_HTML` von webmon hierher ziehen; `TAILS_RESOURCES=True` ergänzen |
-| `ramcheck/webmon.py` | View-Dispatch (`--view`), HTML aus dem Modul statt hartkodiert, `resources.jsonl` nur tailen wenn `TAILS_RESOURCES` |
-| `ramcheck/runner.py` | `_WebMonitorProcess`: additiver `view`-Parameter → an `webmon`-Subprozess durchreichen |
-| `ramcheck/cli.py` | `_live_monitor`/`_hold_monitor`: `view`-Parameter; neu `_judge_event_writers`; `judge`-Command um `--web/--port/--no-open` + Verdrahtung |
+| `touchstone/judge_events.py` | **neu** — judge-View: Event-Konstruktoren + `parse_line` + `build_view` + `INDEX_HTML` + `TAILS_RESOURCES=False` |
+| `touchstone/events.py` | eval-`INDEX_HTML` von webmon hierher ziehen; `TAILS_RESOURCES=True` ergänzen |
+| `touchstone/webmon.py` | View-Dispatch (`--view`), HTML aus dem Modul statt hartkodiert, `resources.jsonl` nur tailen wenn `TAILS_RESOURCES` |
+| `touchstone/runner.py` | `_WebMonitorProcess`: additiver `view`-Parameter → an `webmon`-Subprozess durchreichen |
+| `touchstone/cli.py` | `_live_monitor`/`_hold_monitor`: `view`-Parameter; neu `_judge_event_writers`; `judge`-Command um `--web/--port/--no-open` + Verdrahtung |
 | `tests/` | neue Tests je Abschnitt 8 |
 | `AGENTS.md` | `judge --web` in Befehlsliste + ggf. Gotcha (judge-View tailt nie `resources.jsonl`) |

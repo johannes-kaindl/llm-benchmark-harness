@@ -1,7 +1,7 @@
 import math
 
-from ramcheck.results import EvalResponse
-from ramcheck.scorecard import _perf_summary
+from touchstone.results import EvalResponse
+from touchstone.scorecard import _perf_summary
 
 
 def _resp(*, e2e_s, ok=True, is_cold_start=False):

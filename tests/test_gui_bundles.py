@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from ramcheck.gui import bundles
+from touchstone.gui import bundles
 
 
 def _mk(d, *, bundle=False, scores=False, responses=False, sentinel_state=None):
@@ -91,7 +91,7 @@ PACK = "packs/ndassist.yaml"
 
 def _resp_dict(model, variant):
     """One EvalResponse round-trip dict for responses.jsonl."""
-    from ramcheck.results import EvalResponse
+    from touchstone.results import EvalResponse
 
     return EvalResponse(
         pack_id="ndassist",
@@ -135,7 +135,7 @@ def _write_bundle(d, *, groups, scores_by_group, blank_dims=()):
     scores_by_group: dict (model, variant) -> dict(dim_id -> score) (full master scores).
     blank_dims: iterable of dim ids to emit with score='' (judge omitted them).
     """
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     d.mkdir(parents=True, exist_ok=True)
     pk = load_pack(PACK)
@@ -167,7 +167,7 @@ def _write_bundle(d, *, groups, scores_by_group, blank_dims=()):
 
 def test_reports_from_scores_skips_blank_score(tmp_path):
     """A judge that omitted a master dimension (score='') must not crash classify."""
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     d = tmp_path / "2026_eval_nd"
     pk = load_pack(PACK)
@@ -187,7 +187,7 @@ def test_reports_from_scores_skips_blank_score(tmp_path):
 
 def test_recompute_verdict_hermetic_ja(tmp_path):
     """Hermetic (no skip): full master scores all 5 → 'Ja', safety passes."""
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     pk = load_pack(PACK)
     d = tmp_path / "2026_eval_nd"
@@ -207,7 +207,7 @@ def test_recompute_verdict_badge_picks_strongest(tmp_path):
 
     The badge must report the STRONGEST recommendation via the order map → 'Ja'.
     """
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     pk = load_pack(PACK)
     full = {dim.id: 5 for dim in pk.dimensions}

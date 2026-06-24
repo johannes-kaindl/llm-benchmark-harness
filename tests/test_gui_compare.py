@@ -6,11 +6,11 @@ import tempfile
 
 import pytest
 
-from ramcheck.gui import compare
-from ramcheck.judge import write_reports_jsonl
-from ramcheck.models import ResourceSample
-from ramcheck.pack import load_pack
-from ramcheck.results import EvalResponse, ModelReport, Verdict
+from touchstone.gui import compare
+from touchstone.judge import write_reports_jsonl
+from touchstone.models import ResourceSample
+from touchstone.pack import load_pack
+from touchstone.results import EvalResponse, ModelReport, Verdict
 
 PACK = "packs/ndassist.yaml"
 

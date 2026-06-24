@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import types
 
-from ramcheck.client import OpenAIStreamClient
+from touchstone.client import OpenAIStreamClient
 
 
 def test_list_models_returns_ids():

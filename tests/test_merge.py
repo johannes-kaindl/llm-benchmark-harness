@@ -1,11 +1,11 @@
-from ramcheck.merge import (
+from touchstone.merge import (
     aggregate_window,
     baseline_sys_used_mb,
     load_samples_jsonl,
     merge_run,
     resources_for_window,
 )
-from ramcheck.models import ResourceSample, RunRecord
+from touchstone.models import ResourceSample, RunRecord
 
 
 def _sample(

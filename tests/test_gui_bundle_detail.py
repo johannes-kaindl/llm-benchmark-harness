@@ -1,9 +1,9 @@
 # tests/test_gui_bundle_detail.py
 import json
 
-from ramcheck.gui import bundles
-from ramcheck.judge import write_reports_jsonl
-from ramcheck.results import ModelReport, Verdict
+from touchstone.gui import bundles
+from touchstone.judge import write_reports_jsonl
+from touchstone.results import ModelReport, Verdict
 
 
 def _mk_judged(tmp_path):
@@ -130,7 +130,7 @@ def test_bundle_detail_ko_branches_and_cited_ids(tmp_path):
 def test_cited_prompt_ids_drops_unknown_token(tmp_path):
     """MAJOR 6: a regex-matching token that is NOT a pack prompt_id is filtered out."""
     pk = _mk_judged(tmp_path)  # ensures the pack exists; we need known_ids from it
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     pack = load_pack("packs/ndassist.yaml")
     known = {p.id for _, p in pack.all_prompts()}
@@ -152,7 +152,7 @@ def test_cited_prompt_ids_matches_multiletter_id():
 
 def test_ko_branches_reports_both_roots_independently():
     """MINOR 9: when both KO roots fire, both flags are set (neither hides the other)."""
-    from ramcheck.pack import load_pack
+    from touchstone.pack import load_pack
 
     pack = load_pack("packs/ndassist.yaml")
     ko_dim = pack.ko_rule.dimension
