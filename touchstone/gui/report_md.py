@@ -117,18 +117,24 @@ def _frontmatter(
     perf: dict[str, Any],
     known_ids: set[str],
     include_judging: bool,
+    doc: ResultDoc | None = None,
 ) -> list[str]:
     models = sorted({r.model for r in responses})
     variants = sorted({r.variant for r in responses})
     quants = sorted({r.quant for r in responses if getattr(r, "quant", "")})
     judge = (manifest.get("judge") or {}) if include_judging else {}
     ok_resp = [r for r in responses if r.ok and not getattr(r, "is_cold_start", False)]
-    engine = host.get("engine") or manifest.get("engine") or (responses[0].engine if responses else None)
-    engine_version = (
-        host.get("engine_version")
-        or manifest.get("engine_version")
-        or (responses[0].engine_version if responses else None)
-    )
+    # Source engine/engine_version from canonical provenance (honest best-effort, never fabricated).
+    # "unknown" is the client-side default for unreachable metadata — treat it as absent.
+    if doc is not None:
+        engine = doc.provenance.engine or None
+        _ev = doc.provenance.engine_version
+        engine_version = (_ev if _ev and _ev != "unknown" else None)
+    else:
+        # Fallback for unsupported-schema or missing-doc path: host/manifest only.
+        engine = host.get("engine") or manifest.get("engine") or None
+        _ev = host.get("engine_version") or manifest.get("engine_version")
+        engine_version = (_ev if _ev and _ev != "unknown" else None)
 
     # headline result = best-scoring (model, variant); per-variant quality kept too
     scored = [r for r in master_rows if r.get("pct") is not None]
@@ -312,6 +318,7 @@ def render_report_md(
             perf=perf,
             known_ids=known_ids,
             include_judging=include_judging,
+            doc=doc,
         )
     )
 
@@ -423,18 +430,25 @@ def render_report_md(
 
     # ── Hardware & Konfiguration ────────────────────────────────────────────
     w("## Hardware & Konfiguration\n")
-    engine = host.get("engine") or manifest.get("engine") or (responses[0].engine if responses else "")
-    engine_version = (
-        host.get("engine_version")
-        or manifest.get("engine_version")
-        or (responses[0].engine_version if responses else "")
-    )
+    # Source engine/engine_version from canonical provenance (honest best-effort, never fabricated).
+    # "unknown" is the client-side default for unreachable metadata — treat it as absent.
+    if doc is not None:
+        hw_engine: str | None = doc.provenance.engine or None
+        _hw_ev = doc.provenance.engine_version
+        hw_engine_version: str | None = (_hw_ev if _hw_ev and _hw_ev != "unknown" else None)
+    else:
+        # Fallback for unsupported-schema path: host/manifest only (no response fabrication).
+        hw_engine = host.get("engine") or manifest.get("engine") or None
+        _hw_ev2 = host.get("engine_version") or manifest.get("engine_version")
+        hw_engine_version = (_hw_ev2 if _hw_ev2 and _hw_ev2 != "unknown" else None)
+    _engine_label = hw_engine or "—"
+    _version_suffix = f" ({hw_engine_version})" if hw_engine_version else " (n. v.)"
     w(f"- **Chip:** {chip or '—'}")
     w(f"- **RAM:** {f'{ram:.1f} GB' if ram else '—'}")
     w(f"- **Modell-Quant:** {quants_str or '—'}")
     w(f"- **Seed:** {manifest.get('seed', pack.sampling.seed)}")
     w(f"- **Sampling:** temperature {pack.sampling.temperature}, seed {pack.sampling.seed}")
-    w(f"- **Engine:** {engine or '—'}" + (f" ({engine_version})" if engine_version else "") + "\n")
+    w(f"- **Engine:** {_engine_label}{_version_suffix}\n")
     w(top)
 
     # ── Master-Scorecard (judged runs only) ─────────────────────────────────

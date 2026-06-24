@@ -226,3 +226,8 @@ def test_judge_standalone_writes_result_json(tmp_path, monkeypatch):
     assert doc["schema_version"] == 1
     assert doc["judge"]["model"] == "fake-judge"
     assert doc["cells"][0]["quality"]["rubric_level"]
+    # Finding-3: quant must be preserved from the responses (responses->.quant fallback).
+    # _min_response uses quant="Q4_K_M"; the standalone judge must carry it through.
+    assert doc["cells"][0]["quant"] == "Q4_K_M", (
+        "Cell quant must be preserved from responses when no prior result.json exists"
+    )

@@ -693,3 +693,40 @@ def test_rubric_and_safety_replace_recommendation():
     assert "Rubrik" in md, "Scorecard must surface 'Rubrik' from quality.rubric_level"
     assert "Sicherheit" in md, "Scorecard must surface 'Sicherheit' from quality.safety_passed"
     assert "Empfehlung: Ja" not in md, "'Empfehlung: Ja' must not appear — replaced by Rubrik/Sicherheit"
+
+
+# ── Finding-2: engine_version fabrication canary ─────────────────────────────
+
+
+def test_engine_version_none_renders_nv_not_unknown():
+    """When provenance.engine_version is None (endpoint didn't expose it) and responses carry
+    engine_version='unknown' (client default), the rendered report must NOT contain 'unknown'
+    as an engine version — it must show 'n. v.' instead.  This is the exact provenance canary
+    the vergleichbarkeit-fundament branch promised to kill."""
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    # responses carry the production default 'unknown'
+    resp = _resp(first.id, engine_version="unknown")
+    # host + manifest have no engine_version either (production scenario)
+    detail = _detail(
+        pk,
+        [resp],
+        manifest={"host": {**HOST, "engine_version": None}, "date": "2026-06-24"},
+    )
+    md = render_report_md(detail, GLOSSARY)
+    # The rendered report must NOT contain the fabricated "unknown" string for engine version
+    # Check frontmatter engine_version key
+    fm = md.split("---\n")[1]
+    assert "engine_version: unknown" not in fm, (
+        "Frontmatter must not emit engine_version: unknown"
+    )
+    # Check Hardware section — neither bare 'unknown' nor '(unknown)' as version
+    hw_idx = md.index("## Hardware & Konfiguration")
+    hw_section = md[hw_idx : md.index("\n## ", hw_idx + 1)]
+    assert "unknown" not in hw_section, (
+        "Hardware section must not mention 'unknown' as engine version"
+    )
+    # The absence of a known version must render as 'n. v.'
+    assert "n. v." in hw_section, (
+        "Hardware section must show 'n. v.' when engine_version is absent"
+    )
