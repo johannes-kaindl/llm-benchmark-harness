@@ -10,6 +10,8 @@
 
 **Reference:** spec `docs/superpowers/specs/2026-06-23-gui-best-practices-redesign-design.md`.
 
+> **STATUS (2026-06-24):** Phasen **P1–P7 vollständig implementiert und gemergt** (Merge `07ade7d`, je ein Feature-Commit pro Phase, inkl. Pre-Merge-Review). Der nachgelagerte Markdown-Report-Export ist ebenfalls gemergt. **Offen:** P0 (Tool-Rename — blockiert auf Ziel-Name) und der **Final-E2E-Smoke** gegen echte Hardware (Zeile 675). 429 Tests grün.
+
 **Conventions (apply to every task):**
 - Run tests with `uv run pytest <path> -q`; lint `uv run ruff check . && uv run ruff format .`; types `uv run mypy ramcheck/`.
 - GUI tests use `_client(tmp_path)` → `TestClient(gui_app.create_app(runs_dir=tmp_path, registry=RunRegistry(runs_dir=tmp_path, launcher=_FakeLauncher())))`; bundle fixtures via `_write_bundle` / `_write_compare_bundle` / `_mk_judged` (copy the local helper from the sibling test file).
@@ -27,7 +29,7 @@
 
 **Context:** `compare.html` renders `r.chip` (live `hostinfo`), `r.ram_gb` (live), `r.machine` (static `Config.machine` YAML label). On a reused config the label goes stale → "M5 Pro / 64 GB / M1-16GB". `AggRow` (`aggregate.py:40-57`) already has `chip`, `ram_gb`, `machine`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_gui_hwlabel.py
@@ -48,11 +50,11 @@ def test_empty_or_unknown_label_is_not_flagged():
     assert label_mismatch(chip="", ram_gb="", machine="whatever") is False
 ```
 
-- [ ] **Step 2: Run it, verify it fails**
+- [x] **Step 2: Run it, verify it fails**
 
 Run: `uv run pytest tests/test_gui_hwlabel.py -q` → FAIL (module not found).
 
-- [ ] **Step 3: Implement `hwlabel.py`**
+- [x] **Step 3: Implement `hwlabel.py`**
 
 ```python
 # ramcheck/gui/hwlabel.py
@@ -94,11 +96,11 @@ def label_mismatch(*, chip: str, ram_gb: str, machine: str) -> bool:
     return False
 ```
 
-- [ ] **Step 4: Run test, verify pass**
+- [x] **Step 4: Run test, verify pass**
 
 Run: `uv run pytest tests/test_gui_hwlabel.py -q` → PASS.
 
-- [ ] **Step 5: Wire the flag into the cross-run rows**
+- [x] **Step 5: Wire the flag into the cross-run rows**
 
 In `ramcheck/gui/compare.py`, after `aggregate()` produces `AggRow`s the route hands them to the template. The simplest non-invasive wiring: compute the flag in the template via a tiny exposed helper. Add to `compare.py` (or wherever `compare_cross` builds context) a post-process that attaches `mismatch` per row. Concretely, change the `/compare` route in `ramcheck/gui/app.py:114-118` to:
 
@@ -116,7 +118,7 @@ In `ramcheck/gui/compare.py`, after `aggregate()` produces `AggRow`s the route h
         return render("compare.html", request, rows=flagged, active="compare")
 ```
 
-- [ ] **Step 6: Update the template to demote a stale label**
+- [x] **Step 6: Update the template to demote a stale label**
 
 In `ramcheck/gui/templates/compare.html`, change the loop from `{% for r in rows %}` over `AggRow` to unpack the tuple, and render the `Maschine` cell muted with a warning when flagged. Replace lines 27-50 region's `<tr>...<td>{{ r.machine }}</td>...` with:
 
@@ -146,7 +148,7 @@ In `ramcheck/gui/templates/compare.html`, change the loop from `{% for r in rows
       {% endfor %}
 ```
 
-- [ ] **Step 7: Add a route smoke test**
+- [x] **Step 7: Add a route smoke test**
 
 ```python
 # append to tests/test_gui_hwlabel.py — reuse a _write_bundle helper copied from tests/test_gui_bundles.py
@@ -156,7 +158,7 @@ In `ramcheck/gui/templates/compare.html`, change the loop from `{% for r in rows
 
 (Copy `_write_bundle` + `_client` from `tests/test_gui_bundles.py`; the scores.csv header is `model,variant,metric_type,metric,weight,score` plus the hardware columns written by `scorecard.scores_csv_rows` — assert the warning glyph renders.)
 
-- [ ] **Step 8: Verify headless + commit**
+- [x] **Step 8: Verify headless + commit**
 
 ```bash
 uv run pytest tests/test_gui_hwlabel.py -q && uv run ruff check . && uv run mypy ramcheck/gui/hwlabel.py
@@ -171,7 +173,7 @@ git commit -m "fix(gui): demote stale machine label that contradicts detected ha
 **Files:**
 - Create: `ramcheck/gui/glossary.py`, `tests/test_gui_glossary.py`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```python
 # tests/test_gui_glossary.py
@@ -193,9 +195,9 @@ def test_describe_unknown_key_returns_safe_placeholder():
     assert d.short == ""
 ```
 
-- [ ] **Step 2: Run, verify fail.** `uv run pytest tests/test_gui_glossary.py -q`
+- [x] **Step 2: Run, verify fail.** `uv run pytest tests/test_gui_glossary.py -q`
 
-- [ ] **Step 3: Implement `glossary.py`**
+- [x] **Step 3: Implement `glossary.py`**
 
 ```python
 # ramcheck/gui/glossary.py
@@ -310,9 +312,9 @@ def describe(key: str) -> Glossary:
     return GLOSSARY.get(key, Glossary(term=key, short="", long=""))
 ```
 
-- [ ] **Step 4: Run, verify pass.** `uv run pytest tests/test_gui_glossary.py -q` → PASS.
+- [x] **Step 4: Run, verify pass.** `uv run pytest tests/test_gui_glossary.py -q` → PASS.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 uv run ruff check . && uv run mypy ramcheck/gui/glossary.py
@@ -329,7 +331,7 @@ git commit -m "feat(gui): metric glossary — single source of truth for UI expl
 - Modify: `ramcheck/gui/app.py:42-68` (inject glossary into the Jinja env globals), `ramcheck/gui/templates/base.html`
 - Test: `tests/test_gui_macros.py`
 
-- [ ] **Step 1: Make the glossary available to all templates.** In `ramcheck/gui/app.py`, where `_templates` (Jinja2Templates) is defined, add the glossary as a global so macros can call it. Add near the module-level `_templates` definition:
+- [x] **Step 1: Make the glossary available to all templates.** In `ramcheck/gui/app.py`, where `_templates` (Jinja2Templates) is defined, add the glossary as a global so macros can call it. Add near the module-level `_templates` definition:
 
 ```python
 from ramcheck.gui import glossary as _glossary
@@ -337,7 +339,7 @@ from ramcheck.gui import glossary as _glossary
 _templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templates
 ```
 
-- [ ] **Step 2: Write the macro library.**
+- [x] **Step 2: Write the macro library.**
 
 ```html
 {# ramcheck/gui/templates/macros/ui.html — reusable presentation macros #}
@@ -364,9 +366,9 @@ _templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templ
 {%- endmacro %}
 ```
 
-- [ ] **Step 2b: Add minimal CSS** for `.metric-help`, `.metric-label`, `.kv-row`, `.kv-label`, `.kv-value`, `.alert` in `ramcheck/gui/static/app.css` (mirror existing token style; `.metric-help{font-size:0.7em;opacity:0.5;margin-left:2px}`; `.kv-row{display:flex;gap:1rem;padding:0.15rem 0;border-bottom:1px solid var(--border)}` etc.).
+- [x] **Step 2b: Add minimal CSS** for `.metric-help`, `.metric-label`, `.kv-row`, `.kv-label`, `.kv-value`, `.alert` in `ramcheck/gui/static/app.css` (mirror existing token style; `.metric-help{font-size:0.7em;opacity:0.5;margin-left:2px}`; `.kv-row{display:flex;gap:1rem;padding:0.15rem 0;border-bottom:1px solid var(--border)}` etc.).
 
-- [ ] **Step 3: Write the test (glossary completeness gate + macro render).**
+- [x] **Step 3: Write the test (glossary completeness gate + macro render).**
 
 ```python
 # tests/test_gui_macros.py
@@ -386,7 +388,7 @@ def test_glossary_global_is_registered():
     assert "g" in gui_app._templates.env.globals
 ```
 
-- [ ] **Step 4: Run, verify pass.** Then commit.
+- [x] **Step 4: Run, verify pass.** Then commit.
 
 ```bash
 uv run pytest tests/test_gui_macros.py -q && uv run ruff check .
@@ -400,21 +402,21 @@ git commit -m "feat(gui): Jinja macro library + glossary injected as template gl
 
 **Files:** Modify `ramcheck/gui/templates/compare.html`, `compare_axis.html`, `config.html`, `pack.html`, `_method_explainer.html`, `base.html`; `pyproject.toml`; delete `ramcheck/gui/static/htmx.min.js`.
 
-- [ ] **Step 1: Metric headers via `mlabel`.** In `compare.html` `<thead>` replace bare `<th>Qualität %</th><th>TTFT P50</th><th>Decode Median</th><th>Peak RAM</th>` with `{% import "macros/ui.html" as ui %}` at top and `<th>{{ ui.mlabel("quality_pct") }}</th>` etc. Do the same for the row labels in `compare_axis.html` (`Qualität`, `Decode`, `TTFT P50`, `e2e Median`, `Peak-RAM`, `CPU Ø/Max` → `ui.mlabel("quality_pct")`, `"decode_median"`, `"ttft_p50"`, `"e2e"`, `"system_peak_ram"`, `"cpu"`).
+- [x] **Step 1: Metric headers via `mlabel`.** In `compare.html` `<thead>` replace bare `<th>Qualität %</th><th>TTFT P50</th><th>Decode Median</th><th>Peak RAM</th>` with `{% import "macros/ui.html" as ui %}` at top and `<th>{{ ui.mlabel("quality_pct") }}</th>` etc. Do the same for the row labels in `compare_axis.html` (`Qualität`, `Decode`, `TTFT P50`, `e2e Median`, `Peak-RAM`, `CPU Ø/Max` → `ui.mlabel("quality_pct")`, `"decode_median"`, `"ttft_p50"`, `"e2e"`, `"system_peak_ram"`, `"cpu"`).
 
-- [ ] **Step 2: Model-checkbox help + variant legend in `config.html`.** Add under the `Modelle` label: `<p class="muted text-xs">Nur angehakte Modelle werden evaluiert. Abwählen schließt ein Modell aus diesem Lauf aus (nichts wird in die Config geschrieben).</p>`.
+- [x] **Step 2: Model-checkbox help + variant legend in `config.html`.** Add under the `Modelle` label: `<p class="muted text-xs">Nur angehakte Modelle werden evaluiert. Abwählen schließt ein Modell aus diesem Lauf aus (nichts wird in die Config geschrieben).</p>`.
 
-- [ ] **Step 3: Variant legend in `compare_axis.html` + `pack.html`.** Where variants `baseline`/`none` appear, add a one-line legend pulling `g("variant_baseline").short` / `g("variant_none").short`.
+- [x] **Step 3: Variant legend in `compare_axis.html` + `pack.html`.** Where variants `baseline`/`none` appear, add a one-line legend pulling `g("variant_baseline").short` / `g("variant_none").short`.
 
-- [ ] **Step 4: Pack-name hyperlink in cross-run compare.** In `compare.html` change `<td>{{ r.pack }}</td>` to `<td><a href="/packs/packs/{{ r.pack }}.yaml">{{ r.pack }}</a></td>`.
+- [x] **Step 4: Pack-name hyperlink in cross-run compare.** In `compare.html` change `<td>{{ r.pack }}</td>` to `<td><a href="/packs/packs/{{ r.pack }}.yaml">{{ r.pack }}</a></td>`.
 
-- [ ] **Step 5: Breadcrumbs.** Add a `{% block breadcrumb %}{% endblock %}` to `base.html` above the main content; set it in `result.html`/`compare_axis.html`/`pack.html` (e.g. `Übersicht › Ergebnis › {{ run_dir.name }}`).
+- [x] **Step 5: Breadcrumbs.** Add a `{% block breadcrumb %}{% endblock %}` to `base.html` above the main content; set it in `result.html`/`compare_axis.html`/`pack.html` (e.g. `Übersicht › Ergebnis › {{ run_dir.name }}`).
 
-- [ ] **Step 6: Reformat `_method_explainer.html`.** Wrap the weighting formula in `<pre class="formula">Σ (Score × Gewicht) / Max × 100 = Qualität %</pre>`; render the two K.-o. branches as two `<div class="card ko-branch">` cards; render the 1–5 scale as a small `<table>`.
+- [x] **Step 6: Reformat `_method_explainer.html`.** Wrap the weighting formula in `<pre class="formula">Σ (Score × Gewicht) / Max × 100 = Qualität %</pre>`; render the two K.-o. branches as two `<div class="card ko-branch">` cards; render the 1–5 scale as a small `<table>`.
 
-- [ ] **Step 7: Drop HTMX.** Remove the `<script src="/static/htmx.min.js">` tag from `base.html`; delete `ramcheck/gui/static/htmx.min.js`. (HTMX is not in `pyproject.toml` deps — it is a vendored asset only — so only the file + tag are removed.)
+- [x] **Step 7: Drop HTMX.** Remove the `<script src="/static/htmx.min.js">` tag from `base.html`; delete `ramcheck/gui/static/htmx.min.js`. (HTMX is not in `pyproject.toml` deps — it is a vendored asset only — so only the file + tag are removed.)
 
-- [ ] **Step 8: Smoke test the explain layer.**
+- [x] **Step 8: Smoke test the explain layer.**
 
 ```python
 # tests/test_gui_explain.py — copy _client/_FakeLauncher/_write_bundle
@@ -429,7 +431,7 @@ def test_base_no_longer_references_htmx(tmp_path):
     assert "htmx.min.js" not in r.text
 ```
 
-- [ ] **Step 9: Restart server, headless-verify `/`, `/compare`, `/config`, `/packs/packs/ndassist.yaml`; commit.**
+- [x] **Step 9: Restart server, headless-verify `/`, `/compare`, `/config`, `/packs/packs/ndassist.yaml`; commit.**
 
 ```bash
 git add -A ramcheck/gui pyproject.toml tests/test_gui_explain.py
@@ -445,7 +447,7 @@ git commit -m "feat(gui): self-explaining layer — metric tooltips, legends, br
 
 ### Task P3.1 — Backend rider: `e2e_med` into the perf summary + scores.csv
 
-- [ ] **Step 1: Failing test** in `tests/test_scorecard_render.py`-style (pure):
+- [x] **Step 1: Failing test** in `tests/test_scorecard_render.py`-style (pure):
 
 ```python
 # tests/test_scorecard_e2e.py
@@ -458,15 +460,15 @@ def test_perf_summary_includes_e2e_med():
     assert p["e2e_med"] == 2.0
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Add `e2e_med` to `_perf_summary`** (`scorecard.py:101-113`). After `decodes = [...]` add `e2es = [r.e2e_s for r in ok if not math.isnan(r.e2e_s)]`; in the returned dict add `"e2e_med": median(e2es),`.
+- [x] **Step 3: Add `e2e_med` to `_perf_summary`** (`scorecard.py:101-113`). After `decodes = [...]` add `e2es = [r.e2e_s for r in ok if not math.isnan(r.e2e_s)]`; in the returned dict add `"e2e_med": median(e2es),`.
 
-- [ ] **Step 4: Add `e2e_med` to the scores.csv base dict** (`scorecard.py:296-309`): after `"decode_med": _num(p["decode_med"]),` add `"e2e_med": _num(p["e2e_med"]),`.
+- [x] **Step 4: Add `e2e_med` to the scores.csv base dict** (`scorecard.py:296-309`): after `"decode_med": _num(p["decode_med"]),` add `"e2e_med": _num(p["e2e_med"]),`.
 
-- [ ] **Step 5: Carry `e2e_med` through aggregate.** In `aggregate.py` add `e2e_med: str` to `AggRow` (after `decode_med`) and read it in the row builder; ensure `write_scores_all_csv` carries the column. Add to `tests/test_aggregate.py` `HEADER` the `e2e_med` column.
+- [x] **Step 5: Carry `e2e_med` through aggregate.** In `aggregate.py` add `e2e_med: str` to `AggRow` (after `decode_med`) and read it in the row builder; ensure `write_scores_all_csv` carries the column. Add to `tests/test_aggregate.py` `HEADER` the `e2e_med` column.
 
-- [ ] **Step 6: Run scorecard+aggregate tests, verify pass; commit.**
+- [x] **Step 6: Run scorecard+aggregate tests, verify pass; commit.**
 
 ```bash
 uv run pytest tests/test_scorecard_e2e.py tests/test_aggregate.py -q
@@ -475,7 +477,7 @@ git commit -am "feat(scorecard): persist e2e_med so cross-run total-throughput s
 
 ### Task P3.2 — Per-answer metric block in `result.html`
 
-- [ ] **Step 1:** `bundle_detail` already passes `detail["responses"]` (list of `EvalResponse`) with `ttft_s, decode_tps, prefill_tps, e2e_s, prompt_tokens, completion_tokens, reasoning_chars` — no backend change. In `result.html`, inside the per-answer loop (`318-356`), after the `Modell-Antwort` block insert a metrics row using the macro and a computed total throughput:
+- [x] **Step 1:** `bundle_detail` already passes `detail["responses"]` (list of `EvalResponse`) with `ttft_s, decode_tps, prefill_tps, e2e_s, prompt_tokens, completion_tokens, reasoning_chars` — no backend change. In `result.html`, inside the per-answer loop (`318-356`), after the `Modell-Antwort` block insert a metrics row using the macro and a computed total throughput:
 
 ```html
 {% import "macros/ui.html" as ui %}
@@ -493,9 +495,9 @@ git commit -am "feat(scorecard): persist e2e_med so cross-run total-throughput s
 
 (`x == x` is the Jinja idiom for "not NaN".)
 
-- [ ] **Step 2: Expandable reasoning block.** When `resp.reasoning_text` is non-empty (persisted only on `content_empty`), add an Alpine collapsible mirroring the answer block, showing `resp.reasoning_text` with `white-space:pre-wrap`.
+- [x] **Step 2: Expandable reasoning block.** When `resp.reasoning_text` is non-empty (persisted only on `content_empty`), add an Alpine collapsible mirroring the answer block, showing `resp.reasoning_text` with `white-space:pre-wrap`.
 
-- [ ] **Step 3: Test.**
+- [x] **Step 3: Test.**
 
 ```python
 # tests/test_gui_result_perf.py — copy _client/_FakeLauncher/_write_bundle (with perf overrides)
@@ -508,14 +510,14 @@ def test_result_shows_per_answer_perf(tmp_path):
     assert "tok/s" in r.text and "→" in r.text  # per-answer metric block rendered
 ```
 
-- [ ] **Step 4: Restart + headless-verify `/result/<bundle>`; commit.**
+- [x] **Step 4: Restart + headless-verify `/result/<bundle>`; commit.**
 
 ### Task P3.3 — Full prompt + full system-prompt in `pack.html`
 
-- [ ] **Step 1:** Remove the `[:80]` slice (`pack.html:43`) — render the full `pv.system_prompt` inside an Alpine collapsible (`white-space:pre-wrap`), collapsed by default.
-- [ ] **Step 2:** In the prompts loop (`pack.html:60-73`), after the title row add a collapsible showing `{{ p.prompt }}` (full text, `pre-wrap`) and, when present, `{{ p.tests }}` as the rubric.
-- [ ] **Step 3: Test** `tests/test_gui_pack_view.py`: GET `/packs/packs/ndassist.yaml`; assert a known full prompt substring (longer than 80 chars) appears in `r.text` and is not truncated with `…`.
-- [ ] **Step 4: Restart + headless-verify; commit.**
+- [x] **Step 1:** Remove the `[:80]` slice (`pack.html:43`) — render the full `pv.system_prompt` inside an Alpine collapsible (`white-space:pre-wrap`), collapsed by default.
+- [x] **Step 2:** In the prompts loop (`pack.html:60-73`), after the title row add a collapsible showing `{{ p.prompt }}` (full text, `pre-wrap`) and, when present, `{{ p.tests }}` as the rubric.
+- [x] **Step 3: Test** `tests/test_gui_pack_view.py`: GET `/packs/packs/ndassist.yaml`; assert a known full prompt substring (longer than 80 chars) appears in `r.text` and is not truncated with `…`.
+- [x] **Step 4: Restart + headless-verify; commit.**
 
 ```bash
 git commit -am "feat(gui): per-answer perf/token block + full prompt & system-prompt text (P3.2/P3.3)"
@@ -529,8 +531,8 @@ git commit -am "feat(gui): per-answer perf/token block + full prompt & system-pr
 
 ### Task P4.1 — Read-only config viewer route
 
-- [ ] **Step 1: Test** (mirror `pack_explorer`): `GET /config-view/config.m5.yaml` → 200, body contains endpoint base_url, machine, `runs_per_cell`, a model id; `GET /config-view/../etc/passwd` → 404.
-- [ ] **Step 2: Route** in `app.py` mirroring `pack_explorer` (`77-87`):
+- [x] **Step 1: Test** (mirror `pack_explorer`): `GET /config-view/config.m5.yaml` → 200, body contains endpoint base_url, machine, `runs_per_cell`, a model id; `GET /config-view/../etc/passwd` → 404.
+- [x] **Step 2: Route** in `app.py` mirroring `pack_explorer` (`77-87`):
 
 ```python
     @app.get("/config-view/{config_path:path}", response_class=HTMLResponse)
@@ -547,22 +549,22 @@ git commit -am "feat(gui): per-answer perf/token block + full prompt & system-pr
         return render("config_view.html", request, cfg=cfg, path=config_path, active="config")
 ```
 
-- [ ] **Step 3: Template** `config_view.html` using `ui.kv` macros for endpoint (mask api_key), machine, runs_per_cell, seed, temperature, context_buckets, scenarios, max_tokens, server_process_match, power_check, engine/engine_version, vlm, embed, and a models table (id, quant, max_tokens_default, reasoning_headroom_tokens, extra_body). Add a "Config-Datei herunterladen" link → `/export-yaml?kind=config&path=...`.
-- [ ] **Step 4: "?" link** next to the Config picker in `config.html` opening `/config-view/{{ config }}` in a new tab (Alpine: `:href="'/config-view/' + config"`).
-- [ ] **Step 5: Run tests, restart, headless-verify, commit.**
+- [x] **Step 3: Template** `config_view.html` using `ui.kv` macros for endpoint (mask api_key), machine, runs_per_cell, seed, temperature, context_buckets, scenarios, max_tokens, server_process_match, power_check, engine/engine_version, vlm, embed, and a models table (id, quant, max_tokens_default, reasoning_headroom_tokens, extra_body). Add a "Config-Datei herunterladen" link → `/export-yaml?kind=config&path=...`.
+- [x] **Step 4: "?" link** next to the Config picker in `config.html` opening `/config-view/{{ config }}` in a new tab (Alpine: `:href="'/config-view/' + config"`).
+- [x] **Step 5: Run tests, restart, headless-verify, commit.**
 
 ### Task P4.2 — YAML export route (effective pack/config)
 
-- [ ] **Step 1: Test:** `GET /export-yaml?kind=config&path=config.m5.yaml` → 200, `text/yaml`, body parses via `yaml.safe_load` back into a dict with `machine`; bad kind/path → 404.
-- [ ] **Step 2: Route:** validate `kind in {"config","pack"}` and the path against the offered `config*.yaml`/`packs/*.yaml` globs; `load_config`/`load_pack`; serialize `yaml.safe_dump(model.model_dump(mode="json"), sort_keys=False, allow_unicode=True)`; return as `Response(media_type="application/x-yaml", headers={"Content-Disposition": f'attachment; filename="{name}"'})`.
-- [ ] **Step 3: Run, restart, commit.**
+- [x] **Step 1: Test:** `GET /export-yaml?kind=config&path=config.m5.yaml` → 200, `text/yaml`, body parses via `yaml.safe_load` back into a dict with `machine`; bad kind/path → 404.
+- [x] **Step 2: Route:** validate `kind in {"config","pack"}` and the path against the offered `config*.yaml`/`packs/*.yaml` globs; `load_config`/`load_pack`; serialize `yaml.safe_dump(model.model_dump(mode="json"), sort_keys=False, allow_unicode=True)`; return as `Response(media_type="application/x-yaml", headers={"Content-Disposition": f'attachment; filename="{name}"'})`.
+- [x] **Step 3: Run, restart, commit.**
 
 ### Task P4.3 — Ephemeral non-model overrides at start
 
-- [ ] **Step 1: Test** in `tests/test_config_overrides.py` (pure): `apply_overrides(cfg, {"runs_per_cell": 4, "seed": 7})` returns a copy with those replaced and everything else intact; an unknown key (`{"endpoint": ...}`) raises `ValueError`; empty dict is a no-op (returns equal config).
-- [ ] **Step 2: Implement** `apply_overrides(cfg: Config, overrides: dict[str, object]) -> Config` in `config.py`, whitelisting `{"runs_per_cell", "seed", "temperature"}` only, validating types, using `cfg.model_copy(update=...)` then re-validating via `Config.model_validate(updated.model_dump())` so validators run. (Models keep their existing `apply_models_override` path.)
-- [ ] **Step 3: DEFERRED — do not wire into the spawn this round.** Decision gate resolved: `ramcheck eval --help` confirms the CLI has **no** `--runs-per-cell`/`--seed`/`--temperature` flags (only `--resume`/`--run-dir`/`--models-json`). Therefore ship `apply_overrides` as a tested pure helper (Steps 1–2 only) and DO NOT touch `start_eval`/`RunRegistry`/`control.py` for non-model overrides. The model override path (`models_json` → `apply_models_override`) is unchanged and already wired. Note the deferral in the commit message. (Follow-up, out of scope here: add the eval CLI flags, then wire `overrides_json`.)
-- [ ] **Step 4: Tests green, restart, headless-verify, commit.**
+- [x] **Step 1: Test** in `tests/test_config_overrides.py` (pure): `apply_overrides(cfg, {"runs_per_cell": 4, "seed": 7})` returns a copy with those replaced and everything else intact; an unknown key (`{"endpoint": ...}`) raises `ValueError`; empty dict is a no-op (returns equal config).
+- [x] **Step 2: Implement** `apply_overrides(cfg: Config, overrides: dict[str, object]) -> Config` in `config.py`, whitelisting `{"runs_per_cell", "seed", "temperature"}` only, validating types, using `cfg.model_copy(update=...)` then re-validating via `Config.model_validate(updated.model_dump())` so validators run. (Models keep their existing `apply_models_override` path.)
+- [x] **Step 3: DEFERRED — do not wire into the spawn this round.** Decision gate resolved: `ramcheck eval --help` confirms the CLI has **no** `--runs-per-cell`/`--seed`/`--temperature` flags (only `--resume`/`--run-dir`/`--models-json`). Therefore ship `apply_overrides` as a tested pure helper (Steps 1–2 only) and DO NOT touch `start_eval`/`RunRegistry`/`control.py` for non-model overrides. The model override path (`models_json` → `apply_models_override`) is unchanged and already wired. Note the deferral in the commit message. (Follow-up, out of scope here: add the eval CLI flags, then wire `overrides_json`.)
+- [x] **Step 4: Tests green, restart, headless-verify, commit.**
 
 ```bash
 git commit -am "feat(gui): read-only config viewer + YAML export + ephemeral override whitelist (P4)"
@@ -576,8 +578,8 @@ git commit -am "feat(gui): read-only config viewer + YAML export + ephemeral ove
 
 ### Task P7.1 — Export bundle as zip
 
-- [ ] **Step 1: Test:** build a judged bundle; `GET /export-bundle/<name>` → 200, `application/zip`; open the returned bytes with `zipfile.ZipFile(io.BytesIO(r.content))`, assert it contains `bundle.json`, `responses.jsonl`, `scores.csv` and does NOT contain `run.json`/`events.jsonl`.
-- [ ] **Step 2: Route:**
+- [x] **Step 1: Test:** build a judged bundle; `GET /export-bundle/<name>` → 200, `application/zip`; open the returned bytes with `zipfile.ZipFile(io.BytesIO(r.content))`, assert it contains `bundle.json`, `responses.jsonl`, `scores.csv` and does NOT contain `run.json`/`events.jsonl`.
+- [x] **Step 2: Route:**
 
 ```python
     @app.get("/export-bundle/{name}")
@@ -598,14 +600,14 @@ git commit -am "feat(gui): read-only config viewer + YAML export + ephemeral ove
                         headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
 ```
 
-- [ ] **Step 3: Zip button** in `result.html` export card. Run, restart, commit.
+- [x] **Step 3: Zip button** in `result.html` export card. Run, restart, commit.
 
 ### Task P7.2 — Import bundle from zip
 
-- [ ] **Step 1: Test:** zip a fixture bundle in-memory; `POST /import-bundle` (multipart file) → 200/redirect; assert a new dir landed under `runs_dir` and `bundles.classify(new_dir)` is judged. Missing `bundle.json` in zip → 400. Name collision → suffixed dir, both present.
-- [ ] **Step 2: Route** using `UploadFile` (python-multipart is already a `[gui]` dep): extract to a temp dir, validate `bundle.json` parses + `responses.jsonl` valid JSONL, choose a collision-safe name (`name` else `name__2`), move into `runs_dir`, return `{"run_dir": new_name}`. Apply the same Origin/CSRF guard (it's a POST — the middleware already covers it).
-- [ ] **Step 3: Import card** (file input → POST) on `/config` or a small `/import` page with a help card explaining portability + identity (`g`-style note: a bundle is `bundle.json`+`responses.jsonl`+`scores.csv`; `pack_path` must exist locally to view criteria).
-- [ ] **Step 4: Tests green, restart, headless-verify, commit.**
+- [x] **Step 1: Test:** zip a fixture bundle in-memory; `POST /import-bundle` (multipart file) → 200/redirect; assert a new dir landed under `runs_dir` and `bundles.classify(new_dir)` is judged. Missing `bundle.json` in zip → 400. Name collision → suffixed dir, both present.
+- [x] **Step 2: Route** using `UploadFile` (python-multipart is already a `[gui]` dep): extract to a temp dir, validate `bundle.json` parses + `responses.jsonl` valid JSONL, choose a collision-safe name (`name` else `name__2`), move into `runs_dir`, return `{"run_dir": new_name}`. Apply the same Origin/CSRF guard (it's a POST — the middleware already covers it).
+- [x] **Step 3: Import card** (file input → POST) on `/config` or a small `/import` page with a help card explaining portability + identity (`g`-style note: a bundle is `bundle.json`+`responses.jsonl`+`scores.csv`; `pack_path` must exist locally to view criteria).
+- [x] **Step 4: Tests green, restart, headless-verify, commit.**
 
 ```bash
 git commit -am "feat(gui): export/import whole bundles as zip — multi-machine aggregation (P7)"
@@ -621,17 +623,17 @@ git commit -am "feat(gui): export/import whole bundles as zip — multi-machine 
 
 ### Task P5.1 — Capture a baseline sample
 
-- [ ] **Step 1: Test** (`tests/test_sampler_baseline.py`): a `HostSampler` whose `sample_once` is stubbed to return increasing `sys_used_mb`, run `run_to_file` for a couple ticks, assert the FIRST line written carries a `"baseline": true` marker (or that a separate `baseline_sys_used_mb` is recorded).
-- [ ] **Step 2: Implement.** In `sampler.py:239-251`, after `self.start()` and before the loop, take one `sample_once()` and write it first with a `baseline` flag (add `baseline: bool = False` to `ResourceSample` in `models.py:26-37`, defaulting False, set True for this first sample). This keeps `resources.jsonl` the single carrier.
-- [ ] **Step 3: Run, verify pass.**
+- [x] **Step 1: Test** (`tests/test_sampler_baseline.py`): a `HostSampler` whose `sample_once` is stubbed to return increasing `sys_used_mb`, run `run_to_file` for a couple ticks, assert the FIRST line written carries a `"baseline": true` marker (or that a separate `baseline_sys_used_mb` is recorded).
+- [x] **Step 2: Implement.** In `sampler.py:239-251`, after `self.start()` and before the loop, take one `sample_once()` and write it first with a `baseline` flag (add `baseline: bool = False` to `ResourceSample` in `models.py:26-37`, defaulting False, set True for this first sample). This keeps `resources.jsonl` the single carrier.
+- [x] **Step 3: Run, verify pass.**
 
 ### Task P5.2 — Compute + persist the delta
 
-- [ ] **Step 1: Test** (`tests/test_merge.py` style): given samples where the baseline tick is 40000 MB and the peak in-window is 52000 MB, `merge`/aggregate yields `sys_used_delta_mb == 12000`.
-- [ ] **Step 2: Implement.** Thread the baseline (the `baseline=True` sample's `sys_used_mb`, or `min` of pre-first-request samples) through to per-cell aggregation; add `sys_used_delta_mb` to `RunRecord` (`models.py:52-95`) and `RAW_CSV_COLUMNS` (after `sys_used_mb`) — keep the import-time `RAW_CSV_COLUMNS ↔ RunRecord` assertion green. Add `sys_used_baseline_mb`/derived delta into `EvalResponse` + `_perf_summary` (`model_delta_gb`) + scores.csv.
-- [ ] **Step 3: UI labels.** In `compare.html`/`compare_axis.html`/`result.html`, relabel the existing peak as `ui.mlabel("system_peak_ram")` and add a `ui.mlabel("model_delta_ram")` value next to it; pressure stays `ui.mlabel("mem_pressure")`.
-- [ ] **Step 4: Document.** Add an AGENTS.md gotcha + a `docs/explanation/design-decisions.md` section: unified-memory caveat, baseline definition, what is NOT decomposed (KV), per-prompt isolation deferred.
-- [ ] **Step 5: Full `pytest` + `mypy` + `ruff`; restart; headless-verify compare/result; commit.**
+- [x] **Step 1: Test** (`tests/test_merge.py` style): given samples where the baseline tick is 40000 MB and the peak in-window is 52000 MB, `merge`/aggregate yields `sys_used_delta_mb == 12000`.
+- [x] **Step 2: Implement.** Thread the baseline (the `baseline=True` sample's `sys_used_mb`, or `min` of pre-first-request samples) through to per-cell aggregation; add `sys_used_delta_mb` to `RunRecord` (`models.py:52-95`) and `RAW_CSV_COLUMNS` (after `sys_used_mb`) — keep the import-time `RAW_CSV_COLUMNS ↔ RunRecord` assertion green. Add `sys_used_baseline_mb`/derived delta into `EvalResponse` + `_perf_summary` (`model_delta_gb`) + scores.csv.
+- [x] **Step 3: UI labels.** In `compare.html`/`compare_axis.html`/`result.html`, relabel the existing peak as `ui.mlabel("system_peak_ram")` and add a `ui.mlabel("model_delta_ram")` value next to it; pressure stays `ui.mlabel("mem_pressure")`.
+- [x] **Step 4: Document.** Add an AGENTS.md gotcha + a `docs/explanation/design-decisions.md` section: unified-memory caveat, baseline definition, what is NOT decomposed (KV), per-prompt isolation deferred.
+- [x] **Step 5: Full `pytest` + `mypy` + `ruff`; restart; headless-verify compare/result; commit.**
 
 ```bash
 git commit -am "feat(ram): baseline-subtracted model-delta as the cross-machine-comparable memory metric (P5)"
@@ -645,16 +647,16 @@ git commit -am "feat(ram): baseline-subtracted model-delta as the cross-machine-
 
 ### Task P6.1 — Capture reasoning timing in `stream_once`
 
-- [ ] **Step 1: Test** (`tests/test_runner.py`, mirror the existing `ReasoningClient` + `SeqClock`): a client that yields two `reasoning_text` chunks then one `delta_text`; with an injected clock, assert the returned outcome has `reasoning_duration_s` ≈ (last reasoning tick − first reasoning tick) and that it is set only when reasoning arrived (NaN/None otherwise). Verify reasoning does NOT move TTFT (existing invariant).
-- [ ] **Step 2: Implement.** Add `t_reasoning_start: float | None = None` and `t_reasoning_last: float | None = None` to `RequestOutcome`. In `stream_once`'s loop, on each `ev.reasoning_text`: if `t_reasoning_start is None: t_reasoning_start = clock() - t0`; always `t_reasoning_last = clock() - t0`. After the loop compute `reasoning_duration_s = (t_reasoning_last - t_reasoning_start)` when both set else `math.nan`. Add a heuristic reasoning token count via `(counter or HeuristicCounter()).count(reasoning)` → `reasoning_completion_tokens`; `reasoning_tps = reasoning_completion_tokens / reasoning_duration_s` (nan-safe, mirror `derive_rates`).
-- [ ] **Step 3: Run, verify pass.**
+- [x] **Step 1: Test** (`tests/test_runner.py`, mirror the existing `ReasoningClient` + `SeqClock`): a client that yields two `reasoning_text` chunks then one `delta_text`; with an injected clock, assert the returned outcome has `reasoning_duration_s` ≈ (last reasoning tick − first reasoning tick) and that it is set only when reasoning arrived (NaN/None otherwise). Verify reasoning does NOT move TTFT (existing invariant).
+- [x] **Step 2: Implement.** Add `t_reasoning_start: float | None = None` and `t_reasoning_last: float | None = None` to `RequestOutcome`. In `stream_once`'s loop, on each `ev.reasoning_text`: if `t_reasoning_start is None: t_reasoning_start = clock() - t0`; always `t_reasoning_last = clock() - t0`. After the loop compute `reasoning_duration_s = (t_reasoning_last - t_reasoning_start)` when both set else `math.nan`. Add a heuristic reasoning token count via `(counter or HeuristicCounter()).count(reasoning)` → `reasoning_completion_tokens`; `reasoning_tps = reasoning_completion_tokens / reasoning_duration_s` (nan-safe, mirror `derive_rates`).
+- [x] **Step 3: Run, verify pass.**
 
 ### Task P6.2 — Persist + surface
 
-- [ ] **Step 1:** Add `reasoning_duration_s: float`, `reasoning_tps: float`, `reasoning_completion_tokens: int` to `EvalResponse` (`results.py`) with safe defaults; set them in `qualrun.py:189-207` from the outcome; they flow into `responses.jsonl` via `as_dict()`. Keep the slim policy: timing always; `reasoning_text` only on `content_empty` (unchanged).
-- [ ] **Step 2: Test** the `EvalResponse` round-trip (mirror `test_results.py`) — new fields default safely and serialize.
-- [ ] **Step 3: Surface** in `result.html` per-answer block (`ui.metric(reasoning_duration_s, "reasoning_duration", "s")`, `ui.metric(reasoning_tps, "reasoning_tps", "tok/s")`) and add a `Thinking`-row to `compare_axis.html` via a new `CompareCell.reasoning_*` median in `compare._cell_metrics`.
-- [ ] **Step 4: Full `pytest`/`mypy`/`ruff`; restart; headless-verify; commit.**
+- [x] **Step 1:** Add `reasoning_duration_s: float`, `reasoning_tps: float`, `reasoning_completion_tokens: int` to `EvalResponse` (`results.py`) with safe defaults; set them in `qualrun.py:189-207` from the outcome; they flow into `responses.jsonl` via `as_dict()`. Keep the slim policy: timing always; `reasoning_text` only on `content_empty` (unchanged).
+- [x] **Step 2: Test** the `EvalResponse` round-trip (mirror `test_results.py`) — new fields default safely and serialize.
+- [x] **Step 3: Surface** in `result.html` per-answer block (`ui.metric(reasoning_duration_s, "reasoning_duration", "s")`, `ui.metric(reasoning_tps, "reasoning_tps", "tok/s")`) and add a `Thinking`-row to `compare_axis.html` via a new `CompareCell.reasoning_*` median in `compare._cell_metrics`.
+- [x] **Step 4: Full `pytest`/`mypy`/`ruff`; restart; headless-verify; commit.**
 
 ```bash
 git commit -am "feat(eval): capture reasoning-phase duration + tps; surface thinking vs response split (P6)"
