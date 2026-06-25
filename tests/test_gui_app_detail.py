@@ -317,6 +317,8 @@ def test_flat_scorecard_only_for_full_matrix(one_by_n_bundle, two_by_two_bundle)
     The string "Gewichtete Master-Scorecard" also appears in the method explainer,
     so we match on the card-title div which is unique to the scorecard card.
     """
+    # Two separate clients because the two bundles live under different tmp_path roots,
+    # so each needs a TestClient whose runs_dir is that bundle's parent.
     # 1×N: head-to-head present, flat master-scorecard card suppressed
     c1 = _client(one_by_n_bundle.parent)
     b1 = c1.get(f"/result/{one_by_n_bundle.name}").text

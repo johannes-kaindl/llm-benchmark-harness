@@ -615,9 +615,12 @@ def test_axis_options_full_matrix_flag():
         ]
     )
     assert o2.full_matrix is True
+    # 2×1 → not a full matrix (completes the truth table: needs >1 on BOTH axes)
+    o3 = compare.axis_options([_resp("m1", "baseline"), _resp("m2", "baseline")])
+    assert o3.full_matrix is False
 
 
-def test_compare_detail_reuses_passed_base(tmp_path, monkeypatch):
+def test_compare_detail_reuses_passed_base(tmp_path):
     """When a base dict is passed, compare_detail must not re-call bundle_detail."""
     from touchstone.gui import bundles
 
