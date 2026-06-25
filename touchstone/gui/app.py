@@ -220,10 +220,17 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         )
 
     @app.get("/compare", response_class=HTMLResponse)
-    def compare_cross(request: Request) -> HTMLResponse:
-        rows = aggregate_mod.load_all_scores(runs_dir)
-        agg = aggregate_mod.aggregate(rows) if rows else []
-        return render("compare.html", request, rows=agg, active="compare")
+    def compare_cross(request: Request, rows: str | None = None) -> HTMLResponse:
+        pool = aggregate_mod.pool_rows(runs_dir)
+        diff = None
+        if rows:
+            wanted = [x for x in rows.split(",") if x]
+            selected = [r for r in pool if r.id in wanted]
+            # Preserve the user's selection order (as given in ?rows=).
+            selected.sort(key=lambda r: wanted.index(r.id))
+            if len(selected) >= 2:
+                diff = aggregate_mod.diff_rows(selected)
+        return render("compare.html", request, pool=pool, diff=diff, active="compare")
 
     @app.get("/compare/{name}")
     def compare_axis(request: Request, name: str) -> RedirectResponse:

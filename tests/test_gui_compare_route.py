@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from fastapi.testclient import TestClient
+from test_aggregate import _write_scores_pool
 from test_gui_compare import (
     PACK,
     _resp,
@@ -312,3 +313,91 @@ def test_method_explainer_rendered_exactly_once_on_comparable_bundle(tmp_path):
     assert r.status_code == 200
     # The explainer card title is unique to _method_explainer.html
     assert r.text.count("Bewertungs-Methode") == 1
+
+
+# ── Task 3 (B2): /compare takes ?rows= → pool + auto-diff context ─────────────
+
+_POOL_DIM = {
+    "chip": "M2",
+    "ram_gb": "16",
+    "pack": "ndassist",
+    "pack_version": "1",
+    "model": "gemma",
+    "quant": "Q4",
+    "variant": "baseline",
+    "ttft_p50": "0.2",
+    "decode_med": "20",
+    "peak_ram_gb": "8",
+    "model_delta_gb": "4",
+    "power": "ac",
+    "metric_type": "dimension",
+    "metric": "D1",
+    "weight": "1",
+    "score": "4",
+}
+
+
+def test_compare_pool_and_diff(tmp_path, monkeypatch):
+    """GET /compare?rows=id1,id2 → pool contains both rows, diff is not None with 2 columns."""
+    run_a = "2026-01-01_000000_eval_ndassist"
+    run_b = "2026-01-02_000000_eval_ndassist"
+    _write_scores_pool(tmp_path / run_a, [_POOL_DIM])
+    _write_scores_pool(tmp_path / run_b, [_POOL_DIM])
+
+    seen: dict = {}
+    real = gui_app.render
+
+    def spy_render(template: str, request, **ctx):  # type: ignore[override]
+        seen.update(ctx)
+        return real(template, request, **ctx)
+
+    monkeypatch.setattr(gui_app, "render", spy_render)
+
+    client = _client(tmp_path)
+    id_a = f"{run_a}|gemma|baseline"
+    id_b = f"{run_b}|gemma|baseline"
+    resp = client.get(f"/compare?rows={id_a},{id_b}")
+    assert resp.status_code == 200
+    assert "pool" in seen
+    pool_ids = {r.id for r in seen["pool"]}
+    assert id_a in pool_ids and id_b in pool_ids
+    assert seen.get("diff") is not None
+    assert len(seen["diff"].columns) == 2
+
+
+def test_compare_no_rows_shows_pool_only(tmp_path, monkeypatch):
+    """GET /compare without ?rows → pool is loaded, diff is None."""
+    run_a = "2026-01-01_000000_eval_ndassist"
+    _write_scores_pool(tmp_path / run_a, [_POOL_DIM])
+
+    seen: dict = {}
+    real = gui_app.render
+
+    def spy_render(template: str, request, **ctx):  # type: ignore[override]
+        seen.update(ctx)
+        return real(template, request, **ctx)
+
+    monkeypatch.setattr(gui_app, "render", spy_render)
+
+    client = _client(tmp_path)
+    resp = client.get("/compare")
+    assert resp.status_code == 200
+    assert "pool" in seen
+    assert seen.get("diff") is None
+
+
+def test_compare_bad_rows_ignored(tmp_path, monkeypatch):
+    """GET /compare?rows=does|not|exist → 200, no crash, diff is None."""
+    seen: dict = {}
+    real = gui_app.render
+
+    def spy_render(template: str, request, **ctx):  # type: ignore[override]
+        seen.update(ctx)
+        return real(template, request, **ctx)
+
+    monkeypatch.setattr(gui_app, "render", spy_render)
+
+    client = _client(tmp_path)
+    resp = client.get("/compare?rows=does%7Cnot%7Cexist")
+    assert resp.status_code == 200
+    assert seen.get("diff") is None

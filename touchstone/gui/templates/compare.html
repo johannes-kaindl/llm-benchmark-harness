@@ -9,7 +9,7 @@
 
 <div class="card">
   <div class="card-title">Hardware × Qualität</div>
-  {% if rows %}
+  {% if pool %}
   <table class="bundle-table">
     <thead>
       <tr>
@@ -27,7 +27,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for r in rows %}
+      {% for r in pool %}
       <tr>
         <td>{{ r.chip }}</td>
         <td>{{ r.ram_gb }}</td>
