@@ -76,6 +76,88 @@ def _as_int(s: str) -> int | None:
         return None
 
 
+def _weighted_quality(rows: list[dict[str, str]]) -> tuple[float | None, dict[str, int]]:
+    """Σ score·weight / Σ 5·weight over metric_type=='dimension' rows → (quality_pct, dim_scores).
+
+    Returns (None, {}) when there are no scoreable dimension rows.
+    """
+    dim_scores: dict[str, int] = {}
+    wsum = wmax = 0
+    for r in rows:
+        if r.get("metric_type") != "dimension":
+            continue
+        score = _as_int(r.get("score", ""))
+        if score is None:
+            continue
+        weight = _as_int(r.get("weight", "")) or 0
+        dim_scores[r.get("metric", "")] = score
+        wsum += score * weight
+        wmax += SCALE_MAX * weight
+    return ((wsum / wmax * 100.0) if wmax else None), dim_scores
+
+
+@dataclass
+class PoolRow:
+    id: str
+    run_name: str
+    chip: str
+    ram_gb: str
+    pack: str
+    pack_version: str
+    model: str
+    quant: str
+    variant: str
+    quality_pct: float | None
+    ttft_p50: str
+    decode_med: str
+    peak_ram_gb: str
+    model_delta_gb: str
+    power: str
+
+
+def pool_rows(runs_dir: str | Path) -> list[PoolRow]:
+    """One row per (run_name, model, variant) — NOT averaged across bundles (unlike
+    aggregate()), so two runs of the same setup stay distinct. id = run_name|model|variant."""
+    base = Path(runs_dir)
+    if not base.exists():
+        return []
+    groups: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+    order: list[tuple[str, str, str]] = []
+    for f in sorted(base.rglob("scores.csv")):
+        run_name = f.parent.name
+        for r in load_scores_csv(f):
+            k = (run_name, r.get("model", ""), r.get("variant", ""))
+            if k not in groups:
+                groups[k] = []
+                order.append(k)
+            groups[k].append(r)
+    out: list[PoolRow] = []
+    for run_name, model, variant in order:
+        grp = groups[(run_name, model, variant)]
+        first = grp[0]
+        quality, _dims = _weighted_quality(grp)
+        out.append(
+            PoolRow(
+                id=f"{run_name}|{model}|{variant}",
+                run_name=run_name,
+                chip=first.get("chip", ""),
+                ram_gb=first.get("ram_gb", ""),
+                pack=first.get("pack", ""),
+                pack_version=first.get("pack_version", ""),
+                model=model,
+                quant=first.get("quant", ""),
+                variant=variant,
+                quality_pct=quality,
+                ttft_p50=first.get("ttft_p50", ""),
+                decode_med=first.get("decode_med", ""),
+                peak_ram_gb=first.get("peak_ram_gb", ""),
+                model_delta_gb=first.get("model_delta_gb", ""),
+                power=first.get("power", ""),
+            )
+        )
+    return out
+
+
 def aggregate(rows: list[dict[str, str]]) -> list[AggRow]:
     """Group score rows and compute a weighted quality % per hardware×model×variant."""
     groups: dict[GroupKey, list[dict[str, str]]] = {}
@@ -91,20 +173,7 @@ def aggregate(rows: list[dict[str, str]]) -> list[AggRow]:
     for k in order:
         grp = groups[k]
         first = grp[0]
-        dim_scores: dict[str, int] = {}
-        wsum = 0
-        wmax = 0
-        for r in grp:
-            if r.get("metric_type") != "dimension":
-                continue
-            score = _as_int(r.get("score", ""))
-            if score is None:
-                continue
-            weight = _as_int(r.get("weight", "")) or 0
-            dim_scores[r.get("metric", "")] = score
-            wsum += score * weight
-            wmax += SCALE_MAX * weight
-        quality = (wsum / wmax * 100.0) if wmax else None
+        quality, dim_scores = _weighted_quality(grp)
         out.append(
             AggRow(
                 chip=k[0],

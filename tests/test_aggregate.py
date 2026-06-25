@@ -1,4 +1,5 @@
 import csv
+from pathlib import Path
 
 from touchstone import aggregate as agg
 
@@ -195,3 +196,62 @@ def test_write_scores_all_csv_roundtrip(tmp_path):
     agg.write_scores_all_csv(rows, p)
     back = list(csv.DictReader(p.open(encoding="utf-8")))
     assert len(back) == 2 and {r["model"] for r in back} == {"m1", "m2"}
+
+
+def _write_scores_pool(d: Path, rows: list[dict]):  # type: ignore[type-arg]
+    d.mkdir(parents=True, exist_ok=True)
+    cols = [
+        "chip",
+        "ram_gb",
+        "pack",
+        "pack_version",
+        "model",
+        "quant",
+        "variant",
+        "ttft_p50",
+        "decode_med",
+        "peak_ram_gb",
+        "model_delta_gb",
+        "power",
+        "metric_type",
+        "metric",
+        "weight",
+        "score",
+    ]
+    with (d / "scores.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow(r)
+
+
+def test_pool_rows_one_row_per_bundle_model_variant(tmp_path):
+    # two runs, same setup → two distinct pool rows (NOT averaged), unique ids
+    base = {
+        "chip": "M1",
+        "ram_gb": "16",
+        "pack": "ndassist",
+        "pack_version": "1",
+        "model": "gemma",
+        "quant": "Q4",
+        "variant": "baseline",
+        "ttft_p50": "0.1",
+        "decode_med": "18",
+        "peak_ram_gb": "14",
+        "model_delta_gb": "8",
+        "power": "ac",
+    }
+    dim = {**base, "metric_type": "dimension", "metric": "D1", "weight": "1", "score": "4"}
+    _write_scores_pool(tmp_path / "2026-01-01_000000_eval_ndassist", [dim])
+    _write_scores_pool(tmp_path / "2026-01-02_000000_eval_ndassist", [dim])
+    pool = agg.pool_rows(tmp_path)
+    assert len(pool) == 2
+    ids = {r.id for r in pool}
+    assert ids == {
+        "2026-01-01_000000_eval_ndassist|gemma|baseline",
+        "2026-01-02_000000_eval_ndassist|gemma|baseline",
+    }
+    r0 = pool[0]
+    assert r0.chip == "M1" and r0.model == "gemma" and r0.variant == "baseline"
+    assert r0.quality_pct == 80.0  # score 4 of 5 = 80%
+    assert r0.decode_med == "18"
