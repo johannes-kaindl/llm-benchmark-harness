@@ -238,6 +238,8 @@
 {# ── Inline Vergleichs-Block (Scatter + Kopf-an-Kopf + Per-Aufgabe-Δ) ──────── #}
 {% if compare_detail and not compare_detail.single %}
   {% with detail=compare_detail %}{% include "macros/_compare_block.html" %}{% endwith %}
+{% elif compare_detail and compare_detail.single %}
+<div class="card"><p class="muted">Nur ein {{ compare_detail.axis_label }} im Bundle — nichts zu vergleichen.</p></div>
 {% endif %}
 
 {# ── Antworten nach Kategorie ─────────────────────────────────────────────── #}

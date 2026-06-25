@@ -12,7 +12,13 @@ from typing import Any
 
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -186,9 +192,11 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             else None
         )
         projection = variant or model
+        # Compute compare_detail when the bundle is comparable OR when an axis was
+        # explicitly requested (so the single-axis "nichts zu vergleichen" message renders).
         cmp = (
             compare.compare_detail(rd, axis, projection=projection, base=detail)
-            if detail and axis_opts and axis_opts.comparable
+            if detail and axis_opts and (axis_opts.comparable or axis is not None)
             else None
         )
         return render(
@@ -209,25 +217,11 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         agg = aggregate_mod.aggregate(rows) if rows else []
         return render("compare.html", request, rows=agg, active="compare")
 
-    @app.get("/compare/{name}", response_class=HTMLResponse)
-    def compare_axis(
-        request: Request,
-        name: str,
-        axis: str | None = None,
-        variant: str | None = None,
-        model: str | None = None,
-    ) -> HTMLResponse:
-        rd = (runs_dir / name).resolve()
-        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
-            raise HTTPException(status_code=404)
-        if axis is not None and axis not in ("model", "variant"):
-            raise HTTPException(status_code=422)
-        projection = variant or model  # generated links only ever set the axis-relevant one
-        try:
-            detail = compare.compare_detail(rd, axis, projection=projection)
-        except Exception:
-            detail = None
-        return render("compare_axis.html", request, detail=detail, run_dir=rd, active="overview")
+    @app.get("/compare/{name}")
+    def compare_axis(request: Request, name: str) -> RedirectResponse:
+        qs = request.url.query
+        target = f"/result/{name}" + (f"?{qs}" if qs else "")
+        return RedirectResponse(target, status_code=301)
 
     @app.get("/config", response_class=HTMLResponse)
     def config_get(
