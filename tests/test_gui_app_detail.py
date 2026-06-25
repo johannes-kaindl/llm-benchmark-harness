@@ -282,6 +282,33 @@ def test_answers_have_cell_filter_for_multi_cell(client, multi_cell_bundle):
     assert "none" in body  # second cell label appears
 
 
+def test_single_cell_bundle_answers_not_hidden(tmp_path):
+    """Task 7 regression: 1 model × 1 variant must NOT hide all answers.
+
+    When compare_detail is None (no comparison), default_cell must be '__all__'
+    so Alpine's x-show evaluates to true and answers are visible.
+    Previously default_cell fell back to '' which hid every answer block.
+    """
+    d = tmp_path / "2026_eval_1x1"
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    _write_compare_bundle(
+        d,
+        cells=[("m", "baseline")],
+        dim_scores_by_cell={("m", "baseline"): full},
+    )
+    client = _client(tmp_path)
+    body = client.get(f"/result/{d.name}").text
+    assert client.get(f"/result/{d.name}").status_code == 200
+    # The Alpine state must default to __all__ so x-show is true for every answer block
+    assert "x-data=\"{ cell: '__all__' }\"" in body, (
+        "default_cell must be '__all__' for a single-cell bundle so answers are visible"
+    )
+    # At least one answer block (data-cell= attribute) must be present
+    assert "data-cell=" in body, (
+        "answer blocks with data-cell= must be rendered (not stripped)"
+    )
+
+
 # ── Task 6: flat master-scorecard shown only for true N×M matrices ────────────
 
 
