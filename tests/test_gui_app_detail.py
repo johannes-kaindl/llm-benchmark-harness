@@ -183,15 +183,16 @@ def multi_cell_bundle(tmp_path):
 
 
 @pytest.fixture()
-def client(tmp_path, multi_cell_bundle):
-    reg = RunRegistry(runs_dir=tmp_path, launcher=_FakeLauncher())
-    return TestClient(appmod.create_app(runs_dir=tmp_path, registry=reg))
+def client(multi_cell_bundle):
+    runs_dir = multi_cell_bundle.parent
+    reg = RunRegistry(runs_dir=runs_dir, launcher=_FakeLauncher())
+    return TestClient(appmod.create_app(runs_dir=runs_dir, registry=reg))
 
 
 def test_result_route_passes_compare_detail(client, multi_cell_bundle, monkeypatch):
     """Route must load bundle once and pass compare_detail with ≥2 cells into template ctx."""
     seen: dict = {}
-    real = appmod.render  # type: ignore[attr-defined]
+    real = appmod.render
 
     def spy_render(template, request, **ctx):
         seen.update(ctx)
