@@ -74,6 +74,8 @@ def test_validate_pack_yaml_duplicate_prompt_id():
     out = packs.validate_pack_yaml(bad)
     assert out["ok"] is False
     assert any("duplicate" in e["msg"].lower() for e in out["errors"])
+    # model-level validator errors (loc=()) must still get a non-empty label, not a bare ' — '
+    assert all(e["loc"] for e in out["errors"])
 
 
 def test_validate_pack_yaml_carries_loc_path():

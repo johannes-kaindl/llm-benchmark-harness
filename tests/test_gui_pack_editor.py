@@ -72,6 +72,27 @@ def test_pack_editor_rejects_unknown_pack(tmp_path):
     assert _client(tmp_path).get("/pack-editor?path=packs/nope.yaml").status_code == 404
 
 
+def test_pack_editor_rejects_symlink_escape(tmp_path, monkeypatch):
+    # a symlink inside packs/ that points OUTSIDE must not leak the target (defense in depth)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "packs").mkdir()
+    (tmp_path / "secret.txt").write_text("top secret", encoding="utf-8")
+    (tmp_path / "packs" / "evil.yaml").symlink_to(tmp_path / "secret.txt")
+    r = _client(tmp_path).get("/pack-editor?path=packs/evil.yaml")
+    assert r.status_code == 404
+    assert "top secret" not in r.text
+
+
+def test_validate_preview_escapes_user_html(tmp_path):
+    # preview_html is consumed via x-html; user pack fields MUST be entity-escaped (no XSS)
+    evil = VALID.replace("name: Qualität", "name: '<img src=x onerror=alert(1)>'")
+    r = _client(tmp_path).post("/packs/validate", data={"yaml_text": evil})
+    j = r.json()
+    assert j["ok"] is True
+    assert "<img src=x onerror" not in j["preview_html"]  # never a live tag
+    assert "&lt;img src=x onerror" in j["preview_html"]  # rendered as inert text
+
+
 # ── POST /packs/validate ────────────────────────────────────────────────────────
 
 

@@ -67,7 +67,9 @@ def _format_errors(exc: ValidationError) -> list[dict[str, str]]:
     point at the offending field (e.g. ``dimensions.0.weight``)."""
     out: list[dict[str, str]] = []
     for e in exc.errors():
-        loc = ".".join(str(p) for p in e.get("loc", ()))
+        # model-level validators (e.g. duplicate prompt ids) carry loc=() → label them "(pack)"
+        # so the editor never shows a bare " — message" with an empty field prefix.
+        loc = ".".join(str(p) for p in e.get("loc", ())) or "(pack)"
         out.append({"loc": loc, "msg": str(e.get("msg", ""))})
     return out
 

@@ -110,8 +110,13 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         if path is not None:
             if path not in set(offered):  # confine to the packs the editor actually offers
                 raise HTTPException(status_code=404)
+            # Resolve + confine before reading so a symlink inside packs/ can't leak a target
+            # outside it (mirrors the save route's is_relative_to guard; glob lists symlinks).
+            target = Path(path).resolve()
+            if not target.is_relative_to(Path("packs").resolve()):
+                raise HTTPException(status_code=404)
             try:
-                yaml_text = Path(path).read_text(encoding="utf-8")
+                yaml_text = target.read_text(encoding="utf-8")
             except (FileNotFoundError, OSError):
                 raise HTTPException(status_code=404) from None
         else:
