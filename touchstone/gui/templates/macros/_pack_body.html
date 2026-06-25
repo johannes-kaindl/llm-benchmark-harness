@@ -1,0 +1,81 @@
+{# Pack structural body (dimensions · prompt-variants · prompts). Shared by the read-only
+   pack viewer (pack.html) and the editor's live preview (/packs/validate). Takes `pack`. #}
+<div class="card">
+  <div class="card-title">Dimensionen</div>
+  {% for d in pack.dimensions %}
+  <div class="dim-row">
+    <span class="dim-id{% if d.id == pack.ko_rule.dimension %} dim-ko{% endif %}">{{ d.id }}</span>
+    <span>{{ d.name }}</span>
+    <span class="dim-weight">×{{ d.weight }}</span>
+    {% if d.id == pack.ko_rule.dimension %}
+      <span class="badge nein" style="font-size:0.7rem">K.-o. ≤ {{ pack.ko_rule.threshold }}</span>
+    {% endif %}
+    {% if d.about %}
+      <span class="text-xs muted">— {{ d.about }}</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">Prompt-Varianten</div>
+  <p class="muted text-xs"><strong>baseline</strong>: {{ g("variant_baseline").short }} · <strong>none</strong>: {{ g("variant_none").short }}</p>
+  {% for pv in pack.prompt_variants %}
+  {% if pv.system_prompt %}
+  <div x-data="{ open: false }" style="margin-bottom:0.3rem">
+    <div class="flex items-center gap-2" style="cursor:pointer;user-select:none" @click="open = !open">
+      <span class="dim-id">{{ pv.id }}</span>
+      <a class="text-xs" style="cursor:pointer" x-text="open ? '▲ System-Prompt verbergen' : '▼ System-Prompt anzeigen'"></a>
+    </div>
+    <div x-show="open" x-cloak class="text-xs muted" style="white-space:pre-wrap; margin:0.3rem 0 0 0; padding:0.4rem 0.6rem; background:var(--bg); border-radius:6px; border-left:3px solid var(--border)">{{ pv.system_prompt }}</div>
+  </div>
+  {% else %}
+  <div class="dim-row">
+    <span class="dim-id">{{ pv.id }}</span>
+    <span class="text-xs muted">(kein System-Prompt)</span>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-title">Prompts</div>
+  {% for cat in pack.categories %}
+  <div style="margin-bottom:0.75rem">
+    <div style="font-weight:600;padding:0.25rem 0;border-bottom:2px solid var(--border);margin-bottom:0.25rem">
+      {{ cat.id }} · {{ cat.name }}
+    </div>
+    <ul class="prompt-list">
+      {% for p in cat.prompts %}
+      <li class="prompt-item">
+        <div class="flex items-center gap-2">
+          <span class="prompt-id">{{ p.id }}</span>
+          <span>{{ p.title }}</span>
+          {% if p.safety_critical %}<span class="badge nein" style="font-size:0.65rem">sicherheitskritisch</span>{% endif %}
+          {% if p.format_strict %}<span class="badge eval-only" style="font-size:0.65rem">format-strikt</span>{% endif %}
+        </div>
+        <div x-data="{ open: false }" class="mt-1">
+          <a class="text-xs" style="cursor:pointer" @click="open = !open" x-text="open ? '▲ Prompt verbergen' : '▼ Prompt anzeigen'"></a>
+          <div x-show="open" x-cloak style="margin-top:0.3rem">
+            <div class="text-xs" style="white-space:pre-wrap; padding:0.4rem 0.6rem; background:var(--bg); border-radius:6px; border-left:3px solid var(--border)">{{ p.prompt }}</div>
+            {% if p.tests %}
+            <div class="text-xs muted" style="margin-top:0.3rem"><strong>Rubrik:</strong> {{ p.tests }}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% if p.green_flags %}
+        <div class="mt-1">
+          {% for f in p.green_flags %}<span class="flag green">✓ {{ f }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if p.red_flags %}
+        <div class="mt-1">
+          {% for f in p.red_flags %}<span class="flag red">✗ {{ f }}</span>{% endfor %}
+        </div>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
