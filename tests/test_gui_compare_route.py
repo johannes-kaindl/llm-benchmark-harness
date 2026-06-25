@@ -213,7 +213,8 @@ def test_overview_shows_compare_link_for_multi_variant(tmp_path):
     d = _two_variant_bundle(tmp_path)
     r = _client(tmp_path).get("/")
     assert r.status_code == 200
-    assert f"/compare/{d.name}?axis=variant" in r.text
+    assert f"/result/{d.name}?axis=variant" in r.text
+    assert f"/compare/{d.name}" not in r.text
 
 
 # ── Review fixes (adversarial 3-perspective review) ───────────────────────────
