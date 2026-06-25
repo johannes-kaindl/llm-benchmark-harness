@@ -144,6 +144,8 @@
 {% endif %}
 
 {# ── Gewichtete Master-Scorecard ──────────────────────────────────────────── #}
+{# Show only when: no comparison (single cell / not comparable) OR the bundle is a true N×M matrix #}
+{% if (not compare_detail or compare_detail.single) or (axis_opts and axis_opts.full_matrix) %}
 {% if detail and detail.reports %}
 <div class="card">
   <div class="card-title">Gewichtete Master-Scorecard</div>
@@ -234,6 +236,7 @@
   <p class="muted">Noch nicht bewertet — <code>touchstone judge</code> ausführen.</p>
 </div>
 {% endif %}
+{% endif %}{# /full_matrix guard #}
 
 {# ── Inline Vergleichs-Block (Scatter + Kopf-an-Kopf + Per-Aufgabe-Δ) ──────── #}
 {% if compare_detail and not compare_detail.single %}

@@ -236,3 +236,51 @@ def test_result_route_passes_compare_detail(client, multi_cell_bundle, monkeypat
     assert resp.status_code == 200
     assert seen.get("compare_detail") is not None
     assert seen["compare_detail"].cells and len(seen["compare_detail"].cells) >= 2
+
+
+# ── Task 6: flat master-scorecard shown only for true N×M matrices ────────────
+
+
+@pytest.fixture()
+def one_by_n_bundle(tmp_path):
+    """1 model × 2 variants → N×1 bundle (no full_matrix)."""
+    return _two_variant_bundle(tmp_path)
+
+
+@pytest.fixture()
+def two_by_two_bundle(tmp_path):
+    """2 models × 2 variants → true 2×2 matrix (full_matrix=True)."""
+    d = tmp_path / "2026_eval_2x2"
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    _write_compare_bundle(
+        d,
+        cells=[("alpha", "baseline"), ("alpha", "none"), ("beta", "baseline"), ("beta", "none")],
+        dim_scores_by_cell={
+            ("alpha", "baseline"): dict(full),
+            ("alpha", "none"): dict(full),
+            ("beta", "baseline"): {q: 5 for q in full},
+            ("beta", "none"): dict(full),
+        },
+    )
+    return d
+
+
+_SCORECARD_TITLE = '<div class="card-title">Gewichtete Master-Scorecard</div>'
+
+
+def test_flat_scorecard_only_for_full_matrix(one_by_n_bundle, two_by_two_bundle):
+    """1×N suppresses flat master-scorecard card; 2×2 keeps it.
+
+    The string "Gewichtete Master-Scorecard" also appears in the method explainer,
+    so we match on the card-title div which is unique to the scorecard card.
+    """
+    # 1×N: head-to-head present, flat master-scorecard card suppressed
+    c1 = _client(one_by_n_bundle.parent)
+    b1 = c1.get(f"/result/{one_by_n_bundle.name}").text
+    assert "Kopf-an-Kopf" in b1
+    assert _SCORECARD_TITLE not in b1
+    # 2×2: both head-to-head and master-scorecard card present
+    c2 = _client(two_by_two_bundle.parent)
+    b2 = c2.get(f"/result/{two_by_two_bundle.name}").text
+    assert "Kopf-an-Kopf" in b2
+    assert _SCORECARD_TITLE in b2
