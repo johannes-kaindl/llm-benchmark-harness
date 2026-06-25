@@ -401,3 +401,22 @@ def test_compare_bad_rows_ignored(tmp_path, monkeypatch):
     resp = client.get("/compare?rows=does%7Cnot%7Cexist")
     assert resp.status_code == 200
     assert seen.get("diff") is None
+
+
+# ── Task 4: compare.html selection pool (checkboxes + filters + compare button) ─
+
+
+def test_compare_pool_has_checkboxes_and_compare_button(tmp_path):
+    """GET /compare with ≥1 pool row → body contains checkbox, Alpine x-data, Vergleichen button,
+    and a checkbox value fragment containing '|gemma|baseline'."""
+    run_a = "2026-01-01_000000_eval_ndassist"
+    _write_scores_pool(tmp_path / run_a, [_POOL_DIM])
+
+    client = _client(tmp_path)
+    resp = client.get("/compare")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'type="checkbox"' in body
+    assert "x-data" in body
+    assert "Vergleichen" in body
+    assert "|gemma|baseline" in body

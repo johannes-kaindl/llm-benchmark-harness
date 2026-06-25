@@ -4,44 +4,74 @@
 {% block body %}
 <div class="page-header">
   <h1 class="page-title">Vergleich</h1>
-  <span class="muted text-sm">Alle bewerteten Läufe</span>
+  <span class="muted text-sm">Läufe auswählen und vergleichen</span>
 </div>
 
-<div class="card">
-  <div class="card-title">Hardware × Qualität</div>
+<div class="card" x-data="{ sel: [], chip: '', pack: '', model: '' }">
+  <div class="card-title">Auswahl-Pool</div>
+
+  {# Filter bar #}
+  <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
+    <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem">
+      Chip:
+      <input type="text" x-model="chip" placeholder="z. B. M2"
+             style="padding:0.25rem 0.5rem; border:1px solid var(--border,#444); border-radius:4px; background:var(--bg2,#1e1e1e); color:inherit; font-size:0.85rem; width:8rem">
+    </label>
+    <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem">
+      Pack:
+      <input type="text" x-model="pack" placeholder="z. B. ndassist"
+             style="padding:0.25rem 0.5rem; border:1px solid var(--border,#444); border-radius:4px; background:var(--bg2,#1e1e1e); color:inherit; font-size:0.85rem; width:8rem">
+    </label>
+    <label style="display:flex; align-items:center; gap:0.4rem; font-size:0.85rem">
+      Modell:
+      <input type="text" x-model="model" placeholder="z. B. gemma"
+             style="padding:0.25rem 0.5rem; border:1px solid var(--border,#444); border-radius:4px; background:var(--bg2,#1e1e1e); color:inherit; font-size:0.85rem; width:10rem">
+    </label>
+    <button style="margin-left:auto; padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer; opacity:1"
+            :disabled="sel.length < 2"
+            :style="sel.length < 2 ? 'opacity:0.45;cursor:not-allowed' : ''"
+            @click="window.location = '/compare?rows=' + sel.map(encodeURIComponent).join(',')">
+      Vergleichen (<span x-text="sel.length"></span>)
+    </button>
+  </div>
+
   {% if pool %}
   <table class="bundle-table">
     <thead>
       <tr>
+        <th></th>
+        <th>Lauf</th>
         <th>Chip</th>
         <th>RAM</th>
         <th>Pack</th>
         <th>Modell</th>
-        <th>Variante</th>
         <th>Quant</th>
+        <th>Variante</th>
         <th>{{ ui.mlabel("quality_pct") }}</th>
         <th>{{ ui.mlabel("ttft_p50") }}</th>
         <th>{{ ui.mlabel("decode_median") }}</th>
         <th>{{ ui.mlabel("system_peak_ram") }}</th>
-        <th>{{ ui.mlabel("model_delta_ram") }}</th>
       </tr>
     </thead>
     <tbody>
       {% for r in pool %}
-      <tr>
+      <tr x-show="(!chip || '{{ r.chip }}'.toLowerCase().includes(chip.toLowerCase())) && (!pack || '{{ r.pack }}'.toLowerCase().includes(pack.toLowerCase())) && (!model || '{{ r.model }}'.toLowerCase().includes(model.toLowerCase()))">
+        <td style="width:2rem; text-align:center">
+          <input type="checkbox" value="{{ r.id }}" x-model="sel">
+        </td>
+        <td>{{ r.run_name }}</td>
         <td>{{ r.chip }}</td>
         <td>{{ r.ram_gb }}</td>
-        <td><a href="/packs/packs/{{ r.pack }}.yaml">{{ r.pack }}</a></td>
+        <td>{{ r.pack }}</td>
         <td>{{ r.model }}</td>
-        <td>{{ r.variant }}</td>
         <td>{{ r.quant }}</td>
+        <td>{{ r.variant }}</td>
         <td>
           {% if r.quality_pct is not none %}<strong>{{ "%.0f" | format(r.quality_pct) }}%</strong>{% else %}<span class="muted">—</span>{% endif %}
         </td>
         <td>{% if r.ttft_p50 %}{{ r.ttft_p50 }} s{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if r.decode_med %}{{ r.decode_med }} tok/s{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>{% if r.peak_ram_gb %}{{ r.peak_ram_gb }} GB{% else %}<span class="muted">—</span>{% endif %}</td>
-        <td>{% if r.model_delta_gb %}{{ r.model_delta_gb }} GB{% else %}<span class="muted">—</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -49,5 +79,18 @@
   {% else %}
   <p class="muted">Noch keine bewerteten Läufe vorhanden.</p>
   {% endif %}
+
+  {# Sticky compare footer when ≥1 row selected #}
+  <div x-show="sel.length > 0" style="margin-top:1rem; padding:0.5rem 0; border-top:1px solid var(--border,#444); display:flex; align-items:center; gap:1rem">
+    <span class="muted text-sm"><span x-text="sel.length"></span> Lauf/Läufe ausgewählt</span>
+    <button style="padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer; opacity:1"
+            :disabled="sel.length < 2"
+            :style="sel.length < 2 ? 'opacity:0.45;cursor:not-allowed' : ''"
+            @click="window.location = '/compare?rows=' + sel.map(encodeURIComponent).join(',')">
+      Vergleichen (<span x-text="sel.length"></span>)
+    </button>
+  </div>
 </div>
+
+{% if diff %}{# diff block — Task 5 #}{% endif %}
 {% endblock %}
