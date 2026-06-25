@@ -12,7 +12,13 @@ from typing import Any
 
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -34,6 +40,11 @@ _templates.env.globals["g"] = _glossary.describe  # g("ttft_p50").short in templ
 _ALLOWED_HOSTS = ["localhost", "127.0.0.1", "*.localhost", "testserver"]
 # Hostnames considered "the local server" for the CSRF Origin/Referer check.
 _LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "testserver"}
+
+
+def render(name: str, request: Request, **ctx: Any) -> HTMLResponse:
+    """Module-level render helper so tests can monkeypatch it to spy on template ctx."""
+    return _templates.TemplateResponse(request, name, ctx)
 
 
 def _is_local_origin(value: str) -> bool:
@@ -67,9 +78,6 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     static_dir = _PKG / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-    def render(name: str, request: Request, **ctx: Any) -> HTMLResponse:
-        return _templates.TemplateResponse(request, name, ctx)
 
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
@@ -161,38 +169,7 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         )
 
     @app.get("/result/{name}", response_class=HTMLResponse)
-    def result(request: Request, name: str) -> HTMLResponse:
-        rd = (runs_dir / name).resolve()
-        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
-            raise HTTPException(status_code=404)
-        try:
-            detail = bundles.bundle_detail(rd)
-            summary = bundles.classify(rd)
-        except Exception:
-            detail, summary = None, bundles.BundleSummary(run_dir=rd, status="error")
-        compare_opts = (
-            compare.axis_options(detail["responses"])
-            if detail and detail.get("responses")
-            else None
-        )
-        return render(
-            "result.html",
-            request,
-            detail=detail,
-            summary=summary,
-            run_dir=rd,
-            compare_opts=compare_opts,
-            active="overview",
-        )
-
-    @app.get("/compare", response_class=HTMLResponse)
-    def compare_cross(request: Request) -> HTMLResponse:
-        rows = aggregate_mod.load_all_scores(runs_dir)
-        agg = aggregate_mod.aggregate(rows) if rows else []
-        return render("compare.html", request, rows=agg, active="compare")
-
-    @app.get("/compare/{name}", response_class=HTMLResponse)
-    def compare_axis(
+    def result(
         request: Request,
         name: str,
         axis: str | None = None,
@@ -204,12 +181,55 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             raise HTTPException(status_code=404)
         if axis is not None and axis not in ("model", "variant"):
             raise HTTPException(status_code=422)
-        projection = variant or model  # generated links only ever set the axis-relevant one
         try:
-            detail = compare.compare_detail(rd, axis, projection=projection)
+            detail = bundles.bundle_detail(rd)
+            summary = bundles.classify(rd)
         except Exception:
-            detail = None
-        return render("compare_axis.html", request, detail=detail, run_dir=rd, active="overview")
+            detail, summary = None, bundles.BundleSummary(run_dir=rd, status="error")
+        axis_opts = (
+            compare.axis_options(detail["responses"])
+            if detail and detail.get("responses")
+            else None
+        )
+        projection = variant or model
+        # Compute compare_detail when the bundle is comparable OR when an axis was
+        # explicitly requested (so the single-axis "nichts zu vergleichen" message renders).
+        cmp = (
+            compare.compare_detail(rd, axis, projection=projection, base=detail)
+            if detail and axis_opts and (axis_opts.comparable or axis is not None)
+            else None
+        )
+        if detail and detail.get("responses") and detail.get("master_rows") is not None:
+            answer_cells, answer_default_cell = compare.answer_filter_cells(
+                detail["responses"], detail["master_rows"]
+            )
+        else:
+            answer_cells, answer_default_cell = [], "__all__"
+        return render(
+            "result.html",
+            request,
+            detail=detail,
+            summary=summary,
+            run_dir=rd,
+            compare_opts=axis_opts,
+            compare_detail=cmp,
+            axis_opts=axis_opts,
+            answer_cells=answer_cells,
+            answer_default_cell=answer_default_cell,
+            active="overview",
+        )
+
+    @app.get("/compare", response_class=HTMLResponse)
+    def compare_cross(request: Request) -> HTMLResponse:
+        rows = aggregate_mod.load_all_scores(runs_dir)
+        agg = aggregate_mod.aggregate(rows) if rows else []
+        return render("compare.html", request, rows=agg, active="compare")
+
+    @app.get("/compare/{name}")
+    def compare_axis(request: Request, name: str) -> RedirectResponse:
+        qs = request.url.query
+        target = f"/result/{name}" + (f"?{qs}" if qs else "")
+        return RedirectResponse(target, status_code=301)
 
     @app.get("/config", response_class=HTMLResponse)
     def config_get(

@@ -4,6 +4,7 @@ import json
 import os
 
 from fastapi.testclient import TestClient
+from test_gui_compare import _two_variant_bundle
 
 from touchstone.gui import app as gui_app
 from touchstone.gui.control import RunRegistry
@@ -55,6 +56,13 @@ def _running_bundle(tmp_path):
         encoding="utf-8",
     )
     return d
+
+
+def test_overview_compare_button_points_at_result(tmp_path):
+    d = _two_variant_bundle(tmp_path)
+    body = _client(tmp_path).get("/").text
+    assert f"/result/{d.name}?axis=" in body
+    assert f"/compare/{d.name}" not in body
 
 
 def test_overview_running_card_uses_native_eventsource(tmp_path):

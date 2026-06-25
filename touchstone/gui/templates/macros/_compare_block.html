@@ -1,19 +1,12 @@
-{# touchstone/gui/templates/compare_axis.html #}
-{% extends "base.html" %}
+{# touchstone/gui/templates/macros/_compare_block.html
+   Inline comparison block (Effizienz-Scatter, Kopf-an-Kopf, Per-Aufgabe-Δ + Achsen-Umschalter).
+   Expects `detail` (CompareDetail) in scope — callers use:
+     {% with detail=compare_detail %}{% include "macros/_compare_block.html" %}{% endwith %}
+   All internal links point at /result/<run_name>?axis=… (never /compare/…).
+#}
 {% import "macros/ui.html" as ui %}
-{% block title_suffix %} · Vergleich{% endblock %}
-{% block breadcrumb %}
-<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Vergleich{% if detail %} › {{ detail.run_name }}{% endif %}</nav>
-{% endblock %}
-{% block body %}
 <script defer src="/static/scatter.js"></script>
 
-{% if not detail %}
-  <div class="card"><div class="card-title">Vergleich</div>
-    <p class="muted">Kein vergleichbares Bundle gefunden (Pack fehlt oder nicht ladbar).</p>
-    <a href="/">← Übersicht</a>
-  </div>
-{% else %}
 <div class="card">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem">
     <div>
@@ -30,25 +23,18 @@
     <div class="text-xs" style="text-align:right">
       {# axis switch (only when the other axis is also comparable) #}
       {% if detail.axis == "variant" and detail.projection_options|length > 1 %}
-        <a class="btn btn-secondary" href="/compare/{{ detail.run_name }}?axis=model">nach Modell</a>
+        <a class="btn btn-secondary" href="/result/{{ detail.run_name }}?axis=model">nach Modell</a>
       {% elif detail.axis == "model" and detail.projection_options|length > 1 %}
-        <a class="btn btn-secondary" href="/compare/{{ detail.run_name }}?axis=variant">nach Variante</a>
+        <a class="btn btn-secondary" href="/result/{{ detail.run_name }}?axis=variant">nach Variante</a>
       {% endif %}
       {# projection switch #}
       {% for opt in detail.projection_options %}
         <a class="btn btn-secondary" style="margin-left:0.25rem"
-           href="/compare/{{ detail.run_name }}?axis={{ detail.axis }}{% if detail.axis == 'model' %}&variant={{ opt }}{% else %}&model={{ opt }}{% endif %}">{{ detail.projection_label }}: {{ opt }}</a>
+           href="/result/{{ detail.run_name }}?axis={{ detail.axis }}{% if detail.axis == 'model' %}&variant={{ opt }}{% else %}&model={{ opt }}{% endif %}">{{ detail.projection_label }}: {{ opt }}</a>
       {% endfor %}
     </div>
   </div>
 </div>
-
-{% if detail.pack %}{% with pack=detail.pack %}{% include "_method_explainer.html" %}{% endwith %}{% endif %}
-
-{% if detail.single %}
-  <div class="card"><p class="muted">Nur ein {{ detail.axis_label }} im Bundle — nichts zu vergleichen.
-    {% if detail.axis == "model" and detail.projection_options|length > 1 %}<a href="/compare/{{ detail.run_name }}?axis=variant">Nach Variante vergleichen?</a>{% endif %}</p></div>
-{% else %}
 
 {# ── ① Effizienz-Relation ─────────────────────────────────────────────── #}
 <div class="card">
@@ -124,9 +110,3 @@
   {% endfor %}
 </div>
 {% endif %}
-
-{% endif %}{# /single #}
-
-<div class="card"><a href="/result/{{ detail.run_name }}">← Ergebnis-Detail</a> · <a href="/compare">Cross-Run-Aggregat (Station 6)</a></div>
-{% endif %}{# /detail #}
-{% endblock %}
