@@ -1,7 +1,9 @@
 // touchstone/gui/static/model_picker.js
-// Alpine component for the Konfig+Start model picker. Given {config_path: [model,...]},
-// it shows the selected config's models as checkboxes (+ ad-hoc id/quant rows) and keeps
-// a hidden models_json field in sync. Build-free; registered on alpine:init.
+// Alpine component for the Konfig+Start model picker. ONE model per run (multiple models in a
+// single run would corrupt the RAM measurement — shared baseline + no unload inflates the 2nd+
+// model's delta). A single <select> sourced from the endpoint's real /v1/models, merged with the
+// config's declared models (which carry the thinking knobs). Emits a one-element models_json so
+// the backend is unchanged and forward-compatible with a future sequential-runs queue.
 "use strict";
 
 document.addEventListener("alpine:init", () => {
@@ -10,99 +12,93 @@ document.addEventListener("alpine:init", () => {
     // Default to the first ORDERED config (configs is order_configs()-sorted, embed/vlm last).
     // Don't rely on byConfig key order — that would depend on JSON preserving insertion order.
     config: (configs && configs[0]) || Object.keys(byConfig)[0] || "",
-    models: [],
-    adhoc: [],
-    _nextK: 0, // monotonic key so x-for rows stay stable across removals
-    endpointModels: [],
+    options: [],
+    chosen: "",
+    userChose: false, // true once the user picks a model (@change) — gates default adoption
+    manualId: "",
+    manualQuant: "",
     endpointError: "",
     endpointLoading: false,
-    endpointPick: "",
-    pickNote: "",
     init() {
       this.syncFromConfig();
     },
     syncFromConfig() {
-      const list = this.byConfig[this.config] || [];
-      // copy + default-checked; never mutate byConfig. Keep the thinking knobs so a config
-      // model's reasoning_headroom_tokens / extra_body survive into the start request.
-      this.models = list.map((m) => ({
+      // Offline-safe seed from the config's declared models (served=false) so the select is
+      // never empty; the async fetch then refines with the endpoint's real list + default.
+      const seed = (this.byConfig[this.config] || []).map((m) => ({
         id: m.id,
         quant: m.quant || "",
         max_tokens_default: m.max_tokens_default || 400,
         reasoning_headroom_tokens: m.reasoning_headroom_tokens || 0,
         extra_body: m.extra_body || {},
-        on: true,
+        served: false,
+        source: "config",
       }));
-      this.adhoc = [];
-      this.fetchEndpointModels(); // async, fire-and-forget
+      this.options = seed;
+      this.chosen = seed.length ? seed[0].id : "__manual__";
+      this.userChose = false; // a fresh config re-enables default adoption
+      this.manualId = "";
+      this.manualQuant = "";
+      this.fetchModelOptions(); // async, fire-and-forget
     },
-    async fetchEndpointModels() {
+    async fetchModelOptions() {
       const cfg = this.config; // guard: ignore a stale response for a superseded config
       this.endpointLoading = true;
       this.endpointError = "";
-      this.endpointModels = [];
-      this.endpointPick = "";
-      this.pickNote = "";
       try {
-        const res = await fetch("/endpoint-models?config=" + encodeURIComponent(cfg));
+        const res = await fetch("/eval-model-options?config=" + encodeURIComponent(cfg));
         const data = await res.json();
         if (this.config !== cfg) return; // a newer config selection superseded this request
-        this.endpointModels = data.models || [];
+        this.options = data.options || [];
         this.endpointError = data.error || "";
+        // Adopt the server-computed default (prefers a real served model over a config
+        // placeholder) — but NEVER clobber a model the user already picked in the fetch window.
+        if (this.userChose) return;
+        if (data.default_id) {
+          this.chosen = data.default_id;
+        } else if (!this.options.length) {
+          this.chosen = "__manual__";
+        }
       } catch (e) {
         if (this.config === cfg) this.endpointError = "Endpoint-Abfrage fehlgeschlagen";
       } finally {
         if (this.config === cfg) this.endpointLoading = false;
       }
     },
-    addFromEndpoint() {
-      const id = (this.endpointPick || "").trim();
-      this.pickNote = "";
-      if (!id) return;
-      // Skip if already selected (checked config model OR an existing ad-hoc row). Adding it
-      // again would make a duplicate eval cell: config models carry a quant but endpoint adds
-      // use quant="", so the server-side (id,quant) de-dupe would NOT collapse the two.
-      const already =
-        this.models.some((m) => m.on && m.id === id) ||
-        this.adhoc.some((a) => a.id.trim() === id);
-      if (already) {
-        this.pickNote = id + " ist bereits ausgewählt";
-        this.endpointPick = "";
-        return;
-      }
-      this.adhoc.push({ id: id, quant: "", k: this._nextK++ });
-      this.endpointPick = "";
+    servedCount() {
+      return this.options.filter((o) => o.served).length;
     },
-    addAdhoc() {
-      this.adhoc.push({ id: "", quant: "", k: this._nextK++ });
+    optionLabel(o) {
+      if (!o.served) return o.id + " (nicht geladen)";
+      return o.quant ? o.id + " · " + o.quant : o.id;
     },
-    removeAdhoc(k) {
-      this.adhoc = this.adhoc.filter((a) => a.k !== k);
+    _selected() {
+      return this.options.find((o) => o.id === this.chosen) || null;
     },
     count() {
-      const checked = this.models.filter((m) => m.on).length;
-      const added = this.adhoc.filter((a) => a.id.trim()).length;
-      return checked + added;
+      if (this.chosen === "__manual__") return this.manualId.trim() ? 1 : 0;
+      return this._selected() ? 1 : 0;
     },
     modelsJson() {
-      const out = [];
-      for (const m of this.models) {
-        if (m.on) {
-          out.push({
-            id: m.id,
-            quant: m.quant,
-            max_tokens_default: m.max_tokens_default,
-            reasoning_headroom_tokens: m.reasoning_headroom_tokens || 0,
-            extra_body: m.extra_body || {},
-          });
-        }
+      if (this.chosen === "__manual__") {
+        const id = this.manualId.trim();
+        if (!id) return "[]";
+        return JSON.stringify([
+          { id: id, quant: this.manualQuant.trim(), max_tokens_default: 400 },
+        ]);
       }
-      for (const a of this.adhoc) {
-        if (a.id.trim()) {
-          out.push({ id: a.id.trim(), quant: a.quant.trim(), max_tokens_default: 400 });
-        }
-      }
-      return JSON.stringify(out);
+      const o = this._selected();
+      if (!o) return "[]";
+      // Carry the config thinking knobs (reasoning_headroom_tokens / extra_body) for a fair compare.
+      return JSON.stringify([
+        {
+          id: o.id,
+          quant: o.quant,
+          max_tokens_default: o.max_tokens_default,
+          reasoning_headroom_tokens: o.reasoning_headroom_tokens || 0,
+          extra_body: o.extra_body || {},
+        },
+      ]);
     },
   }));
 

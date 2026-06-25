@@ -109,3 +109,76 @@ def test_discover_judge_endpoint_models(tmp_path):
     jc.write_text("endpoint:\n  base_url: http://x/v1\nmodel: qwen\n", encoding="utf-8")
     out = discover_judge_endpoint_models(str(jc), lister=lambda: ["qwen", "gemma"])
     assert out == {"models": ["qwen", "gemma"], "error": None}
+
+
+# ── eval_model_options: single-select merge of endpoint-served + config-declared ────────
+
+
+def test_eval_model_options_endpoint_only_all_served():
+    out = configs.eval_model_options(config_models=[], endpoint_models=["a", "b"])
+    assert out["default_id"] == "a"  # first served is the default
+    assert [(o["id"], o["served"], o["source"]) for o in out["options"]] == [
+        ("a", True, "endpoint"),
+        ("b", True, "endpoint"),
+    ]
+    # endpoint-only models get neutral defaults
+    a = out["options"][0]
+    assert a["quant"] == "" and a["max_tokens_default"] == 400
+    assert a["reasoning_headroom_tokens"] == 0 and a["extra_body"] == {}
+
+
+def test_eval_model_options_endpoint_match_carries_config_knobs():
+    cfg = [
+        {
+            "id": "g",
+            "quant": "Q5",
+            "max_tokens_default": 300,
+            "reasoning_headroom_tokens": 4000,
+            "extra_body": {"x": 1},
+        }
+    ]
+    out = configs.eval_model_options(config_models=cfg, endpoint_models=["g"])
+    [opt] = out["options"]
+    assert opt["served"] is True and opt["source"] == "both"
+    # the served model that is ALSO declared keeps the config's thinking knobs (fair compare)
+    assert opt["quant"] == "Q5" and opt["max_tokens_default"] == 300
+    assert opt["reasoning_headroom_tokens"] == 4000 and opt["extra_body"] == {"x": 1}
+
+
+def test_eval_model_options_config_only_appended_unserved():
+    cfg = [{"id": "declared", "quant": "Q4"}]
+    out = configs.eval_model_options(config_models=cfg, endpoint_models=["served"])
+    ids = [(o["id"], o["served"], o["source"]) for o in out["options"]]
+    # served first, the config-declared-but-not-loaded one appended and flagged
+    assert ids == [("served", True, "endpoint"), ("declared", False, "config")]
+    assert (
+        out["default_id"] == "served"
+    )  # default never picks an unserved model when a served one exists
+
+
+def test_eval_model_options_offline_falls_back_to_config():
+    cfg = [{"id": "x", "quant": "Q4"}, {"id": "y"}]
+    out = configs.eval_model_options(config_models=cfg, endpoint_models=[])
+    assert [(o["id"], o["served"]) for o in out["options"]] == [("x", False), ("y", False)]
+    assert out["default_id"] == "x"  # offline → first config model is the default
+
+
+def test_eval_model_options_both_empty():
+    out = configs.eval_model_options(config_models=[], endpoint_models=[])
+    assert out == {"options": [], "default_id": None}
+
+
+def test_eval_model_options_dedupes_config_id_already_served():
+    # a config id that is also served must not appear twice
+    cfg = [{"id": "dup", "quant": "Q4"}]
+    out = configs.eval_model_options(config_models=cfg, endpoint_models=["dup"])
+    assert [o["id"] for o in out["options"]] == ["dup"]
+    assert out["options"][0]["source"] == "both" and out["options"][0]["quant"] == "Q4"
+
+
+def test_eval_model_options_skips_non_string_endpoint_ids():
+    # symmetric with the config-side str guard: a misbehaving endpoint (non-string ids) must not
+    # leak into options (they would later fail models_from_json validation on resubmit)
+    out = configs.eval_model_options(config_models=[], endpoint_models=["a", 123, None, "b"])  # type: ignore[list-item]
+    assert [o["id"] for o in out["options"]] == ["a", "b"]
+    assert out["default_id"] == "a"
