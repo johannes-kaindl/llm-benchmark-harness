@@ -21,127 +21,22 @@
 </div>
 {% endif %}
 
-<!-- Eval starten -->
-<div class="card">
-  <div class="card-title">Eval starten</div>
-  <form method="post" action="/runs/eval">
-    {% if resume %}
-    <input type="hidden" name="resume_dir" value="{{ resume }}">
-    <div class="card-title" style="color:var(--einschr)">Fortsetzen: {{ resume }}</div>
-    {% endif %}
-    <div class="form-group">
-      <label class="form-label" for="pack_path">Pack</label>
-      <select class="form-select" id="pack_path" name="pack_path">
-        {% for p in packs %}
-        <option value="{{ p }}">{{ p }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% if resume %}
-    <div class="form-group">
-      <label class="form-label" for="config_path">Config</label>
-      <select class="form-select" id="config_path" name="config_path">
-        {% for c in configs %}
-        <option value="{{ c }}">{{ c }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <button type="submit" class="btn btn-primary">Fortsetzen</button>
-    {% else %}
-    <div x-data='modelPicker({{ models_by_config | tojson }}, {{ configs | tojson }})'>
-      <div class="form-group">
-        <label class="form-label" for="config_path">Config
-          <a class="text-xs" :href="'/config-view/' + config" target="_blank" rel="noopener" title="Config ansehen">ⓘ</a>
-        </label>
-        <select class="form-select" id="config_path" name="config_path"
-                x-model="config" @change="syncFromConfig()">
-          {% for c in configs %}
-          <option value="{{ c }}">{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Modelle</label>
-        <p class="muted text-xs">Nur angehakte Modelle werden evaluiert. Abwählen schließt ein Modell aus diesem Lauf aus (nichts wird in die Config geschrieben).</p>
-        <template x-for="(m, i) in models" :key="i">
-          <label style="display:block; font-size:0.9rem">
-            <input type="checkbox" x-model="m.on">
-            <span x-text="m.id"></span>
-            <span class="muted text-xs" x-text="m.quant ? ('· ' + m.quant) : ''"></span>
-          </label>
-        </template>
-        <template x-for="a in adhoc" :key="a.k">
-          <div class="flex gap-2" style="margin-top:0.25rem">
-            <input class="form-input" type="text" placeholder="id" x-model="a.id" style="flex:1">
-            <input class="form-input" type="text" placeholder="quant" x-model="a.quant" style="width:8rem">
-            <button type="button" class="btn btn-secondary" @click="removeAdhoc(a.k)">✕</button>
-          </div>
-        </template>
-        <button type="button" class="btn btn-secondary" style="margin-top:0.4rem" @click="addAdhoc()">+ Modell</button>
-        <div style="margin-top:0.6rem">
-          <label class="form-label text-xs" style="display:block">Vom Endpoint hinzufügen</label>
-          <div class="flex gap-2">
-            <select class="form-select" x-model="endpointPick" :disabled="endpointModels.length === 0" style="flex:1">
-              <option value="">— Modell wählen —</option>
-              <template x-for="mid in endpointModels" :key="mid">
-                <option :value="mid" x-text="mid"></option>
-              </template>
-            </select>
-            <button type="button" class="btn btn-secondary" @click="addFromEndpoint()" :disabled="!endpointPick">Hinzufügen</button>
-          </div>
-          <p class="muted text-xs" x-show="endpointLoading" style="margin-top:0.2rem">… Endpoint wird abgefragt</p>
-          <p class="muted text-xs" x-show="endpointError" x-text="endpointError" style="color:var(--einschr); margin-top:0.2rem"></p>
-          <p class="muted text-xs" x-show="pickNote" x-text="pickNote" style="margin-top:0.2rem"></p>
-        </div>
-        <input type="hidden" name="models_json" :value="modelsJson()">
-        <p class="muted text-xs" x-show="count() === 0" style="color:var(--nein); margin-top:0.25rem">
-          Wähle mindestens ein Modell.
-        </p>
-      </div>
-      <button type="submit" class="btn btn-primary" :disabled="count() === 0">Eval starten</button>
-    </div>
-    {% endif %}
-  </form>
-</div>
+<div x-data="{ station: '{{ 'judge' if (eval_only_bundles and not resume) else 'eval' }}' }">
+  <div class="flow-bar">
+    <button @click="station='eval'" :class="station==='eval' && 'active'">Eval starten</button>
+    <span>→</span>
+    <button @click="station='judge'" :class="station==='judge' && 'active'">Judge starten</button>
+    <span>→</span>
+    <a href="/">Ergebnis ansehen</a>
+  </div>
 
-<!-- Judge starten -->
-<div class="card">
-  <div class="card-title">Judge starten</div>
-  <form method="post" action="/runs/judge" x-data="judgeModelPicker()">
-    <div class="form-group">
-      <label class="form-label" for="bundle">Bundle (eval-only)</label>
-      <select class="form-select" id="bundle" name="bundle">
-        {% if bundle %}
-        <option value="{{ bundle }}" selected>{{ bundle }}</option>
-        {% endif %}
-        {% for b in eval_only_bundles %}
-        <option value="{{ b }}"{% if b == bundle %} selected{% endif %}>{{ b }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="judge_config_path">Judge-Config</label>
-      <select class="form-select" id="judge_config_path" name="judge_config_path"
-              x-model="judgeConfig" @change="fetchModels()">
-        {% for j in judge_configs %}
-        <option value="{{ j }}">{{ j }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="judge_model">Judge-Modell (vom Endpoint)</label>
-      <select class="form-select" id="judge_model" name="judge_model" x-model="pick"
-              :disabled="models.length === 0">
-        <option value="">— Config-Default verwenden —</option>
-        <template x-for="mid in models" :key="mid">
-          <option :value="mid" x-text="mid"></option>
-        </template>
-      </select>
-      <p class="muted text-xs" x-show="loading" style="margin-top:0.2rem">… Endpoint wird abgefragt</p>
-      <p class="muted text-xs" x-show="error" x-text="error" style="color:var(--einschr); margin-top:0.2rem"></p>
-    </div>
-    <button type="submit" class="btn btn-primary">Judge starten</button>
-  </form>
+  <div x-show="station==='eval'">
+    {% include "macros/_config_eval.html" %}
+  </div>
+
+  <div x-show="station==='judge'">
+    {% include "macros/_config_judge.html" %}
+  </div>
 </div>
 
 <div class="card">
