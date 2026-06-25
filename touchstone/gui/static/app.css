@@ -447,14 +447,14 @@ a:hover { text-decoration: underline; }
 }
 
 .flow-bar button:hover {
-  background: #e4e4e7;
+  background: var(--border);
   border-color: var(--muted);
 }
 
 .flow-bar button.active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--card-bg);
   font-weight: 700;
 }
 
@@ -477,7 +477,7 @@ a:hover { text-decoration: underline; }
 }
 
 .flow-bar a:hover {
-  background: #e4e4e7;
+  background: var(--border);
   border-color: var(--muted);
   text-decoration: none;
 }
