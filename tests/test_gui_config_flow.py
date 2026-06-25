@@ -6,9 +6,14 @@ from touchstone.gui.control import RunRegistry
 
 
 class _FakeLauncher:
-    def spawn(self, argv): return 1
-    def alive(self, pid): return False
-    def terminate(self, pid): return None
+    def spawn(self, argv):
+        return 1
+
+    def alive(self, pid):
+        return False
+
+    def terminate(self, pid):
+        return None
 
 
 def _client(tmp_path):
@@ -40,6 +45,7 @@ def test_config_preserves_eval_and_judge_function_markers(tmp_path):
 def test_flow_bar_class_and_css_rule_present(tmp_path):
     """flow-bar carries the right class in HTML and the CSS rule exists."""
     from pathlib import Path
+
     body = _client(tmp_path).get("/config").text
     assert 'class="flow-bar"' in body, "flow-bar wrapper must carry .flow-bar class"
     css_path = Path(__file__).parent.parent / "touchstone" / "gui" / "static" / "app.css"
@@ -53,7 +59,7 @@ def test_config_sidesteps_import_always_resume_conditional(tmp_path):
     body = _client(tmp_path).get("/config").text
     assert "Bundle importieren" in body
     assert 'action="/import-bundle"' in body
-    assert "Fortsetzen" not in body          # resume hint only in resume mode
+    assert "Fortsetzen" not in body  # resume hint only in resume mode
     # resume mode → resume hint present
     body2 = _client(tmp_path).get("/config?resume=2026-01-01_run").text
     assert "Fortsetzen" in body2
