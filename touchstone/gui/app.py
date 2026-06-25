@@ -199,6 +199,12 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             if detail and axis_opts and (axis_opts.comparable or axis is not None)
             else None
         )
+        if detail and detail.get("responses") and detail.get("master_rows") is not None:
+            answer_cells, answer_default_cell = compare.answer_filter_cells(
+                detail["responses"], detail["master_rows"]
+            )
+        else:
+            answer_cells, answer_default_cell = [], "__all__"
         return render(
             "result.html",
             request,
@@ -208,6 +214,8 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             compare_opts=axis_opts,
             compare_detail=cmp,
             axis_opts=axis_opts,
+            answer_cells=answer_cells,
+            answer_default_cell=answer_default_cell,
             active="overview",
         )
 

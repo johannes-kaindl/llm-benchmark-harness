@@ -327,3 +327,63 @@ def test_flat_scorecard_only_for_full_matrix(one_by_n_bundle, two_by_two_bundle)
     b2 = c2.get(f"/result/{two_by_two_bundle.name}").text
     assert "Kopf-an-Kopf" in b2
     assert _SCORECARD_TITLE in b2
+
+
+# ── composite answer cell-filter (N×M fix) ────────────────────────────────────
+
+
+@pytest.fixture()
+def two_by_two_bundle_filter(tmp_path):
+    """True 2×2 bundle (alpha/beta × baseline/none) for filter coherence tests."""
+    d = tmp_path / "2026_eval_filter2x2"
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    _write_compare_bundle(
+        d,
+        cells=[("alpha", "baseline"), ("alpha", "none"), ("beta", "baseline"), ("beta", "none")],
+        dim_scores_by_cell={
+            ("alpha", "baseline"): full,
+            ("alpha", "none"): dict(full),
+            ("beta", "baseline"): {q: 5 for q in full},
+            ("beta", "none"): dict(full),
+        },
+    )
+    return d
+
+
+def test_2x2_filter_all_composite_keys_in_buttons_and_data_cells(two_by_two_bundle_filter):
+    """On a 2×2 result page every composite model|variant key appears both in a
+    filter button and in a data-cell attribute.  Axis is irrelevant — the fix is
+    axis-independent (composite keys, not axis-projected labels)."""
+    import re
+
+    runs_dir = two_by_two_bundle_filter.parent
+    reg = RunRegistry(runs_dir=runs_dir, launcher=_FakeLauncher())
+    c = TestClient(appmod.create_app(runs_dir=runs_dir, registry=reg))
+    body = c.get(f"/result/{two_by_two_bundle_filter.name}").text
+
+    expected_keys = {"alpha|baseline", "alpha|none", "beta|baseline", "beta|none"}
+
+    # Every key must appear in a @click="cell='…'" button
+    button_keys = set(re.findall(r"@click=\"cell='([^']+)'\"", body))
+    for key in expected_keys:
+        assert key in button_keys, f"composite key {key!r} missing from filter buttons"
+
+    # Every key must appear in a data-cell="…" attribute
+    datacell_keys = set(re.findall(r'data-cell="([^"]+)"', body))
+    for key in expected_keys:
+        assert key in datacell_keys, f"composite key {key!r} missing from data-cell attrs"
+
+
+def test_1x2_filter_labels_are_variant_names(client, multi_cell_bundle):
+    """On a 1×2 bundle, filter button labels are variant names (no model prefix).
+    Composite keys (m|baseline, m|none) still wire buttons to data-cell attrs correctly."""
+    import re
+
+    body = client.get(f"/result/{multi_cell_bundle.name}").text
+    # Filter buttons for baseline and none must be present
+    assert "baseline" in body
+    assert "none" in body
+    # Composite keys must appear in data-cell attributes
+    datacell_keys = set(re.findall(r'data-cell="([^"]+)"', body))
+    assert "m|baseline" in datacell_keys or any("|baseline" in k for k in datacell_keys)
+    assert "m|none" in datacell_keys or any("|none" in k for k in datacell_keys)

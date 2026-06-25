@@ -455,3 +455,65 @@ def axis_options_for_dir(run_dir: Path) -> AxisOptions:
     except Exception:
         responses = []
     return axis_options(responses)
+
+
+@dataclass
+class AnswerFilterCell:
+    key: str  # unique: f"{model}|{variant}"
+    label: str  # readable
+    model: str
+    variant: str
+
+
+def answer_filter_cells(
+    responses: list[EvalResponse], master_rows: list[dict[str, Any]]
+) -> tuple[list[AnswerFilterCell], str]:
+    """Compute filter cells for the answer section.
+
+    Label rule:
+    - exactly one distinct model  → label = variant
+    - exactly one distinct variant → label = model
+    - else                        → f"{model} · {variant}"
+
+    Default key = the (model, variant) with highest master 'pct';
+    ties or no judged rows → "__all__"
+
+    Returns (cells, default_key). For <2 cells, returns ([], "__all__").
+    """
+    groups = model_variant_groups(responses)
+    if len(groups) < 2:
+        return [], "__all__"
+
+    models = _distinct([m for m, _ in groups])
+    variants = _distinct([v for _, v in groups])
+    one_model = len(models) == 1
+    one_variant = len(variants) == 1
+
+    cells: list[AnswerFilterCell] = []
+    for model, variant in groups:
+        if one_model:
+            label = variant
+        elif one_variant:
+            label = model
+        else:
+            label = f"{model} · {variant}"
+        cells.append(
+            AnswerFilterCell(key=f"{model}|{variant}", label=label, model=model, variant=variant)
+        )
+
+    # Find the best (model, variant) by pct; ties or missing → "__all__"
+    judged = [
+        (row["model"], row["variant"], row["pct"])
+        for row in master_rows
+        if row.get("pct") is not None
+    ]
+    if not judged:
+        return cells, "__all__"
+
+    best_pct = max(pct for _, _, pct in judged)
+    best = [(m, v) for m, v, pct in judged if pct == best_pct]
+    if len(best) != 1:
+        return cells, "__all__"
+
+    default_key = f"{best[0][0]}|{best[0][1]}"
+    return cells, default_key

@@ -629,3 +629,96 @@ def test_compare_detail_reuses_passed_base(tmp_path, monkeypatch):
     spy.assert_not_called()
     assert detail is not None
     assert detail.run_name == rd.name
+
+
+# ── answer_filter_cells unit tests ────────────────────────────────────────────
+
+
+def _mk_responses_2x2():
+    """4 EvalResponse objects forming a 2×2 (alpha/beta × baseline/none) matrix."""
+    return [
+        _resp("alpha", "baseline"),
+        _resp("alpha", "none"),
+        _resp("beta", "baseline"),
+        _resp("beta", "none"),
+    ]
+
+
+def _mk_responses_1x2():
+    """2 EvalResponse objects forming a 1×2 (one model × baseline/none) matrix."""
+    return [
+        _resp("m", "baseline"),
+        _resp("m", "none"),
+    ]
+
+
+def test_answer_filter_cells_2x2_returns_four_composite_keys():
+    """2×2 matrix: 4 cells with composite model|variant keys; labels use · separator."""
+    responses = _mk_responses_2x2()
+    master_rows: list[dict] = []
+    cells, _default_key = compare.answer_filter_cells(responses, master_rows)
+    assert len(cells) == 4
+    keys = {c.key for c in cells}
+    assert keys == {"alpha|baseline", "alpha|none", "beta|baseline", "beta|none"}
+    # all labels use the · separator (N×M case)
+    for c in cells:
+        assert "·" in c.label, f"label {c.label!r} missing ·"
+    # labels are unique
+    assert len({c.label for c in cells}) == 4
+    # all keys are unique
+    assert len(keys) == 4
+
+
+def test_answer_filter_cells_1x2_labels_variant_only():
+    """1×2 (single model): labels should be variant names only (no model prefix)."""
+    responses = _mk_responses_1x2()
+    master_rows: list[dict] = []
+    cells, _default_key = compare.answer_filter_cells(responses, master_rows)
+    assert len(cells) == 2
+    labels = {c.label for c in cells}
+    # labels must NOT contain model name "m"
+    for label in labels:
+        assert "m" not in label, f"label {label!r} contains model name"
+    # labels should be the variant names
+    assert labels == {"baseline", "none"}
+    # keys still use composite form
+    assert {c.key for c in cells} == {"m|baseline", "m|none"}
+
+
+def test_answer_filter_cells_default_key_highest_pct():
+    """Default key is the (model, variant) with highest master pct; ties → '__all__'."""
+    responses = _mk_responses_2x2()
+    master_rows = [
+        {"model": "alpha", "variant": "baseline", "pct": 80.0},
+        {"model": "alpha", "variant": "none", "pct": 40.0},
+        {"model": "beta", "variant": "baseline", "pct": 60.0},
+        {"model": "beta", "variant": "none", "pct": 50.0},
+    ]
+    _cells, default_key = compare.answer_filter_cells(responses, master_rows)
+    assert default_key == "alpha|baseline"
+
+
+def test_answer_filter_cells_default_key_tie_returns_all():
+    """Tied pct values produce default_key '__all__'."""
+    responses = _mk_responses_1x2()
+    master_rows = [
+        {"model": "m", "variant": "baseline", "pct": 70.0},
+        {"model": "m", "variant": "none", "pct": 70.0},
+    ]
+    _cells, default_key = compare.answer_filter_cells(responses, master_rows)
+    assert default_key == "__all__"
+
+
+def test_answer_filter_cells_no_judged_rows_default_all():
+    """No judged rows (empty master_rows): default_key is '__all__'."""
+    responses = _mk_responses_2x2()
+    _cells, default_key = compare.answer_filter_cells(responses, [])
+    assert default_key == "__all__"
+
+
+def test_answer_filter_cells_single_cell_returns_empty():
+    """Fewer than 2 cells → ([], '__all__') — no filter needed."""
+    responses = [_resp("m", "baseline")]
+    cells, default_key = compare.answer_filter_cells(responses, [])
+    assert cells == []
+    assert default_key == "__all__"

@@ -247,15 +247,13 @@
 
 {# ── Antworten nach Kategorie ─────────────────────────────────────────────── #}
 {% if detail and detail.pack and detail.responses %}
-{# default selected cell: the quality-winning cell for a multi-cell comparison, else '__all__' so every answer shows (single-cell / unjudged / no comparison) #}
-{% set default_cell = compare_detail.winners.pct if (compare_detail and not compare_detail.single and compare_detail.winners.pct) else '__all__' %}
 <div class="card">
   <div class="card-title">Antworten nach Kategorie</div>
-  <div x-data="{ cell: '{{ default_cell }}' }">
-  <div data-cell-filter class="flex gap-2 text-xs" style="margin-bottom:0.75rem; flex-wrap:wrap; {% if not (compare_detail and not compare_detail.single) %}display:none{% endif %}">
+  <div x-data="{ cell: '{{ answer_default_cell }}' }">
+  <div data-cell-filter class="flex gap-2 text-xs" style="margin-bottom:0.75rem; flex-wrap:wrap; {% if not answer_cells %}display:none{% endif %}">
     <button class="btn btn-secondary" style="padding:0.2rem 0.6rem" @click="cell='__all__'">alle</button>
-    {% for c in (compare_detail.cells if compare_detail else []) %}
-      <button class="btn btn-secondary" style="padding:0.2rem 0.6rem" @click="cell='{{ c.label }}'">{{ c.label }}</button>
+    {% for c in answer_cells %}
+      <button class="btn btn-secondary" style="padding:0.2rem 0.6rem" @click="cell='{{ c.key }}'">{{ c.label }}</button>
     {% endfor %}
   </div>
   {% for cat in detail.pack.categories %}
@@ -339,14 +337,9 @@
               {% for v in ns2.verdicts if v.repeat == resp.repeat %}
                 {% set ns3.verdict = v %}
               {% endfor %}
-              {% if compare_detail and compare_detail.axis == 'variant' %}
-                {% set resp_cell_label = resp.variant %}
-              {% else %}
-                {% set resp_cell_label = resp.model %}
-              {% endif %}
               <div
-                data-cell="{{ resp_cell_label }}"
-                x-show="cell === '__all__' || cell === '{{ resp_cell_label }}'"
+                data-cell="{{ resp.model }}|{{ resp.variant }}"
+                x-show="cell === '__all__' || cell === '{{ resp.model }}|{{ resp.variant }}'"
                 style="border-top:1px solid var(--border); padding-top:0.5rem; margin-top:0.5rem"
               >
                 {% if resp.content_empty %}
