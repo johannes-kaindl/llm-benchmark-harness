@@ -601,6 +601,22 @@ def test_mem_pressure_uses_ok_responses_only():
     assert detail.cells[0].mem_pressure_max == "normal"  # cold-start 'critical' excluded
 
 
+def test_axis_options_full_matrix_flag():
+    # 1×2 → not a full matrix
+    o = compare.axis_options([_resp("m", "baseline"), _resp("m", "none")])
+    assert o.full_matrix is False
+    # 2×2 → full matrix
+    o2 = compare.axis_options(
+        [
+            _resp("m1", "baseline"),
+            _resp("m1", "none"),
+            _resp("m2", "baseline"),
+            _resp("m2", "none"),
+        ]
+    )
+    assert o2.full_matrix is True
+
+
 def test_compare_detail_reuses_passed_base(tmp_path, monkeypatch):
     """When a base dict is passed, compare_detail must not re-call bundle_detail."""
     from touchstone.gui import bundles

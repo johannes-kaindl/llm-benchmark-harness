@@ -31,6 +31,7 @@ class AxisOptions:
     default_axis: str  # "model" | "variant"
     default_label: str  # "Modell" | "Variante"
     comparable: bool
+    full_matrix: bool  # >1 model AND >1 variant → needs the flat master-scorecard too
 
 
 def _distinct(values: list[str]) -> list[str]:
@@ -55,7 +56,8 @@ def axis_options(responses: list[EvalResponse]) -> AxisOptions:
     else:
         axis, label = "variant", "Variante"
     comparable = len(models) > 1 or len(variants) > 1
-    return AxisOptions(models, variants, axis, label, comparable)
+    full_matrix = len(models) > 1 and len(variants) > 1
+    return AxisOptions(models, variants, axis, label, comparable, full_matrix)
 
 
 def _cpu_for_window(
