@@ -255,3 +255,63 @@ def test_pool_rows_one_row_per_bundle_model_variant(tmp_path):
     assert r0.chip == "M1" and r0.model == "gemma" and r0.variant == "baseline"
     assert r0.quality_pct == 80.0  # score 4 of 5 = 80%
     assert r0.decode_med == "18"
+
+
+def test_diff_rows_cross_machine(tmp_path):
+    from touchstone.aggregate import PoolRow, diff_rows
+
+    def pr(rid, chip, ram, decode, ram_gb_peak):
+        return PoolRow(
+            id=rid,
+            run_name=rid,
+            chip=chip,
+            ram_gb=ram,
+            pack="ndassist",
+            pack_version="1",
+            model="gemma",
+            quant="Q4",
+            variant="baseline",
+            quality_pct=76.0,
+            ttft_p50="0.1",
+            decode_med=decode,
+            peak_ram_gb=ram_gb_peak,
+            model_delta_gb="8",
+            power="ac",
+        )
+
+    d = diff_rows([pr("a", "M1", "16", "18", "14"), pr("b", "M5", "64", "42", "18")])
+    # model/pack/quant/variant constant → common; chip/ram_gb vary → headers
+    common_dims = {dim for dim, _ in d.common}
+    assert "model" in common_dims and "pack" in common_dims and "quant" in common_dims
+    assert set(d.varying) == {"chip", "ram_gb"}
+    assert d.columns[0].header and d.columns[1].header  # non-empty headers from varying values
+    assert d.winners["decode_med"] == "b"  # 42 > 18, higher is better
+    assert d.winners["quality_pct"] is None  # tie (76 == 76)
+
+
+def test_diff_rows_same_setup_axis_is_run(tmp_path):
+    from touchstone.aggregate import PoolRow, diff_rows
+
+    def pr(rid, decode):
+        return PoolRow(
+            id=rid,
+            run_name=rid,
+            chip="M1",
+            ram_gb="16",
+            pack="ndassist",
+            pack_version="1",
+            model="gemma",
+            quant="Q4",
+            variant="baseline",
+            quality_pct=76.0,
+            ttft_p50="0.1",
+            decode_med=decode,
+            peak_ram_gb="14",
+            model_delta_gb="8",
+            power="ac",
+        )
+
+    d = diff_rows([pr("run-A", "18"), pr("run-B", "42")])
+    assert d.varying == []  # all dims identical
+    assert d.columns[0].header == "run-A"  # header falls back to run_name
+    assert d.winners["decode_med"] == "run-B"

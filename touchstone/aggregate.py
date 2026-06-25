@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 SCALE_MAX = 5  # packs use a 1..5 scale; scores.csv doesn't carry it, so assume the convention
 
@@ -158,6 +159,72 @@ def pool_rows(runs_dir: str | Path) -> list[PoolRow]:
             )
         )
     return out
+
+
+DIM_LABELS: list[tuple[str, str]] = [
+    ("chip", "Chip"),
+    ("ram_gb", "RAM"),
+    ("pack", "Pack"),
+    ("pack_version", "Pack-Version"),
+    ("model", "Modell"),
+    ("quant", "Quant"),
+    ("variant", "Variante"),
+]
+
+
+@dataclass
+class CompareColumn:
+    id: str
+    header: str
+    row: PoolRow
+
+
+@dataclass
+class CompareDiff:
+    common: list[tuple[str, str]]
+    varying: list[str]
+    columns: list[CompareColumn]
+    winners: dict[str, str | None]
+
+
+def _num(s: str) -> float | None:
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _winner(cols: list[CompareColumn], getter: Any, higher: bool) -> str | None:
+    scored = [(getter(c.row), c.id) for c in cols if getter(c.row) is not None]
+    if not scored:
+        return None
+    best = (max if higher else min)(v for v, _ in scored)
+    leaders = [cid for v, cid in scored if v == best]
+    return leaders[0] if len(leaders) == 1 else None  # tie → no trophy (B1 convention)
+
+
+def diff_rows(selected: list[PoolRow]) -> CompareDiff:
+    common: list[tuple[str, str]] = []
+    varying: list[str] = []
+    for dim, _label in DIM_LABELS:
+        vals = {getattr(r, dim) for r in selected}
+        if len(vals) <= 1:
+            common.append((dim, next(iter(vals)) if vals else ""))
+        else:
+            varying.append(dim)
+    columns: list[CompareColumn] = []
+    for r in selected:
+        # all dims identical → the run is the axis; otherwise join the varying dim values
+        header = " · ".join(getattr(r, d) for d in varying) if varying else r.run_name
+        columns.append(CompareColumn(id=r.id, header=header, row=r))
+    winners = {
+        "quality_pct": _winner(columns, lambda row: row.quality_pct, True),
+        "decode_med": _winner(columns, lambda row: _num(row.decode_med), True),
+        "ttft_p50": _winner(columns, lambda row: _num(row.ttft_p50), False),
+        "peak_ram_gb": _winner(columns, lambda row: _num(row.peak_ram_gb), False),
+        "model_delta_gb": _winner(columns, lambda row: _num(row.model_delta_gb), False),
+    }
+    return CompareDiff(common=common, varying=varying, columns=columns, winners=winners)
 
 
 def aggregate(rows: list[dict[str, str]]) -> list[AggRow]:
