@@ -76,11 +76,6 @@
           <span class="badge nein" style="font-size:0.9rem; padding:0.3rem 0.7rem">Rubrik: ungenügend</span>
         {% endif %}
       {% endif %}
-      {% if compare_opts and compare_opts.comparable %}
-        <div style="margin-top:0.4rem">
-          <a class="btn btn-secondary" href="/compare/{{ run_dir.name }}?axis={{ compare_opts.default_axis }}">↔ Vergleichen ({{ compare_opts.default_label }})</a>
-        </div>
-      {% endif %}
     </div>
   </div>
 </div>
@@ -238,6 +233,11 @@
 <div class="card">
   <p class="muted">Noch nicht bewertet — <code>touchstone judge</code> ausführen.</p>
 </div>
+{% endif %}
+
+{# ── Inline Vergleichs-Block (Scatter + Kopf-an-Kopf + Per-Aufgabe-Δ) ──────── #}
+{% if compare_detail and not compare_detail.single %}
+  {% with detail=compare_detail %}{% include "macros/_compare_block.html" %}{% endwith %}
 {% endif %}
 
 {# ── Antworten nach Kategorie ─────────────────────────────────────────────── #}

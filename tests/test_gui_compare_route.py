@@ -177,11 +177,15 @@ def test_compare_route_unjudged_perf_only(tmp_path):
 
 
 def test_result_shows_compare_link_when_comparable(tmp_path):
+    """Task 4: comparable bundles show the inline comparison block, not the old /compare/ button."""
     d = _two_variant_bundle(tmp_path)
     r = _client(tmp_path).get(f"/result/{d.name}")
     assert r.status_code == 200
-    assert f"/compare/{d.name}?axis=variant" in r.text
-    assert "↔ Vergleichen" in r.text
+    # Inline comparison block replaces the old ↔ Vergleichen button
+    assert "Kopf-an-Kopf" in r.text
+    assert "Effizienz-Relation" in r.text
+    # No dead /compare/<name> links (the sidebar /compare link is ok but within-bundle not)
+    assert f"/compare/{d.name}" not in r.text
 
 
 def test_result_no_compare_link_when_single(tmp_path):

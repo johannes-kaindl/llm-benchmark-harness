@@ -5,7 +5,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
-from test_gui_compare import _two_variant_bundle
+from test_gui_compare import _two_variant_bundle, _write_compare_bundle
 
 import touchstone.gui.app as appmod
 from touchstone.gui import app as gui_app
@@ -187,6 +187,39 @@ def client(multi_cell_bundle):
     runs_dir = multi_cell_bundle.parent
     reg = RunRegistry(runs_dir=runs_dir, launcher=_FakeLauncher())
     return TestClient(appmod.create_app(runs_dir=runs_dir, registry=reg))
+
+
+@pytest.fixture()
+def two_model_bundle(tmp_path):
+    """2-model × 2-variant judged bundle so projection-switch links (/result/…?axis=) render."""
+    d = tmp_path / "2026_eval_2m"
+    full = {q: 4 for q in ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7"]}
+    _write_compare_bundle(
+        d,
+        cells=[("alpha", "baseline"), ("alpha", "none"), ("beta", "baseline"), ("beta", "none")],
+        dim_scores_by_cell={
+            ("alpha", "baseline"): full,
+            ("alpha", "none"): dict(full),
+            ("beta", "baseline"): {q: 5 for q in full},
+            ("beta", "none"): dict(full),
+        },
+    )
+    return d
+
+
+@pytest.fixture()
+def two_model_client(two_model_bundle):
+    runs_dir = two_model_bundle.parent
+    reg = RunRegistry(runs_dir=runs_dir, launcher=_FakeLauncher())
+    return TestClient(appmod.create_app(runs_dir=runs_dir, registry=reg))
+
+
+def test_result_renders_headtohead_and_scatter(two_model_client, two_model_bundle):
+    body = two_model_client.get(f"/result/{two_model_bundle.name}").text
+    assert "Kopf-an-Kopf" in body
+    assert "Effizienz-Relation" in body
+    assert 'href="/result/' in body and "?axis=" in body  # axis switch points at /result
+    assert "/compare/" not in body  # no dead within-bundle compare links
 
 
 def test_result_route_passes_compare_detail(client, multi_cell_bundle, monkeypatch):
