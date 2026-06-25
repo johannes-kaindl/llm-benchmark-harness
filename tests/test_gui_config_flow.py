@@ -37,6 +37,17 @@ def test_config_preserves_eval_and_judge_function_markers(tmp_path):
     assert 'action="/runs/eval"' in body and 'action="/runs/judge"' in body
 
 
+def test_flow_bar_class_and_css_rule_present(tmp_path):
+    """flow-bar carries the right class in HTML and the CSS rule exists."""
+    from pathlib import Path
+    body = _client(tmp_path).get("/config").text
+    assert 'class="flow-bar"' in body, "flow-bar wrapper must carry .flow-bar class"
+    css_path = Path(__file__).parent.parent / "touchstone" / "gui" / "static" / "app.css"
+    css = css_path.read_text()
+    assert ".flow-bar" in css, "app.css must contain a .flow-bar rule"
+    assert ".flow-bar button.active" in css, "app.css must contain .flow-bar button.active rule"
+
+
 def test_config_sidesteps_import_always_resume_conditional(tmp_path):
     # no resume → import present, resume hint absent
     body = _client(tmp_path).get("/config").text
