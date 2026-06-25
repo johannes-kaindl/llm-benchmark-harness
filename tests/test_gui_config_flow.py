@@ -35,3 +35,15 @@ def test_config_preserves_eval_and_judge_function_markers(tmp_path):
     assert "judgeModelPicker(" in body
     assert 'name="models_json"' in body
     assert 'action="/runs/eval"' in body and 'action="/runs/judge"' in body
+
+
+def test_config_sidesteps_import_always_resume_conditional(tmp_path):
+    # no resume → import present, resume hint absent
+    body = _client(tmp_path).get("/config").text
+    assert "Bundle importieren" in body
+    assert 'action="/import-bundle"' in body
+    assert "Fortsetzen" not in body          # resume hint only in resume mode
+    # resume mode → resume hint present
+    body2 = _client(tmp_path).get("/config?resume=2026-01-01_run").text
+    assert "Fortsetzen" in body2
+    assert "2026-01-01_run" in body2
