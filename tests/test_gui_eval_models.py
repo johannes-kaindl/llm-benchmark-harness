@@ -109,11 +109,16 @@ def test_config_page_renders_model_picker(tmp_path):
     assert 'name="models_json"' in body  # hidden field present
     assert "/static/model_picker.js" in body
     # Must load NON-deferred so it registers modelPicker before the deferred Alpine starts and
-    # fires alpine:init; otherwise the picker is dead (checkboxes/+Modell/:disabled never bind).
+    # fires alpine:init; otherwise the picker is dead (the select/:disabled never bind).
     assert '<script src="/static/model_picker.js">' in body
     assert 'defer src="/static/model_picker.js"' not in body
-    assert "+ Modell" in body  # ad-hoc add button
+    # single-select picker: one <select> bound to `chosen`, a manual escape hatch, submit guard
+    assert 'x-model="chosen"' in body
+    assert "__manual__" in body  # the "andere Modell-ID" escape-hatch option
     assert ":disabled" in body  # submit disabled at 0 models (no empty-submit dead-end)
+    # the old multi-select machinery is gone (one model per run)
+    assert "+ Modell" not in body
+    assert "Vom Endpoint" not in body
 
 
 def test_config_page_hides_picker_on_resume(tmp_path):

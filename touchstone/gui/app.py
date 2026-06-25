@@ -279,6 +279,24 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             raise HTTPException(status_code=404)
         return configs_mod.discover_endpoint_models(config)
 
+    @app.get("/eval-model-options")
+    def eval_model_options(config: str) -> dict[str, Any]:
+        """Single-select model options for Eval-start: the endpoint's actually-served models
+        merged with the config's declared ones (which carry the thinking knobs), plus a default.
+        Never 500s — a dead endpoint falls back to the config models with the error attached."""
+        if config not in {str(p) for p in Path(".").glob("config*.yaml")}:
+            raise HTTPException(status_code=404)
+        disc = configs_mod.discover_endpoint_models(config)
+        opts = configs_mod.eval_model_options(
+            config_models=[m.model_dump() for m in configs_mod.config_models(config)],
+            endpoint_models=disc["models"],
+        )
+        return {
+            "options": opts["options"],
+            "default_id": opts["default_id"],
+            "error": disc["error"],
+        }
+
     @app.get("/judge-endpoint-models")
     def judge_endpoint_models(judge_config: str) -> dict[str, Any]:
         """Models the selected judge config's endpoint advertises. Never 500s. Same path guard

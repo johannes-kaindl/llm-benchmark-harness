@@ -57,6 +57,51 @@ def order_configs(paths: list[str]) -> list[str]:
     return sorted(paths, key=key)
 
 
+def eval_model_options(
+    *, config_models: list[dict[str, Any]], endpoint_models: list[str]
+) -> dict[str, Any]:
+    """Merge the config's declared models with the endpoint's actually-served ids into one
+    single-select option list plus a sensible default. Pure; no I/O.
+
+    The endpoint is the truth for *what can run now*; the config carries the thinking knobs.
+    A served id that is also declared keeps the config knobs (``source="both"``) so a fair
+    compare survives. Declared-but-not-served models are appended, flagged ``served=False`` —
+    visible but never the default. Offline (no endpoint models) falls back to the config list.
+    """
+    by_id = {m["id"]: m for m in config_models if isinstance(m.get("id"), str)}
+
+    def _opt(spec: dict[str, Any], *, served: bool, source: str) -> dict[str, Any]:
+        return {
+            "id": spec["id"],
+            "quant": spec.get("quant", ""),
+            "max_tokens_default": spec.get("max_tokens_default", 400),
+            "reasoning_headroom_tokens": spec.get("reasoning_headroom_tokens", 0),
+            "extra_body": spec.get("extra_body", {}),
+            "served": served,
+            "source": source,
+        }
+
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for mid in endpoint_models:
+        if mid in seen:
+            continue
+        seen.add(mid)
+        if mid in by_id:
+            options.append(_opt(by_id[mid], served=True, source="both"))
+        else:
+            options.append(_opt({"id": mid}, served=True, source="endpoint"))
+    for m in config_models:
+        cid = m.get("id")
+        if not isinstance(cid, str) or cid in seen:
+            continue
+        seen.add(cid)
+        options.append(_opt(m, served=False, source="config"))
+
+    default_id = options[0]["id"] if options else None
+    return {"options": options, "default_id": default_id}
+
+
 def discover_models(
     base_url: str,
     api_key: str,
