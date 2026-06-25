@@ -247,8 +247,16 @@
 
 {# ── Antworten nach Kategorie ─────────────────────────────────────────────── #}
 {% if detail and detail.pack and detail.responses %}
+{% set default_cell = compare_detail.winners.pct if (compare_detail and compare_detail.winners.pct) else (compare_detail.cells[0].label if (compare_detail and compare_detail.cells) else "") %}
 <div class="card">
   <div class="card-title">Antworten nach Kategorie</div>
+  <div x-data="{ cell: '{{ default_cell }}' }">
+  <div data-cell-filter class="flex gap-2 text-xs" style="margin-bottom:0.75rem; flex-wrap:wrap; {% if not (compare_detail and not compare_detail.single) %}display:none{% endif %}">
+    <button class="btn btn-secondary" style="padding:0.2rem 0.6rem" @click="cell='__all__'">alle</button>
+    {% for c in (compare_detail.cells if compare_detail else []) %}
+      <button class="btn btn-secondary" style="padding:0.2rem 0.6rem" @click="cell='{{ c.label }}'">{{ c.label }}</button>
+    {% endfor %}
+  </div>
   {% for cat in detail.pack.categories %}
     <div style="margin-bottom:1rem">
       <div style="font-weight:600; padding:0.3rem 0; border-bottom:2px solid var(--border); margin-bottom:0.5rem">
@@ -330,7 +338,16 @@
               {% for v in ns2.verdicts if v.repeat == resp.repeat %}
                 {% set ns3.verdict = v %}
               {% endfor %}
-              <div style="border-top:1px solid var(--border); padding-top:0.5rem; margin-top:0.5rem">
+              {% if compare_detail and compare_detail.axis == 'variant' %}
+                {% set resp_cell_label = resp.variant %}
+              {% else %}
+                {% set resp_cell_label = resp.model %}
+              {% endif %}
+              <div
+                data-cell="{{ resp_cell_label }}"
+                x-show="cell === '__all__' || cell === '{{ resp_cell_label }}'"
+                style="border-top:1px solid var(--border); padding-top:0.5rem; margin-top:0.5rem"
+              >
                 {% if resp.content_empty %}
                   <div class="muted text-xs" style="margin-bottom:0.25rem">
                     (leere Antwort{% if resp.reasoning_chars > 0 %} · nur Reasoning ({{ resp.reasoning_chars }} Zeichen){% endif %})
@@ -396,6 +413,7 @@
       {% endfor %}
     </div>
   {% endfor %}
+  </div>{# /x-data cell filter #}
 </div>
 {% endif %}
 

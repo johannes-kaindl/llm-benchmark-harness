@@ -268,6 +268,23 @@ def two_by_two_bundle(tmp_path):
 _SCORECARD_TITLE = '<div class="card-title">Gewichtete Master-Scorecard</div>'
 
 
+# ── Task 7: client-side cell filter for the answers section ──────────────────
+
+
+def test_answers_have_cell_filter_for_multi_cell(client, multi_cell_bundle):
+    """≥2-cell bundle: answers section must contain Alpine filter markup and
+    both cells' answers must still be present in the DOM (x-show, not removed)."""
+    body = client.get(f"/result/{multi_cell_bundle.name}").text
+    assert "x-data" in body and "cell" in body  # Alpine filter state present
+    assert "data-cell-filter" in body  # filter control marker
+    # Both cells' answers stay in the DOM (filtered via x-show, not stripped)
+    assert "baseline" in body  # first cell label appears
+    assert "none" in body  # second cell label appears
+
+
+# ── Task 6: flat master-scorecard shown only for true N×M matrices ────────────
+
+
 def test_flat_scorecard_only_for_full_matrix(one_by_n_bundle, two_by_two_bundle):
     """1×N suppresses flat master-scorecard card; 2×2 keeps it.
 
