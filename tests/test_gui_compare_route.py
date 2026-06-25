@@ -129,15 +129,15 @@ def test_compare_route_model_axis_shows_projection(tmp_path):
     assert "Variante: baseline" in r.text  # projected variant labeled
 
 
-def test_compare_route_bad_axis_422(tmp_path):
-    # The redirect lands at /result/{name}?axis=bogus which returns 422.
+def test_result_route_bad_axis_422(tmp_path):
+    # The axis-validation guard lives on /result; assert it directly.
     d = _two_variant_bundle(tmp_path)
-    assert _client(tmp_path).get(f"/compare/{d.name}?axis=bogus").status_code == 422
+    assert _client(tmp_path).get(f"/result/{d.name}?axis=bogus").status_code == 422
 
 
-def test_compare_route_traversal_404(tmp_path):
-    # Redirect lands at /result/..%2f..%2fetc which returns 404.
-    assert _client(tmp_path).get("/compare/..%2f..%2fetc").status_code == 404
+def test_result_route_traversal_404(tmp_path):
+    # The path-traversal guard lives on /result; assert it directly.
+    assert _client(tmp_path).get("/result/..%2f..%2fetc").status_code == 404
 
 
 def test_compare_route_single_axis_value_message(tmp_path):
