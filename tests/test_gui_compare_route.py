@@ -338,7 +338,7 @@ _POOL_DIM = {
 
 
 def test_compare_pool_and_diff(tmp_path, monkeypatch):
-    """GET /compare?rows=id1,id2 → pool contains both rows, diff is not None with 2 columns."""
+    """GET /compare?rows=id1&rows=id2 → pool contains both rows, diff is not None with 2 columns."""
     run_a = "2026-01-01_000000_eval_ndassist"
     run_b = "2026-01-02_000000_eval_ndassist"
     _write_scores_pool(tmp_path / run_a, [_POOL_DIM])
@@ -356,7 +356,7 @@ def test_compare_pool_and_diff(tmp_path, monkeypatch):
     client = _client(tmp_path)
     id_a = f"{run_a}|gemma|baseline"
     id_b = f"{run_b}|gemma|baseline"
-    resp = client.get(f"/compare?rows={id_a},{id_b}")
+    resp = client.get("/compare", params=[("rows", id_a), ("rows", id_b)])
     assert resp.status_code == 200
     assert "pool" in seen
     pool_ids = {r.id for r in seen["pool"]}
@@ -398,7 +398,7 @@ def test_compare_bad_rows_ignored(tmp_path, monkeypatch):
     monkeypatch.setattr(gui_app, "render", spy_render)
 
     client = _client(tmp_path)
-    resp = client.get("/compare?rows=does%7Cnot%7Cexist")
+    resp = client.get("/compare", params=[("rows", "does|not|exist")])
     assert resp.status_code == 200
     assert seen.get("diff") is None
 
@@ -441,7 +441,7 @@ def test_compare_diff_renders_common_and_columns(tmp_path):
     client = _client(tmp_path)
     id_a = f"{run_a}|gemma|baseline"
     id_b = f"{run_b}|gemma|baseline"
-    resp = client.get(f"/compare?rows={id_a},{id_b}")
+    resp = client.get("/compare", params=[("rows", id_a), ("rows", id_b)])
     assert resp.status_code == 200
     body = resp.text
 
@@ -450,6 +450,76 @@ def test_compare_diff_renders_common_and_columns(tmp_path):
     assert "M1" in body                 # varying chip A as column header
     assert "M5" in body                 # varying chip B as column header
     assert "🏆" in body                 # winner marker on at least one differing metric
+
+
+# ── B2 final-review: repeated-param correctness + comma-in-id round-trip ──────
+
+
+def test_compare_unknown_id_against_populated_pool(tmp_path, monkeypatch):
+    """Reviewer gap: one valid + one bogus id → 200, diff is None (only 1 matched),
+    pool still contains both real rows."""
+    run_a = "2026-01-01_000000_eval_ndassist"
+    run_b = "2026-01-02_000000_eval_ndassist"
+    _write_scores_pool(tmp_path / run_a, [_POOL_DIM])
+    _write_scores_pool(tmp_path / run_b, [_POOL_DIM])
+
+    seen: dict = {}
+    real = gui_app.render
+
+    def spy_render(template: str, request, **ctx):  # type: ignore[override]
+        seen.update(ctx)
+        return real(template, request, **ctx)
+
+    monkeypatch.setattr(gui_app, "render", spy_render)
+
+    client = _client(tmp_path)
+    id_a = f"{run_a}|gemma|baseline"
+    id_b = f"{run_b}|gemma|baseline"
+    bogus = "does|not|exist|at|all"
+    # Only 1 valid id → diff must be None (need ≥2).
+    resp = client.get("/compare", params=[("rows", id_a), ("rows", bogus)])
+    assert resp.status_code == 200
+    assert seen.get("diff") is None
+    pool_ids = {r.id for r in seen["pool"]}
+    assert id_a in pool_ids and id_b in pool_ids
+
+    # Both valid ids → diff with 2 columns.
+    seen.clear()
+    resp2 = client.get("/compare", params=[("rows", id_a), ("rows", id_b)])
+    assert resp2.status_code == 200
+    assert seen.get("diff") is not None
+    assert len(seen["diff"].columns) == 2
+
+
+def test_compare_comma_in_id_round_trip(tmp_path, monkeypatch):
+    """Comma-in-id regression: a run_name containing a comma must survive the
+    repeated-param form (?rows=…&rows=…) and be matched correctly.
+    The old comma-split form would have shredded such an id silently."""
+    # Use a run_name with a comma (user-controlled zip filename stem).
+    run_a = "2026-01-01,imported_eval"
+    run_b = "2026-01-02_000000_eval_ndassist"
+    _write_scores_pool(tmp_path / run_a, [_POOL_DIM])
+    _write_scores_pool(tmp_path / run_b, [_POOL_DIM])
+
+    seen: dict = {}
+    real = gui_app.render
+
+    def spy_render(template: str, request, **ctx):  # type: ignore[override]
+        seen.update(ctx)
+        return real(template, request, **ctx)
+
+    monkeypatch.setattr(gui_app, "render", spy_render)
+
+    client = _client(tmp_path)
+    id_a = f"{run_a}|gemma|baseline"   # id contains a comma
+    id_b = f"{run_b}|gemma|baseline"
+    # Send as repeated params — each value is passed as-is, no delimiter conflict.
+    resp = client.get("/compare", params=[("rows", id_a), ("rows", id_b)])
+    assert resp.status_code == 200
+    assert seen.get("diff") is not None, "comma-in-id was not matched; repeated-param fix broken"
+    col_ids = {c.id for c in seen["diff"].columns}
+    assert id_a in col_ids, f"comma-id {id_a!r} missing from diff columns"
+    assert id_b in col_ids
 
 
 # ── Task 6: import-bundle upload control ──────────────────────────────────────

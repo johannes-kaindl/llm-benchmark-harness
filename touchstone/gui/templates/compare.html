@@ -30,15 +30,15 @@
     <button style="margin-left:auto; padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer"
             :disabled="sel.length < 2"
             :style="sel.length < 2 ? 'opacity:0.45;cursor:not-allowed' : ''"
-            @click="window.location = '/compare?rows=' + sel.map(encodeURIComponent).join(',')">
+            @click="window.location = '/compare?' + sel.map(id => 'rows=' + encodeURIComponent(id)).join('&')">
       Vergleichen (<span x-text="sel.length"></span>)
     </button>
   </div>
 
   {# Import control #}
   <div x-data="{ busy:false, err:'' }" style="margin-bottom:0.75rem">
-    <label class="muted text-sm">Lauf importieren (.zip von anderem Gerät):</label>
-    <input type="file" accept=".zip" @change="
+    <label for="import-file" class="muted text-sm">Lauf importieren (.zip von anderem Gerät):</label>
+    <input id="import-file" type="file" accept=".zip" @change="
       busy=true; err='';
       const fd = new FormData(); fd.append('file', $event.target.files[0]);
       fetch('/import-bundle', {method:'POST', body:fd})
@@ -101,7 +101,7 @@
     <button style="padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer"
             :disabled="sel.length < 2"
             :style="sel.length < 2 ? 'opacity:0.45;cursor:not-allowed' : ''"
-            @click="window.location = '/compare?rows=' + sel.map(encodeURIComponent).join(',')">
+            @click="window.location = '/compare?' + sel.map(id => 'rows=' + encodeURIComponent(id)).join('&')">
       Vergleichen (<span x-text="sel.length"></span>)
     </button>
   </div>

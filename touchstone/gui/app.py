@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -220,11 +220,13 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         )
 
     @app.get("/compare", response_class=HTMLResponse)
-    def compare_cross(request: Request, rows: str | None = None) -> HTMLResponse:
+    def compare_cross(
+        request: Request, rows: list[str] | None = Query(default=None)
+    ) -> HTMLResponse:
         pool = aggregate_mod.pool_rows(runs_dir)
         diff = None
         if rows:
-            wanted = [x for x in rows.split(",") if x]
+            wanted = [x for x in rows if x]
             selected = [r for r in pool if r.id in wanted]
             # Preserve the user's selection order (as given in ?rows=).
             selected.sort(key=lambda r: wanted.index(r.id))

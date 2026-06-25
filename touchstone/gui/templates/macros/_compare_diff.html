@@ -1,7 +1,7 @@
 <div class="card">
   <div class="card-title">↔ Cross-Run-Vergleich</div>
   <p class="muted text-sm">GEMEINSAM:
-    {% for dim, val in diff.common %}{% if val %}{{ val }}{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}
+    {{ diff.common | map(attribute=1) | select | join(" · ") }}
   </p>
   <table class="bundle-table">
     <thead>
