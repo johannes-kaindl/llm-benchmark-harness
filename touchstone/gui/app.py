@@ -36,6 +36,11 @@ _ALLOWED_HOSTS = ["localhost", "127.0.0.1", "*.localhost", "testserver"]
 _LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "testserver"}
 
 
+def render(name: str, request: Request, **ctx: Any) -> HTMLResponse:
+    """Module-level render helper so tests can monkeypatch it to spy on template ctx."""
+    return _templates.TemplateResponse(request, name, ctx)
+
+
 def _is_local_origin(value: str) -> bool:
     """True iff an Origin/Referer URL points at the local server (hostname only)."""
     from urllib.parse import urlsplit
@@ -67,9 +72,6 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     static_dir = _PKG / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-
-    def render(name: str, request: Request, **ctx: Any) -> HTMLResponse:
-        return _templates.TemplateResponse(request, name, ctx)
 
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
@@ -161,18 +163,32 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         )
 
     @app.get("/result/{name}", response_class=HTMLResponse)
-    def result(request: Request, name: str) -> HTMLResponse:
+    def result(
+        request: Request,
+        name: str,
+        axis: str | None = None,
+        variant: str | None = None,
+        model: str | None = None,
+    ) -> HTMLResponse:
         rd = (runs_dir / name).resolve()
         if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
             raise HTTPException(status_code=404)
+        if axis is not None and axis not in ("model", "variant"):
+            raise HTTPException(status_code=422)
         try:
             detail = bundles.bundle_detail(rd)
             summary = bundles.classify(rd)
         except Exception:
             detail, summary = None, bundles.BundleSummary(run_dir=rd, status="error")
-        compare_opts = (
+        axis_opts = (
             compare.axis_options(detail["responses"])
             if detail and detail.get("responses")
+            else None
+        )
+        projection = variant or model
+        cmp = (
+            compare.compare_detail(rd, axis, projection=projection, base=detail)
+            if detail and axis_opts and axis_opts.comparable
             else None
         )
         return render(
@@ -181,7 +197,9 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             detail=detail,
             summary=summary,
             run_dir=rd,
-            compare_opts=compare_opts,
+            compare_opts=axis_opts,
+            compare_detail=cmp,
+            axis_opts=axis_opts,
             active="overview",
         )
 

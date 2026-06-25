@@ -5,7 +5,9 @@ import pytest
 
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
+from test_gui_compare import _two_variant_bundle
 
+import touchstone.gui.app as appmod
 from touchstone.gui import app as gui_app
 from touchstone.gui.control import RunRegistry
 from touchstone.judge import write_reports_jsonl
@@ -169,3 +171,34 @@ def test_result_accordion_auto_opens_on_hash(tmp_path):
     assert "hashchange" in r.text
     assert "window.location.hash" in r.text
     assert "scroll-margin-top" in r.text
+
+
+# ── Task 3: /result loads bundle once and passes axis comparison data ──────────
+
+
+@pytest.fixture()
+def multi_cell_bundle(tmp_path):
+    """Judged ≥2-cell bundle (1 model × {baseline, none}) for Task 3 route tests."""
+    return _two_variant_bundle(tmp_path)
+
+
+@pytest.fixture()
+def client(tmp_path, multi_cell_bundle):
+    reg = RunRegistry(runs_dir=tmp_path, launcher=_FakeLauncher())
+    return TestClient(appmod.create_app(runs_dir=tmp_path, registry=reg))
+
+
+def test_result_route_passes_compare_detail(client, multi_cell_bundle, monkeypatch):
+    """Route must load bundle once and pass compare_detail with ≥2 cells into template ctx."""
+    seen: dict = {}
+    real = appmod.render  # type: ignore[attr-defined]
+
+    def spy_render(template, request, **ctx):
+        seen.update(ctx)
+        return real(template, request, **ctx)
+
+    monkeypatch.setattr(appmod, "render", spy_render)
+    resp = client.get(f"/result/{multi_cell_bundle.name}")
+    assert resp.status_code == 200
+    assert seen.get("compare_detail") is not None
+    assert seen["compare_detail"].cells and len(seen["compare_detail"].cells) >= 2
