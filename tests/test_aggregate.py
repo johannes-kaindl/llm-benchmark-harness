@@ -198,7 +198,7 @@ def test_write_scores_all_csv_roundtrip(tmp_path):
     assert len(back) == 2 and {r["model"] for r in back} == {"m1", "m2"}
 
 
-def _write_scores_pool(d: Path, rows: list[dict]):  # type: ignore[type-arg]
+def _write_scores_pool(d: Path, rows: list[dict[str, str]]):
     d.mkdir(parents=True, exist_ok=True)
     cols = [
         "chip",

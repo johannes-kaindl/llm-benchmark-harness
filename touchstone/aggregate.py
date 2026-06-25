@@ -116,8 +116,9 @@ class PoolRow:
 
 
 def pool_rows(runs_dir: str | Path) -> list[PoolRow]:
-    """One row per (run_name, model, variant) — NOT averaged across bundles (unlike
-    aggregate()), so two runs of the same setup stay distinct. id = run_name|model|variant."""
+    """One row per (run_name, model, variant) — keyed by the run dir, so two runs of the
+    same setup stay distinct (aggregate() instead collapses them under one hardware×model key).
+    id = run_name|model|variant."""
     base = Path(runs_dir)
     if not base.exists():
         return []
@@ -133,6 +134,7 @@ def pool_rows(runs_dir: str | Path) -> list[PoolRow]:
             groups[k].append(r)
     out: list[PoolRow] = []
     for run_name, model, variant in order:
+        # grp = all metric rows of this bundle (dimension rows feed _weighted_quality)
         grp = groups[(run_name, model, variant)]
         first = grp[0]
         quality, _dims = _weighted_quality(grp)
