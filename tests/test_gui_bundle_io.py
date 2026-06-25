@@ -230,9 +230,7 @@ def test_import_bundle_rejects_zip_slip(tmp_path):
     escape_target = tmp_path.parent / "escape.txt"
     if escape_target.exists():
         escape_target.unlink()
-    payload = _zip_from_members(
-        {"bundle.json": "{}", "../escape.txt": "pwned"}
-    )
+    payload = _zip_from_members({"bundle.json": "{}", "../escape.txt": "pwned"})
     r = _client(tmp_path).post(
         "/import-bundle", files={"file": ("evil.zip", payload, "application/zip")}
     )
@@ -250,9 +248,7 @@ def test_import_bundle_not_a_zip_is_400(tmp_path):
 
 
 def test_import_bundle_bad_responses_line_is_400(tmp_path):
-    payload = _zip_from_members(
-        {"bundle.json": "{}", "responses.jsonl": "{}\nnot json at all\n"}
-    )
+    payload = _zip_from_members({"bundle.json": "{}", "responses.jsonl": "{}\nnot json at all\n"})
     r = _client(tmp_path).post(
         "/import-bundle", files={"file": ("b.zip", payload, "application/zip")}
     )

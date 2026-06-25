@@ -177,7 +177,9 @@ def make_pack():
                     {
                         "id": "E",
                         "name": "Safety",
-                        "prompts": [{"id": "E1", "title": "t", "prompt": "p", "safety_critical": True}],
+                        "prompts": [
+                            {"id": "E1", "title": "t", "prompt": "p", "safety_critical": True}
+                        ],
                     },
                 ],
             }

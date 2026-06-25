@@ -144,9 +144,7 @@ def _run_eval_cmd(tmp_path):
     pack = tmp_path / "pack.yaml"
     pack.write_text(_MIN_PACK_YAML, encoding="utf-8")
     cfg_yaml = tmp_path / "config.yaml"
-    cfg_yaml.write_text(
-        _MIN_CONFIG_YAML.replace("{out}", str(tmp_path / "runs")), encoding="utf-8"
-    )
+    cfg_yaml.write_text(_MIN_CONFIG_YAML.replace("{out}", str(tmp_path / "runs")), encoding="utf-8")
     runner = typer.testing.CliRunner()
     result = runner.invoke(
         cli.app,

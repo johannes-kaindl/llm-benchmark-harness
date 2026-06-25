@@ -43,8 +43,16 @@ def test_eval_finalizes_sentinel_finished_on_success(tmp_path, monkeypatch):
     control.write_sentinel(target, kind="eval", pid=99, pack_path="p", config_path="c")
     res = runner.invoke(
         app,
-        ["eval", "--pack", "packs/ndassist.yaml", "--config", "config.example.yaml",
-         "--run-dir", str(target), "--emit-events"],
+        [
+            "eval",
+            "--pack",
+            "packs/ndassist.yaml",
+            "--config",
+            "config.example.yaml",
+            "--run-dir",
+            str(target),
+            "--emit-events",
+        ],
     )
     assert res.exit_code == 0, res.output
     assert control.read_sentinel(target)["state"] == "finished"
@@ -60,8 +68,16 @@ def test_eval_finalizes_sentinel_failed_on_error(tmp_path, monkeypatch):
     control.write_sentinel(target, kind="eval", pid=99, pack_path="p", config_path="c")
     res = runner.invoke(
         app,
-        ["eval", "--pack", "packs/ndassist.yaml", "--config", "config.example.yaml",
-         "--run-dir", str(target), "--emit-events"],
+        [
+            "eval",
+            "--pack",
+            "packs/ndassist.yaml",
+            "--config",
+            "config.example.yaml",
+            "--run-dir",
+            str(target),
+            "--emit-events",
+        ],
     )
     assert res.exit_code != 0
     assert control.read_sentinel(target)["state"] == "failed"

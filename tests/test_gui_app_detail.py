@@ -383,9 +383,7 @@ def test_1x2_filter_labels_are_variant_names(client, multi_cell_bundle):
 
     # Extract ALL filter button labels (buttons with @click="cell='...'">LABEL</button>).
     # The pattern captures the visible label between > and </button>.
-    all_button_labels = re.findall(
-        r"""@click="cell='[^']+'"[^>]*>\s*([^<]+?)\s*</button>""", body
-    )
+    all_button_labels = re.findall(r"""@click="cell='[^']+'"[^>]*>\s*([^<]+?)\s*</button>""", body)
     # Exclude the "alle" control button — only keep per-cell filter buttons.
     cell_button_labels = [lbl for lbl in all_button_labels if lbl.lower() != "alle"]
 

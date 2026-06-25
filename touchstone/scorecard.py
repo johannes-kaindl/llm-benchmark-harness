@@ -107,9 +107,7 @@ def _perf_summary(group: list[EvalResponse]) -> dict[str, object]:
     decodes = [r.decode_tps for r in ok if not math.isnan(r.decode_tps)]
     e2es = [r.e2e_s for r in ok if not math.isnan(r.e2e_s)]
     tputs = [
-        (r.prompt_tokens + r.completion_tokens) / r.e2e_s
-        for r in ok
-        if r.e2e_s and r.e2e_s > 0
+        (r.prompt_tokens + r.completion_tokens) / r.e2e_s for r in ok if r.e2e_s and r.e2e_s > 0
     ]
     sys_used = [r.sys_used_mb for r in ok if r.sys_used_mb is not None]
     peak_ram_gb = (max(sys_used) / 1024.0) if sys_used else None
@@ -246,9 +244,7 @@ def render_scorecard_md(
         lines.append(f"| {c.id} — {c.name} | " + " | ".join(cells) + " |")
     lines.append("")
 
-    level_cells = [
-        f"{rubric_level(pct)} ({pct:.0f} %)" if pct is not None else "—" for pct in pcts
-    ]
+    level_cells = [f"{rubric_level(pct)} ({pct:.0f} %)" if pct is not None else "—" for pct in pcts]
     safe_icon_cells = [
         "—" if passed is None else ("✓" if passed else "✗") for passed in safety_flags
     ]

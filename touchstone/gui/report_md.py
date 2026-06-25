@@ -129,12 +129,12 @@ def _frontmatter(
     if doc is not None:
         engine = doc.provenance.engine or None
         _ev = doc.provenance.engine_version
-        engine_version = (_ev if _ev and _ev != "unknown" else None)
+        engine_version = _ev if _ev and _ev != "unknown" else None
     else:
         # Fallback for unsupported-schema or missing-doc path: host/manifest only.
         engine = host.get("engine") or manifest.get("engine") or None
         _ev = host.get("engine_version") or manifest.get("engine_version")
-        engine_version = (_ev if _ev and _ev != "unknown" else None)
+        engine_version = _ev if _ev and _ev != "unknown" else None
 
     # headline result = best-scoring (model, variant); per-variant quality kept too
     scored = [r for r in master_rows if r.get("pct") is not None]
@@ -163,7 +163,10 @@ def _frontmatter(
         ("gb_ram", _round(_to_num(host.get("ram_gb")), 1)),
         ("engine", engine or None),
         ("engine_version", engine_version or None),
-        ("model", models[0] if len(models) == 1 else None),  # scalar for single-model runs (Bases groupBy)
+        (
+            "model",
+            models[0] if len(models) == 1 else None,
+        ),  # scalar for single-model runs (Bases groupBy)
         ("quant", quants[0] if len(quants) == 1 else None),
         ("seed", manifest.get("seed", pack.sampling.seed)),
         ("temperature", pack.sampling.temperature),
@@ -230,14 +233,23 @@ def _eval_task(pack: Any, responses: list[Any], prompt_link: Any, known_ids: set
             b.append(f"| {dim.id} · {dim.name} | {dim.weight} |  |  |")
         b.append("")
         b.append("- **Gewichtete Qualität %:** ")
-        b.append(f"- **K.-o.-Prüfung:** {ko.dimension} ≤ {ko.threshold}? ___ · Red-Flag bei {rf}? ___")
+        b.append(
+            f"- **K.-o.-Prüfung:** {ko.dimension} ≤ {ko.threshold}? ___ · Red-Flag bei {rf}? ___"
+        )
         b.append("- **Gesamturteil:** Ja / Mit Einschränkung / Nein — ")
         b.append("")
     return "\n".join(b)
 
 
-def _load_doc(run_dir: Any, pack: Any, responses: list[Any], verdicts: list[Any],
-               reports: list[Any], host: dict[str, Any], manifest: dict[str, Any]) -> ResultDoc | None:
+def _load_doc(
+    run_dir: Any,
+    pack: Any,
+    responses: list[Any],
+    verdicts: list[Any],
+    reports: list[Any],
+    host: dict[str, Any],
+    manifest: dict[str, Any],
+) -> ResultDoc | None:
     """Load canonical ResultDoc from result.json if available, else build on-the-fly.
 
     Returns None only when schema_version is unsupported (future schema).
@@ -254,7 +266,10 @@ def _load_doc(run_dir: Any, pack: Any, responses: list[Any], verdicts: list[Any]
             pass  # malformed JSON → fall through to build
     # Build on-the-fly from the *.jsonl data already in `detail`
     return build_result_doc(
-        pack, responses, verdicts, reports,
+        pack,
+        responses,
+        verdicts,
+        reports,
         host=host,
         build_meta=None,
         judge=manifest.get("judge"),
@@ -352,9 +367,11 @@ def render_report_md(
                 + "\n"
             )
     if schema_unsupported:
-        w("> [!warning] neueres Schema\n> `result.json` wurde mit einer neueren Version "
-          "dieses Harness erstellt und kann nicht vollständig dargestellt werden. "
-          "Bitte Harness aktualisieren.\n")
+        w(
+            "> [!warning] neueres Schema\n> `result.json` wurde mit einer neueren Version "
+            "dieses Harness erstellt und kann nicht vollständig dargestellt werden. "
+            "Bitte Harness aktualisieren.\n"
+        )
     if pack.description:
         w(f"{pack.description}\n")
 
@@ -411,10 +428,14 @@ def render_report_md(
             + "\n"
         )
     elif include_judging and reports:
-        w("**Judge-Modell:** _nicht erfasst (älterer Lauf — ein neuer `judge`-Lauf speichert es)._\n")
+        w(
+            "**Judge-Modell:** _nicht erfasst (älterer Lauf — ein neuer `judge`-Lauf speichert es)._\n"
+        )
     w("**Gewichtete Master-Scorecard:** `Σ (Score × Gewicht) / Max × 100 = Qualität %`\n")
     w("**K.-o.-Logik** (zwei unabhängige Zweige — einer genügt für „Nein“):\n")
-    w(f"- *Dimensions-Floor* — eine Schlüssel-Dimension liegt ≤ Schwelle (hier: **{ko.dimension} ≤ {ko.threshold}**).")
+    w(
+        f"- *Dimensions-Floor* — eine Schlüssel-Dimension liegt ≤ Schwelle (hier: **{ko.dimension} ≤ {ko.threshold}**)."
+    )
     w("- *Red-Flag-Prompt* — eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.\n")
     if ko.red_flag_prompts:
         links = ", ".join(prompt_link(pid) for pid in ko.red_flag_prompts if pid in known_ids)
@@ -435,12 +456,12 @@ def render_report_md(
     if doc is not None:
         hw_engine: str | None = doc.provenance.engine or None
         _hw_ev = doc.provenance.engine_version
-        hw_engine_version: str | None = (_hw_ev if _hw_ev and _hw_ev != "unknown" else None)
+        hw_engine_version: str | None = _hw_ev if _hw_ev and _hw_ev != "unknown" else None
     else:
         # Fallback for unsupported-schema path: host/manifest only (no response fabrication).
         hw_engine = host.get("engine") or manifest.get("engine") or None
         _hw_ev2 = host.get("engine_version") or manifest.get("engine_version")
-        hw_engine_version = (_hw_ev2 if _hw_ev2 and _hw_ev2 != "unknown" else None)
+        hw_engine_version = _hw_ev2 if _hw_ev2 and _hw_ev2 != "unknown" else None
     _engine_label = hw_engine or "—"
     _version_suffix = f" ({hw_engine_version})" if hw_engine_version else " (n. v.)"
     w(f"- **Chip:** {chip or '—'}")
@@ -471,16 +492,22 @@ def render_report_md(
                 w(f"### {model_key} · Variante `{variant_key}`\n")
                 # Use quality from ResultCell when available (canonical), else from master_rows
                 rubric = (quality.rubric_level if quality else None) or row.get("rubric_level", "—")
-                safety = (quality.safety_passed if quality else None)
+                safety = quality.safety_passed if quality else None
                 if safety is None:
                     safety = row.get("safety_passed", True)
-                safety_reason = (quality.safety_reason if quality else None) or row.get("safety_reason", "")
+                safety_reason = (quality.safety_reason if quality else None) or row.get(
+                    "safety_reason", ""
+                )
                 w(
                     f"**{_metric_link('quality_pct', glossary)}: "
                     f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Rubrik: **{rubric}**"
                     + f" · Sicherheit: {'✓' if safety else '✗'}"
                     + ("" if safety else f" ({_cell(str(safety_reason))})")
-                    + (f" · Ø Tokens/Antwort: **{answer_tokens}**" if answer_tokens is not None else "")
+                    + (
+                        f" · Ø Tokens/Antwort: **{answer_tokens}**"
+                        if answer_tokens is not None
+                        else ""
+                    )
                     + "\n"
                 )
                 if rep and rep.dim_scores:
@@ -492,10 +519,14 @@ def render_report_md(
                         cite_key = f"{model_key}|{variant_key}|{dim.id}"
                         cited = [c for c in cited_ids.get(cite_key, []) if c in known_ids]
                         if cited:
-                            rationale = f"{rationale} · Belege: " + ", ".join(prompt_link(c) for c in cited)
+                            rationale = f"{rationale} · Belege: " + ", ".join(
+                                prompt_link(c) for c in cited
+                            )
                         ko_mark = (
                             " **⛔ K.-o.**"
-                            if dim.id == ko.dimension and score is not None and score <= ko.threshold
+                            if dim.id == ko.dimension
+                            and score is not None
+                            and score <= ko.threshold
                             else ""
                         )
                         # Only show tokens on the first row of this cell (avoid repetition)
@@ -627,25 +658,49 @@ def _answer_body(r: Any, v: Any, glossary: Mapping[str, Glossary]) -> str:
         b.append(r.reasoning_text)
 
     total_tp = (
-        (r.prompt_tokens + r.completion_tokens) / r.e2e_s if _is_num(r.e2e_s) and r.e2e_s > 0 else math.nan
+        (r.prompt_tokens + r.completion_tokens) / r.e2e_s
+        if _is_num(r.e2e_s) and r.e2e_s > 0
+        else math.nan
     )
     peak_gb = r.sys_used_mb / 1024 if getattr(r, "sys_used_mb", None) is not None else None
-    delta_gb = r.sys_used_delta_mb / 1024 if getattr(r, "sys_used_delta_mb", None) is not None else None
+    delta_gb = (
+        r.sys_used_delta_mb / 1024 if getattr(r, "sys_used_delta_mb", None) is not None else None
+    )
     b.append("\n**Messwerte:**\n")
     b.append("| Kennzahl | Wert |")
     b.append("|---|---|")
-    b.append(f"| {_metric_link('ttft_p50', glossary, 'TTFT', in_table=True)} | {_fmt(r.ttft_s, '{:.2f}', 's')} |")
-    b.append(f"| {_metric_link('decode_median', glossary, 'Decode', in_table=True)} | {_fmt(r.decode_tps, '{:.0f}', 'tok/s')} |")
-    b.append(f"| {_metric_link('prefill_tps', glossary, 'Prefill', in_table=True)} | {_fmt(r.prefill_tps, '{:.0f}', 'tok/s')} |")
-    b.append(f"| {_metric_link('e2e', glossary, 'Gesamtzeit', in_table=True)} | {_fmt(r.e2e_s, '{:.2f}', 's')} |")
-    b.append(f"| {_metric_link('total_throughput', glossary, 'Gesamt-Durchsatz', in_table=True)} | {_fmt(total_tp, '{:.0f}', 'tok/s')} |")
+    b.append(
+        f"| {_metric_link('ttft_p50', glossary, 'TTFT', in_table=True)} | {_fmt(r.ttft_s, '{:.2f}', 's')} |"
+    )
+    b.append(
+        f"| {_metric_link('decode_median', glossary, 'Decode', in_table=True)} | {_fmt(r.decode_tps, '{:.0f}', 'tok/s')} |"
+    )
+    b.append(
+        f"| {_metric_link('prefill_tps', glossary, 'Prefill', in_table=True)} | {_fmt(r.prefill_tps, '{:.0f}', 'tok/s')} |"
+    )
+    b.append(
+        f"| {_metric_link('e2e', glossary, 'Gesamtzeit', in_table=True)} | {_fmt(r.e2e_s, '{:.2f}', 's')} |"
+    )
+    b.append(
+        f"| {_metric_link('total_throughput', glossary, 'Gesamt-Durchsatz', in_table=True)} | {_fmt(total_tp, '{:.0f}', 'tok/s')} |"
+    )
     b.append(f"| Tokens (Prompt→Antwort) | {r.prompt_tokens} → {r.completion_tokens} |")
-    b.append(f"| {_metric_link('system_peak_ram', glossary, 'System-Peak', in_table=True)} | {_fmt(peak_gb, '{:.1f}', 'GB')} |")
-    b.append(f"| {_metric_link('model_delta_ram', glossary, 'Modell-Delta', in_table=True)} | {_fmt(delta_gb, '{:.1f}', 'GB')} |")
-    b.append(f"| {_metric_link('mem_pressure', glossary, 'Memory-Pressure', in_table=True)} | {getattr(r, 'mem_pressure_max', '') or '—'} |")
+    b.append(
+        f"| {_metric_link('system_peak_ram', glossary, 'System-Peak', in_table=True)} | {_fmt(peak_gb, '{:.1f}', 'GB')} |"
+    )
+    b.append(
+        f"| {_metric_link('model_delta_ram', glossary, 'Modell-Delta', in_table=True)} | {_fmt(delta_gb, '{:.1f}', 'GB')} |"
+    )
+    b.append(
+        f"| {_metric_link('mem_pressure', glossary, 'Memory-Pressure', in_table=True)} | {getattr(r, 'mem_pressure_max', '') or '—'} |"
+    )
     if _is_num(getattr(r, "reasoning_duration_s", math.nan)) and r.reasoning_duration_s > 0:
-        b.append(f"| {_metric_link('reasoning_duration', glossary, 'Thinking-Dauer', in_table=True)} | {_fmt(r.reasoning_duration_s, '{:.2f}', 's')} |")
-        b.append(f"| {_metric_link('reasoning_tps', glossary, 'Thinking-Tempo', in_table=True)} | {_fmt(r.reasoning_tps, '{:.0f}', 'tok/s')} |")
+        b.append(
+            f"| {_metric_link('reasoning_duration', glossary, 'Thinking-Dauer', in_table=True)} | {_fmt(r.reasoning_duration_s, '{:.2f}', 's')} |"
+        )
+        b.append(
+            f"| {_metric_link('reasoning_tps', glossary, 'Thinking-Tempo', in_table=True)} | {_fmt(r.reasoning_tps, '{:.0f}', 'tok/s')} |"
+        )
     if getattr(r, "throttled", False):
         b.append("| Throttled | ⚠️ ja (aus Aggregaten ausgeschlossen) |")
     if getattr(r, "power_source", "") == "battery":

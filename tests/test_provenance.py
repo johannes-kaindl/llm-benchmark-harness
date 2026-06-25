@@ -9,6 +9,7 @@ Verifies that:
 Helpers are copied from tests/test_scorecard_render.py so this file is
 self-contained and does not depend on the state of that module.
 """
+
 from __future__ import annotations
 
 import json
