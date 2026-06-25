@@ -27,7 +27,7 @@
       <input type="text" x-model="model" placeholder="z. B. gemma"
              style="padding:0.25rem 0.5rem; border:1px solid var(--border,#444); border-radius:4px; background:var(--bg2,#1e1e1e); color:inherit; font-size:0.85rem; width:10rem">
     </label>
-    <button style="margin-left:auto; padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer; opacity:1"
+    <button style="margin-left:auto; padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer"
             :disabled="sel.length < 2"
             :style="sel.length < 2 ? 'opacity:0.45;cursor:not-allowed' : ''"
             @click="window.location = '/compare?rows=' + sel.map(encodeURIComponent).join(',')">
@@ -55,7 +55,7 @@
     </thead>
     <tbody>
       {% for r in pool %}
-      <tr x-show="(!chip || '{{ r.chip }}'.toLowerCase().includes(chip.toLowerCase())) && (!pack || '{{ r.pack }}'.toLowerCase().includes(pack.toLowerCase())) && (!model || '{{ r.model }}'.toLowerCase().includes(model.toLowerCase()))">
+      <tr x-show="(!chip || {{ r.chip | tojson }}.toLowerCase().includes(chip.toLowerCase())) && (!pack || {{ r.pack | tojson }}.toLowerCase().includes(pack.toLowerCase())) && (!model || {{ r.model | tojson }}.toLowerCase().includes(model.toLowerCase()))">
         <td style="width:2rem; text-align:center">
           <input type="checkbox" value="{{ r.id }}" x-model="sel">
         </td>
@@ -83,7 +83,7 @@
   {# Sticky compare footer when ≥1 row selected #}
   <div x-show="sel.length > 0" style="margin-top:1rem; padding:0.5rem 0; border-top:1px solid var(--border,#444); display:flex; align-items:center; gap:1rem">
     <span class="muted text-sm"><span x-text="sel.length"></span> Lauf/Läufe ausgewählt</span>
-    <button style="padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer; opacity:1"
+    <button style="padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer"
             :disabled="sel.length < 2"
             :style="sel.length < 2 ? 'opacity:0.45;cursor:not-allowed' : ''"
             @click="window.location = '/compare?rows=' + sel.map(encodeURIComponent).join(',')">
