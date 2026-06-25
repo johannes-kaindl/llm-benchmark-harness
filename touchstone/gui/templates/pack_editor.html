@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title_suffix %} · Pack-Editor{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Pack-Editor</nav>
+{% endblock %}
+{% block body %}
+<!-- non-deferred so packEditor is registered before the deferred Alpine fires alpine:init -->
+<script src="/static/pack_editor.js"></script>
+
+<div class="page-header">
+  <h1 class="page-title">Pack-Editor</h1>
+  <a class="btn btn-secondary" style="margin-left:auto" href="/pack-editor">+ Neues Pack</a>
+</div>
+
+<div class="card">
+  <label class="form-label" for="pack_load">Pack laden</label>
+  <select class="form-select" id="pack_load"
+          onchange="if(this.value) location.href='/pack-editor?path=' + encodeURIComponent(this.value)">
+    <option value="">— Pack wählen —</option>
+    {% for p in packs %}
+    <option value="{{ p }}" {% if p == path %}selected{% endif %}>{{ p }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div x-data="packEditor({{ yaml_text | tojson }}, {{ path | tojson }})">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="card">
+      <div class="card-title">YAML</div>
+      <textarea class="form-input" id="yaml_text" x-model="yamlText" @input="ok = null; saved = ''"
+                spellcheck="false"
+                style="width:100%;height:60vh;font-family:monospace;font-size:0.8rem;white-space:pre;overflow:auto"></textarea>
+      <div class="flex gap-2" style="margin-top:0.6rem">
+        <button type="button" class="btn btn-primary" @click="validate()">Validieren</button>
+        <button type="button" class="btn btn-secondary" @click="download()">Herunterladen</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Vorschau &amp; Prüfung</div>
+      <p class="muted text-xs" x-show="validating">… wird geprüft</p>
+      <template x-if="ok === true">
+        <p class="text-sm" style="color:var(--ja)">✓ gültig
+          <span class="muted text-xs" x-text="summaryText()"></span></p>
+      </template>
+      <template x-if="ok === false">
+        <div>
+          <p class="text-sm" style="color:var(--nein)">✗ ungültig</p>
+          <ul class="text-xs" style="color:var(--nein);margin:0.2rem 0 0 1rem">
+            <template x-for="e in errors" :key="e.loc + e.msg">
+              <li><strong x-text="e.loc"></strong> — <span x-text="e.msg"></span></li>
+            </template>
+          </ul>
+        </div>
+      </template>
+      <template x-if="ok === null && !validating">
+        <p class="muted text-xs">Geändert — „Validieren" für aktuelle Vorschau.</p>
+      </template>
+      <hr style="margin:0.6rem 0;border:none;border-top:1px solid var(--border)">
+      <div x-html="previewHtml"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">In packs/ speichern</div>
+    <p class="muted text-xs">Editieren ändert die Quelle für künftige Läufe — bestehende Bundles bleiben unberührt. „Speichern als" mit neuem Namen = neues Pack.</p>
+    <div class="flex gap-2 items-center">
+      <input class="form-input" type="text" placeholder="dateiname" x-model="filename" style="flex:1">
+      <span class="muted text-xs">.yaml</span>
+      <button type="button" class="btn btn-primary" @click="save(false)" :disabled="ok !== true || !filename.trim()">Speichern</button>
+    </div>
+    <p class="text-xs" x-show="ok !== true" class="muted" style="color:var(--muted);margin-top:0.3rem">Nur ein validiertes Pack kann gespeichert werden.</p>
+    <p class="text-xs" x-show="saveError" x-text="saveError" style="color:var(--nein);margin-top:0.3rem"></p>
+    <p class="text-xs" x-show="saved" x-text="'Gespeichert: packs/' + saved" style="color:var(--ja);margin-top:0.3rem"></p>
+    <div x-show="showOverwrite" x-cloak class="text-xs flex gap-2 items-center" style="margin-top:0.3rem">
+      <span style="color:var(--einschr)">Datei existiert bereits.</span>
+      <button type="button" class="btn btn-secondary" @click="save(true)">Überschreiben</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

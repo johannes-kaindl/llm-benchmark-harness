@@ -28,6 +28,7 @@ from touchstone.config import load_config, models_from_json
 from touchstone.gui import bundles, compare
 from touchstone.gui import configs as configs_mod
 from touchstone.gui import glossary as _glossary
+from touchstone.gui import packs as packs_mod
 from touchstone.gui.control import RunRegistry
 from touchstone.pack import load_pack
 
@@ -97,7 +98,81 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             pk = load_pack(pack_path)
         except (FileNotFoundError, OSError):
             raise HTTPException(status_code=404) from None
-        return render("pack.html", request, pack=pk, active="pack")
+        return render("pack.html", request, pack=pk, path=pack_path, active="pack")
+
+    _MAX_PACK_YAML = 1_000_000  # a pack YAML over ~1 MB is abuse, not a use case
+
+    @app.get("/pack-editor", response_class=HTMLResponse)
+    def pack_editor(request: Request, path: str | None = None) -> HTMLResponse:
+        """Guided YAML editor. With a valid ?path the file's RAW text seeds the textarea;
+        otherwise the minimal NEW_PACK_TEMPLATE. Validation/preview/save are separate routes."""
+        offered = sorted(str(p) for p in Path("packs").glob("*.yaml"))
+        if path is not None:
+            if path not in set(offered):  # confine to the packs the editor actually offers
+                raise HTTPException(status_code=404)
+            # Resolve + confine before reading so a symlink inside packs/ can't leak a target
+            # outside it (mirrors the save route's is_relative_to guard; glob lists symlinks).
+            target = Path(path).resolve()
+            if not target.is_relative_to(Path("packs").resolve()):
+                raise HTTPException(status_code=404)
+            try:
+                yaml_text = target.read_text(encoding="utf-8")
+            except (FileNotFoundError, OSError):
+                raise HTTPException(status_code=404) from None
+        else:
+            yaml_text = packs_mod.NEW_PACK_TEMPLATE
+        return render(
+            "pack_editor.html",
+            request,
+            yaml_text=yaml_text,
+            path=path,
+            packs=offered,
+            active="pack",
+        )
+
+    @app.post("/packs/validate")
+    def packs_validate(yaml_text: str = Form(...)) -> dict[str, Any]:
+        """Validate edited pack YAML through the pydantic contract; render the viewer body as
+        a preview on success. Never 500s — a parse/schema error is a normal {ok:false} result."""
+        if len(yaml_text) > _MAX_PACK_YAML:
+            raise HTTPException(status_code=400, detail="pack YAML too large")
+        result = packs_mod.validate_pack_yaml(yaml_text)
+        preview_html = None
+        if result["ok"]:
+            preview_html = _templates.get_template("macros/_pack_body.html").render(
+                pack=result["pack"]
+            )
+        return {
+            "ok": result["ok"],
+            "errors": result["errors"],
+            "summary": result["summary"],
+            "preview_html": preview_html,
+        }
+
+    @app.post("/packs/save")
+    def packs_save(
+        filename: str = Form(...),
+        yaml_text: str = Form(...),
+        overwrite: str = Form(""),
+    ) -> dict[str, Any]:
+        """Write a validated pack into packs/. Hard guards: confined filename, validate-before-
+        write (never persist an invalid pack), overwrite must be explicit (409 otherwise)."""
+        if len(yaml_text) > _MAX_PACK_YAML:
+            raise HTTPException(status_code=400, detail="pack YAML too large")
+        fname = packs_mod.safe_pack_filename(filename)
+        if fname is None:
+            raise HTTPException(status_code=400, detail="invalid filename")
+        if not packs_mod.validate_pack_yaml(yaml_text)["ok"]:
+            raise HTTPException(status_code=400, detail="pack does not validate")
+        packs_dir = Path("packs").resolve()
+        target = (packs_dir / fname).resolve()
+        if not target.is_relative_to(packs_dir):  # defense in depth beyond the filename regex
+            raise HTTPException(status_code=400, detail="invalid filename")
+        packs_dir.mkdir(parents=True, exist_ok=True)
+        if target.exists() and overwrite.strip().lower() not in {"true", "1", "on", "yes"}:
+            raise HTTPException(status_code=409, detail="file exists")
+        target.write_text(yaml_text, encoding="utf-8")
+        return {"saved": fname}
 
     @app.get("/config-view/{config_path:path}", response_class=HTMLResponse)
     def config_view(request: Request, config_path: str) -> HTMLResponse:
