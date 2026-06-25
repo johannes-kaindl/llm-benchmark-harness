@@ -420,3 +420,33 @@ def test_compare_pool_has_checkboxes_and_compare_button(tmp_path):
     assert "x-data" in body
     assert "Vergleichen" in body
     assert "|gemma|baseline" in body
+
+
+# ── Task 5: auto-diff comparison section (GEMEINSAM + varying columns + winners) ─
+
+
+def test_compare_diff_renders_common_and_columns(tmp_path):
+    """Cross-machine comparison: two rows differing only in chip/ram_gb.
+
+    The diff section must render GEMEINSAM (with the constant model), both chip
+    values as column headers, and a trophy on the differing metric.
+    """
+    run_a = "2026-01-01_000000_eval_ndassist"
+    run_b = "2026-01-02_000000_eval_ndassist"
+    dim_a = dict(_POOL_DIM, chip="M1", ram_gb="8", peak_ram_gb="6", decode_med="15")
+    dim_b = dict(_POOL_DIM, chip="M5", ram_gb="64", peak_ram_gb="10", decode_med="40")
+    _write_scores_pool(tmp_path / run_a, [dim_a])
+    _write_scores_pool(tmp_path / run_b, [dim_b])
+
+    client = _client(tmp_path)
+    id_a = f"{run_a}|gemma|baseline"
+    id_b = f"{run_b}|gemma|baseline"
+    resp = client.get(f"/compare?rows={id_a},{id_b}")
+    assert resp.status_code == 200
+    body = resp.text
+
+    assert "GEMEINSAM" in body          # common block present
+    assert "gemma" in body              # constant model shown in GEMEINSAM
+    assert "M1" in body                 # varying chip A as column header
+    assert "M5" in body                 # varying chip B as column header
+    assert "🏆" in body                 # winner marker on at least one differing metric

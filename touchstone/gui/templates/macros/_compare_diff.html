@@ -1,0 +1,46 @@
+<div class="card">
+  <div class="card-title">↔ Cross-Run-Vergleich</div>
+  <p class="muted text-sm">GEMEINSAM:
+    {% for dim, val in diff.common %}{% if val %}{{ val }}{% if not loop.last %} · {% endif %}{% endif %}{% endfor %}
+  </p>
+  <table class="bundle-table">
+    <thead>
+      <tr>
+        <th></th>
+        {% for c in diff.columns %}<th>{{ c.header }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Qualität</td>
+        {% for c in diff.columns %}
+        <td>{% if c.row.quality_pct is not none %}{{ "%.0f"|format(c.row.quality_pct) }} %{% if diff.winners.quality_pct == c.id %} 🏆{% endif %}{% else %}—{% endif %}</td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <td>Decode</td>
+        {% for c in diff.columns %}
+        <td>{% if c.row.decode_med %}{{ c.row.decode_med }} tok/s{% if diff.winners.decode_med == c.id %} 🏆{% endif %}{% else %}—{% endif %}</td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <td>TTFT P50</td>
+        {% for c in diff.columns %}
+        <td>{% if c.row.ttft_p50 %}{{ c.row.ttft_p50 }} s{% if diff.winners.ttft_p50 == c.id %} 🏆{% endif %}{% else %}—{% endif %}</td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <td>System-Peak</td>
+        {% for c in diff.columns %}
+        <td>{% if c.row.peak_ram_gb %}{{ c.row.peak_ram_gb }} GB{% if diff.winners.peak_ram_gb == c.id %} 🏆{% endif %}{% else %}—{% endif %}</td>
+        {% endfor %}
+      </tr>
+      <tr>
+        <td>Modell-Delta</td>
+        {% for c in diff.columns %}
+        <td>{% if c.row.model_delta_gb %}{{ c.row.model_delta_gb }} GB{% if diff.winners.model_delta_gb == c.id %} 🏆{% endif %}{% else %}—{% endif %}</td>
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+</div>
