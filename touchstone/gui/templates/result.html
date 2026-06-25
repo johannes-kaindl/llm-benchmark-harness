@@ -247,6 +247,7 @@
 
 {# ── Antworten nach Kategorie ─────────────────────────────────────────────── #}
 {% if detail and detail.pack and detail.responses %}
+{# default selected cell: the quality-winning cell for a multi-cell comparison, else '__all__' so every answer shows (single-cell / unjudged / no comparison) #}
 {% set default_cell = compare_detail.winners.pct if (compare_detail and not compare_detail.single and compare_detail.winners.pct) else '__all__' %}
 <div class="card">
   <div class="card-title">Antworten nach Kategorie</div>

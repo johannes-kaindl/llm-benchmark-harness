@@ -297,16 +297,15 @@ def test_single_cell_bundle_answers_not_hidden(tmp_path):
         dim_scores_by_cell={("m", "baseline"): full},
     )
     client = _client(tmp_path)
-    body = client.get(f"/result/{d.name}").text
-    assert client.get(f"/result/{d.name}").status_code == 200
+    resp = client.get(f"/result/{d.name}")
+    assert resp.status_code == 200
+    body = resp.text
     # The Alpine state must default to __all__ so x-show is true for every answer block
     assert "x-data=\"{ cell: '__all__' }\"" in body, (
         "default_cell must be '__all__' for a single-cell bundle so answers are visible"
     )
     # At least one answer block (data-cell= attribute) must be present
-    assert "data-cell=" in body, (
-        "answer blocks with data-cell= must be rendered (not stripped)"
-    )
+    assert "data-cell=" in body, "answer blocks with data-cell= must be rendered (not stripped)"
 
 
 # ── Task 6: flat master-scorecard shown only for true N×M matrices ────────────
