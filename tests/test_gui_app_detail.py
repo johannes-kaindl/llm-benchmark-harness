@@ -380,10 +380,31 @@ def test_1x2_filter_labels_are_variant_names(client, multi_cell_bundle):
     import re
 
     body = client.get(f"/result/{multi_cell_bundle.name}").text
-    # Filter buttons for baseline and none must be present
-    assert "baseline" in body
-    assert "none" in body
-    # Composite keys must appear in data-cell attributes
+
+    # Extract ALL filter button labels (buttons with @click="cell='...'">LABEL</button>).
+    # The pattern captures the visible label between > and </button>.
+    all_button_labels = re.findall(
+        r"""@click="cell='[^']+'"[^>]*>\s*([^<]+?)\s*</button>""", body
+    )
+    # Exclude the "alle" control button — only keep per-cell filter buttons.
+    cell_button_labels = [lbl for lbl in all_button_labels if lbl.lower() != "alle"]
+
+    # 1×2 bundle has one model ("m") and two variants, so labels must be variant names only —
+    # never "m · baseline" style composites and never the model name as prefix.
+    assert len(cell_button_labels) >= 2, (
+        f"Expected at least 2 cell filter buttons, got: {cell_button_labels}"
+    )
+    assert all(" · " not in lbl for lbl in cell_button_labels), (
+        f"1×2 filter buttons must show variant names only, not composites — got: {cell_button_labels}"
+    )
+    assert all(not lbl.lower().startswith("m ") for lbl in cell_button_labels), (
+        f"1×2 filter button labels must not start with the model name — got: {cell_button_labels}"
+    )
+    assert set(cell_button_labels) == {"baseline", "none"}, (
+        f"Expected variant names as button labels, got: {cell_button_labels}"
+    )
+
+    # Composite keys must still appear in data-cell attributes (wiring is correct).
     datacell_keys = set(re.findall(r'data-cell="([^"]+)"', body))
     assert "m|baseline" in datacell_keys or any("|baseline" in k for k in datacell_keys)
     assert "m|none" in datacell_keys or any("|none" in k for k in datacell_keys)
