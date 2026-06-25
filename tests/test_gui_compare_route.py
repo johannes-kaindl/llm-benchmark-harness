@@ -445,11 +445,11 @@ def test_compare_diff_renders_common_and_columns(tmp_path):
     assert resp.status_code == 200
     body = resp.text
 
-    assert "GEMEINSAM" in body          # common block present
-    assert "gemma" in body              # constant model shown in GEMEINSAM
-    assert "M1" in body                 # varying chip A as column header
-    assert "M5" in body                 # varying chip B as column header
-    assert "🏆" in body                 # winner marker on at least one differing metric
+    assert "GEMEINSAM" in body  # common block present
+    assert "gemma" in body  # constant model shown in GEMEINSAM
+    assert "M1" in body  # varying chip A as column header
+    assert "M5" in body  # varying chip B as column header
+    assert "🏆" in body  # winner marker on at least one differing metric
 
 
 # ── B2 final-review: repeated-param correctness + comma-in-id round-trip ──────
@@ -511,7 +511,7 @@ def test_compare_comma_in_id_round_trip(tmp_path, monkeypatch):
     monkeypatch.setattr(gui_app, "render", spy_render)
 
     client = _client(tmp_path)
-    id_a = f"{run_a}|gemma|baseline"   # id contains a comma
+    id_a = f"{run_a}|gemma|baseline"  # id contains a comma
     id_b = f"{run_b}|gemma|baseline"
     # Send as repeated params — each value is passed as-is, no delimiter conflict.
     resp = client.get("/compare", params=[("rows", id_a), ("rows", id_b)])
