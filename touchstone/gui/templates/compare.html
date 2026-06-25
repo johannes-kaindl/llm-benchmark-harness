@@ -35,6 +35,21 @@
     </button>
   </div>
 
+  {# Import control #}
+  <div x-data="{ busy:false, err:'' }" style="margin-bottom:0.75rem">
+    <label class="muted text-sm">Lauf importieren (.zip von anderem Gerät):</label>
+    <input type="file" accept=".zip" @change="
+      busy=true; err='';
+      const fd = new FormData(); fd.append('file', $event.target.files[0]);
+      fetch('/import-bundle', {method:'POST', body:fd})
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(() => window.location.reload())
+        .catch(() => { err='Import fehlgeschlagen'; busy=false; });
+    ">
+    <span x-show="busy" class="muted text-xs">importiere…</span>
+    <span x-show="err" class="text-xs" style="color:var(--nein)" x-text="err"></span>
+  </div>
+
   {% if pool %}
   <table class="bundle-table">
     <thead>

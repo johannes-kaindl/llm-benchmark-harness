@@ -450,3 +450,17 @@ def test_compare_diff_renders_common_and_columns(tmp_path):
     assert "M1" in body                 # varying chip A as column header
     assert "M5" in body                 # varying chip B as column header
     assert "🏆" in body                 # winner marker on at least one differing metric
+
+
+# ── Task 6: import-bundle upload control ──────────────────────────────────────
+
+
+def test_compare_has_import_control(tmp_path):
+    """GET /compare → pool zone contains a file upload control targeting /import-bundle."""
+    client = _client(tmp_path)
+    resp = client.get("/compare")
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'type="file"' in body
+    assert "/import-bundle" in body
+    assert "Lauf importieren" in body
