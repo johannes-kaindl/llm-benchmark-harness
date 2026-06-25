@@ -83,6 +83,13 @@ def test_config_page_model_select_hidden_on_resume(tmp_path):
     assert "modelPicker(" not in body
 
 
+def test_config_page_model_select_tracks_user_interaction(tmp_path):
+    # the model <select> must flag user interaction so a late (≤3s) endpoint fetch cannot
+    # clobber a model the user already picked (default-adoption race).
+    body = _client(tmp_path).get("/config").text
+    assert "userChose" in body  # @change wires the interaction guard on the model select
+
+
 def test_eval_model_options_route_merges_endpoint_and_config(tmp_path, monkeypatch):
     # config.m5.yaml declares qwen3.6-35b-a3b-4bit; endpoint serves "x" → merged single-select
     monkeypatch.setattr(

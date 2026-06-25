@@ -45,7 +45,7 @@
                 x-text="'· ⚠ ' + endpointError" style="color:var(--einschr)"></span>
         </label>
         <p class="muted text-xs">Ein Modell pro Lauf — gespeist aus den real geladenen Endpoint-Modellen. Mehrere Modelle in einem Lauf würden die RAM-Messung verfälschen (nichts wird in die Config geschrieben).</p>
-        <select class="form-select" id="model_select" x-model="chosen">
+        <select class="form-select" id="model_select" x-model="chosen" @change="userChose = true">
           <template x-for="o in options" :key="o.id">
             <option :value="o.id" x-text="optionLabel(o)"></option>
           </template>

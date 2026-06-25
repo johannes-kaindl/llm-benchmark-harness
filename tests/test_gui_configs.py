@@ -174,3 +174,11 @@ def test_eval_model_options_dedupes_config_id_already_served():
     out = configs.eval_model_options(config_models=cfg, endpoint_models=["dup"])
     assert [o["id"] for o in out["options"]] == ["dup"]
     assert out["options"][0]["source"] == "both" and out["options"][0]["quant"] == "Q4"
+
+
+def test_eval_model_options_skips_non_string_endpoint_ids():
+    # symmetric with the config-side str guard: a misbehaving endpoint (non-string ids) must not
+    # leak into options (they would later fail models_from_json validation on resubmit)
+    out = configs.eval_model_options(config_models=[], endpoint_models=["a", 123, None, "b"])  # type: ignore[list-item]
+    assert [o["id"] for o in out["options"]] == ["a", "b"]
+    assert out["default_id"] == "a"

@@ -84,7 +84,7 @@ def eval_model_options(
     options: list[dict[str, Any]] = []
     seen: set[str] = set()
     for mid in endpoint_models:
-        if mid in seen:
+        if not isinstance(mid, str) or mid in seen:
             continue
         seen.add(mid)
         if mid in by_id:

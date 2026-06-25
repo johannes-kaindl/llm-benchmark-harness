@@ -14,6 +14,7 @@ document.addEventListener("alpine:init", () => {
     config: (configs && configs[0]) || Object.keys(byConfig)[0] || "",
     options: [],
     chosen: "",
+    userChose: false, // true once the user picks a model (@change) — gates default adoption
     manualId: "",
     manualQuant: "",
     endpointError: "",
@@ -35,6 +36,7 @@ document.addEventListener("alpine:init", () => {
       }));
       this.options = seed;
       this.chosen = seed.length ? seed[0].id : "__manual__";
+      this.userChose = false; // a fresh config re-enables default adoption
       this.manualId = "";
       this.manualQuant = "";
       this.fetchModelOptions(); // async, fire-and-forget
@@ -49,8 +51,9 @@ document.addEventListener("alpine:init", () => {
         if (this.config !== cfg) return; // a newer config selection superseded this request
         this.options = data.options || [];
         this.endpointError = data.error || "";
-        // Adopt the server-computed default (prefers a real served model over a config placeholder).
-        // This runs right after a load/config-change, before the user has meaningfully chosen.
+        // Adopt the server-computed default (prefers a real served model over a config
+        // placeholder) — but NEVER clobber a model the user already picked in the fetch window.
+        if (this.userChose) return;
         if (data.default_id) {
           this.chosen = data.default_id;
         } else if (!this.options.length) {
