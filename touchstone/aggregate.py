@@ -187,9 +187,10 @@ class CompareDiff:
     winners: dict[str, str | None]
 
 
-def _num(s: object) -> float | None:
+def _num(s: str) -> float | None:
+    """Parse a numeric string field to float, or None for empty/non-numeric values."""
     try:
-        return float(s)  # type: ignore[arg-type]
+        return float(s)
     except (TypeError, ValueError):
         return None
 
