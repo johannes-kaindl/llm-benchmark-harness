@@ -187,9 +187,9 @@ class CompareDiff:
     winners: dict[str, str | None]
 
 
-def _num(s: str) -> float | None:
+def _num(s: object) -> float | None:
     try:
-        return float(s)
+        return float(s)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
 

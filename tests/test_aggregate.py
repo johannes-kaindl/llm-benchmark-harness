@@ -285,6 +285,7 @@ def test_diff_rows_cross_machine(tmp_path):
     assert "model" in common_dims and "pack" in common_dims and "quant" in common_dims
     assert set(d.varying) == {"chip", "ram_gb"}
     assert d.columns[0].header and d.columns[1].header  # non-empty headers from varying values
+    assert len(d.common) == 5  # pack, pack_version, model, quant, variant
     assert d.winners["decode_med"] == "b"  # 42 > 18, higher is better
     assert d.winners["quality_pct"] is None  # tie (76 == 76)
 
