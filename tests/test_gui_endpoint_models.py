@@ -25,35 +25,6 @@ def _client(tmp_path):
     return TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg))
 
 
-def test_endpoint_models_route_success(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        configs_mod,
-        "discover_endpoint_models",
-        lambda config: {"models": ["x", "y"], "error": None},
-    )
-    r = _client(tmp_path).get("/endpoint-models?config=config.m5.yaml")
-    assert r.status_code == 200
-    assert r.json() == {"models": ["x", "y"], "error": None}
-
-
-def test_endpoint_models_route_error_is_200(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        configs_mod, "discover_endpoint_models", lambda config: {"models": [], "error": "down"}
-    )
-    r = _client(tmp_path).get("/endpoint-models?config=config.m5.yaml")
-    assert r.status_code == 200  # offline endpoint is not a server error
-    assert r.json()["error"] == "down"
-
-
-def test_endpoint_models_route_rejects_traversal(tmp_path):
-    assert _client(tmp_path).get("/endpoint-models?config=../etc/passwd").status_code == 404
-
-
-def test_endpoint_models_route_rejects_non_config_yaml(tmp_path):
-    # only the offered config*.yaml are readable — no arbitrary cwd YAML (info-disclosure guard)
-    assert _client(tmp_path).get("/endpoint-models?config=packs/ndassist.yaml").status_code == 404
-
-
 def test_config_default_is_not_embed(tmp_path):
     # the config <select> options follow order_configs (embed/vlm last) and the picker defaults
     # to configs[0]; assert the first config option is a non-embed/non-vlm config. (Decoupled

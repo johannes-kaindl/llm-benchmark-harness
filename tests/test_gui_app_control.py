@@ -231,6 +231,52 @@ def test_stop_run_rejects_traversal(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# /run-active — authoritative liveness used by the overview to flip a finished
+# run out of 'running' without a manual reload (live-status-stuck bug)
+# ---------------------------------------------------------------------------
+
+
+def test_run_active_true_while_running_false_after_finalize(tmp_path):
+    import os
+
+    from touchstone.gui.control import mark_sentinel, write_sentinel
+
+    run_dir = tmp_path / "run_live"
+    run_dir.mkdir()
+    client = _client(tmp_path)
+    # a sentinel with THIS process's pid is genuinely alive → active
+    write_sentinel(run_dir, kind="eval", pid=os.getpid(), pack_path="p", config_path="c")
+    r = client.get(f"/run-active/{run_dir.name}")
+    assert r.status_code == 200
+    assert r.json() == {"active": True}
+    # once finalized (sentinel left 'running') it must report inactive → overview can refresh
+    mark_sentinel(run_dir, "finished")
+    assert client.get(f"/run-active/{run_dir.name}").json() == {"active": False}
+
+
+def test_run_active_no_sentinel_is_inactive(tmp_path):
+    run_dir = tmp_path / "ghost"
+    run_dir.mkdir()
+    assert _client(tmp_path).get(f"/run-active/{run_dir.name}").json() == {"active": False}
+
+
+def test_run_active_rejects_traversal(tmp_path):
+    assert _client(tmp_path).get("/run-active/..%2f..%2fetc").status_code == 404
+
+
+def test_live_progress_polls_run_active_on_finish():
+    # the JS must poll /run-active after 'finished' and reload once the run is finalized
+    # (server-rendered status badge/card otherwise stays 'running' until a manual reload)
+    from pathlib import Path
+
+    js = (
+        Path(__file__).parent.parent / "touchstone" / "gui" / "static" / "live_progress.js"
+    ).read_text(encoding="utf-8")
+    assert "/run-active/" in js
+    assert "location.reload" in js
+
+
+# ---------------------------------------------------------------------------
 # /live/{name} — SSE stream
 # ---------------------------------------------------------------------------
 

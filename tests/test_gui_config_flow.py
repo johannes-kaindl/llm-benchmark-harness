@@ -54,6 +54,13 @@ def test_flow_bar_class_and_css_rule_present(tmp_path):
     assert ".flow-bar button.active" in css, "app.css must contain .flow-bar button.active rule"
 
 
+def test_config_links_to_pack_editor(tmp_path):
+    # the pack editor must be discoverable from the config flow (not only via a pack's viewer)
+    body = _client(tmp_path).get("/config").text
+    assert 'href="/pack-editor"' in body
+    assert "Pack bearbeiten" in body
+
+
 def test_config_sidesteps_import_always_resume_conditional(tmp_path):
     # no resume → import present, resume hint absent
     body = _client(tmp_path).get("/config").text
