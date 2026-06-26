@@ -94,7 +94,7 @@ def test_route_redirects_to_overview_not_json(tmp_path):
 
 def test_judge_route_redirects_to_overview(tmp_path):
     (tmp_path / "b1").mkdir()
-    client, rec = _client_and_launcher(tmp_path)
+    client, _ = _client_and_launcher(tmp_path)
     r = client.post(
         "/runs/judge",
         data={"bundle": "b1", "judge_config_path": "judge.yaml"},

@@ -272,3 +272,16 @@ def test_pack_rel_links_only_existing_pack(tmp_path, monkeypatch):
     assert bundles._pack_rel(None, "") == ""
     # absolute path outside cwd → no link (the /packs route rejects absolute anyway)
     assert bundles._pack_rel("/etc/passwd", "x") == ""
+
+
+def test_discover_skips_dot_dirs(tmp_path):
+    # a dot-dir (e.g. .trash) must never be listed as a run, even if it looks classifiable
+    real = tmp_path / "2026-06-26_eval_x"
+    real.mkdir()
+    (real / "bundle.json").write_text('{"pack_id":"p"}', encoding="utf-8")
+    dot = tmp_path / ".trash"
+    dot.mkdir()
+    (dot / "bundle.json").write_text('{"pack_id":"p"}', encoding="utf-8")  # pathological
+    names = [b.run_dir.name for b in bundles.discover(tmp_path)]
+    assert "2026-06-26_eval_x" in names
+    assert ".trash" not in names
