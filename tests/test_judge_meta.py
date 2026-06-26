@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from touchstone.gui.judge_meta import (
     MetaResponse,
@@ -36,12 +37,12 @@ def test_parse_valid_response():
 
 
 def test_parse_rejects_non_mapping():
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         parse_meta_response("- just\n- a\n- list\n")
 
 
 def test_parse_rejects_bad_score_type():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         parse_meta_response(
             "cells:\n  - model: m\n    variant: v\n"
             "    fresh_scores: {dimensions: {Q1: not_an_int}, ko_fired: false, overall: x}\n"
