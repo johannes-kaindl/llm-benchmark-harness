@@ -215,3 +215,91 @@ def aggregate_rubric(local_reports: list[ModelReport], fresh: MetaResponse) -> R
                 ni_t += 1
                 ni += int(crit.names_improvement is True)
     return RubricSummary((ce, ce_t), (ni, ni_t), (ji, ji_t), (cs, cs_t))
+
+
+# ---------------------------------------------------------------------------
+# Task 3: render_judge_quality_md
+# ---------------------------------------------------------------------------
+
+
+def _pct(part: tuple[int, int]) -> str:
+    n, t = part
+    return f"{n}/{t} ({round(n / t * 100)}%)" if t else "n/a"
+
+
+def render_judge_quality_md(
+    detail: dict[str, Any],
+    agreement: AgreementResult,
+    rubric: RubricSummary,
+    response: MetaResponse,
+) -> str:
+    run_dir = detail.get("run_dir")
+    bundle = run_dir.name if run_dir is not None else "bundle"
+    manifest = detail.get("manifest") or {}
+    judge_model = (manifest.get("judge") or {}).get("model") or "—"
+    out: list[str] = []
+    w = out.append
+
+    bmad = agreement.bundle_mean_abs_delta
+    ni_n, ni_t = rubric.names_improvement
+    w("---")
+    w('type: "judge_quality"')
+    w(f"bundle: {bundle}")
+    w(f'judge_model: "{judge_model}"')
+    w(f"mean_abs_delta: {bmad if bmad is not None else 'null'}")
+    w(f"names_improvement_rate: {round(ni_n / ni_t, 2) if ni_t else 'null'}")
+    w("---\n")
+
+    w(f"# Judge-Qualität — {bundle} · Judge `{judge_model}`\n")
+
+    w("## Headline\n")
+    w(f"- **mean|Δ| zum Referenz-Judge:** {bmad if bmad is not None else '—'} (niedriger = näher)")
+    w(f"- **Begründungen mit Verbesserungs-Angabe (<5-Scores):** {_pct(rubric.names_improvement)}")
+    w(f"- **Begründungen mit Belegen:** {_pct(rubric.cites_evidence)}")
+    w(f"- **Score-Höhe begründet:** {_pct(rubric.justifies_level)}")
+    w(f"- **Sicherheit erkannt:** {_pct(rubric.catches_safety)}\n")
+
+    w("## 1. Agreement (Kalibrierung)\n")
+    for c in agreement.cells:
+        w(f"### {c.model} · `{c.variant}`\n")
+        w("| Dimension | Lokal | Cloud | Δ |")
+        w("|---|---|---|---|")
+        for d in c.dims:
+            mark = " 🚩" if d.outlier else ""
+            lv = "—" if d.local is None else d.local
+            cv = "—" if d.cloud is None else d.cloud
+            dv = "—" if d.delta is None else d.delta
+            w(f"| {d.dim_id} | {lv} | {cv} | {dv}{mark} |")
+        w("")
+        w(
+            f"- **mean|Δ|:** {c.mean_abs_delta if c.mean_abs_delta is not None else '—'} · "
+            f"**Quality%:** lokal {c.local_quality_pct} vs Cloud {c.cloud_quality_pct} "
+            f"(Δ {c.quality_delta}) · **Cloud-Urteil:** {c.cloud_overall or '—'}"
+        )
+        ko = "✓ konkordant" if c.ko_concordant else "✗ **abweichend**"
+        w(
+            f"- **K.-o.-Konkordanz:** {ko} (lokal safety_passed={c.local_safety_passed}, "
+            f"Cloud ko_fired={c.cloud_ko_fired})\n"
+        )
+
+    w("## 2. Begründungs-Qualität (Muster)\n")
+    w(f"- Belege zitiert: {_pct(rubric.cites_evidence)}")
+    w(
+        f"- **Bei Score < 5 benennt, was besser wäre: {_pct(rubric.names_improvement)}** "
+        f"— {ni_t - ni_n} von {ni_t} <5-Scores ohne Verbesserungs-Angabe"
+    )
+    w(f"- Score-Höhe begründet: {_pct(rubric.justifies_level)}")
+    w(f"- Sicherheit erkannt: {_pct(rubric.catches_safety)}\n")
+    for mc in response.cells:
+        if mc.critique.summary:
+            w(f"- _{mc.model}·{mc.variant}:_ {mc.critique.summary}")
+    w("")
+
+    w("## 3. Empfohlene Judge-Prompt-Verbesserungen\n")
+    if response.recommendations:
+        for rec in response.recommendations:
+            w(f"- [ ] {rec}")
+    else:
+        w("_Keine Empfehlungen geliefert._")
+    w("")
+    return "\n".join(out) + "\n"

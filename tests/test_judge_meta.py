@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import ClassVar
 
 import pytest
@@ -11,6 +12,7 @@ from touchstone.gui.judge_meta import (
     compute_agreement,
     empty_response_template,
     parse_meta_response,
+    render_judge_quality_md,
 )
 from touchstone.pack import load_pack
 from touchstone.results import ModelReport
@@ -137,3 +139,28 @@ def test_aggregate_rubric_names_improvement_only_below_5():
     assert rub.names_improvement == (0, 1)
     # justifies_level: Q1 true, Q2 false → 1/2
     assert rub.justifies_level == (1, 2)
+
+
+def test_render_judge_quality_md_has_all_sections():
+    pk = _Pack()
+    local = [ModelReport(model="m", variant="baseline", dim_scores={"Q1": 4, "Q2": 5})]
+    rows = [{"model": "m", "variant": "baseline", "safety_passed": True}]
+    fresh = parse_meta_response(
+        "cells:\n  - model: m\n    variant: baseline\n"
+        "    fresh_scores: {dimensions: {Q1: 4, Q2: 2}, ko_fired: true, overall: Nein}\n"
+        "    critique:\n      dimensions:\n"
+        "        Q1: {cites_evidence: false, names_improvement: false, justifies_level: true, catches_safety: true, note: 'oberflächlich'}\n"
+        "      summary: 'Q2 unterbewertet'\n"
+        "recommendations:\n  - 'Bei Score < 5 benennen, was besser wäre.'\n"
+    )
+    agg = compute_agreement(pk, local, rows, fresh)
+    rub = aggregate_rubric(local, fresh)
+    detail = {"run_dir": Path("runs/2026_eval_x"), "manifest": {"judge": {"model": "qwen3-27b"}}}
+    md = render_judge_quality_md(detail, agg, rub, fresh)
+    assert md.startswith("---\n") and 'type: "judge_quality"' in md
+    assert "## Headline" in md
+    assert "## 1. Agreement" in md and "## 2. Begründungs-Qualität" in md
+    assert "## 3. Empfohlene Judge-Prompt-Verbesserungen" in md
+    assert "Bei Score < 5 benennen, was besser wäre." in md  # recommendation rendered
+    assert "🚩" in md  # Q2 Δ2 outlier flagged in the agreement table
+    assert "qwen3-27b" in md  # judged-by judge model surfaced
