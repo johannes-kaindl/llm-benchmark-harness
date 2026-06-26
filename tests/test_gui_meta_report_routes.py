@@ -124,3 +124,32 @@ def test_export_meta_csv(tmp_path):
 def test_export_meta_csv_empty_selection_400(tmp_path):
     assert _client(tmp_path).get("/export-meta-csv").status_code == 400
     assert _client(tmp_path).get("/export-meta-csv?rows=nope|x|y").status_code == 400
+
+
+def test_export_meta_report_md(tmp_path):
+    id1 = _write_bundle(tmp_path / "2026_eval_a", model="a")
+    id2 = _write_bundle(tmp_path / "2026_eval_b", model="b")
+    r = _client(tmp_path).get(f"/export-meta-report?rows={id1}&rows={id2}")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/markdown")
+    assert "meta-report-2-zellen.md" in r.headers.get("content-disposition", "")
+    assert "## Summary" in r.text and "## Detail" in r.text
+
+
+def test_export_meta_report_blank_suffix_and_no_quality(tmp_path):
+    id1 = _write_bundle(tmp_path / "2026_eval_a", model="a")
+    r = _client(tmp_path).get(f"/export-meta-report?rows={id1}&judging=0")
+    assert r.status_code == 200
+    assert "zum-bewerten.md" in r.headers.get("content-disposition", "")
+    assert "Quality" not in r.text.split("## Detail")[0]
+    assert "## Master-Scorecard" not in r.text
+
+
+def test_export_meta_report_empty_400(tmp_path):
+    assert _client(tmp_path).get("/export-meta-report").status_code == 400
+
+
+def test_export_meta_report_traversal_rejected(tmp_path):
+    # a row id whose run_name escapes runs_dir must not read outside it
+    r = _client(tmp_path).get("/export-meta-report?rows=../etc|m|baseline")
+    assert r.status_code in (400, 404)  # filtered out (no such pool row) → 400, or guarded → 404

@@ -279,6 +279,43 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
 
+    @app.get("/export-meta-report")
+    def export_meta_report(rows: list[str] | None = Query(default=None), judging: int = 1) -> Any:
+        """Hybrid cross-run Meta-Report (summary + cell-genau detail) over the selected /compare
+        cells. judging=0 strips all quality → a fresh Bewertungs-Auftrag for a cloud AI."""
+        from touchstone.gui import meta_report
+        from touchstone.gui.glossary import GLOSSARY
+
+        selected = meta_report.select_rows(aggregate_mod.pool_rows(runs_dir), rows)
+        if not selected:
+            raise HTTPException(status_code=400, detail="keine Auswahl")
+        # group selected cells by run_name, in first-appearance order
+        order: list[str] = []
+        cells_by_run: dict[str, set[tuple[str, str]]] = {}
+        for r in selected:
+            if r.run_name not in cells_by_run:
+                cells_by_run[r.run_name] = set()
+                order.append(r.run_name)
+            cells_by_run[r.run_name].add((r.model, r.variant))
+        details = []
+        for run_name in order:
+            rd = (runs_dir / run_name).resolve()
+            if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
+                raise HTTPException(status_code=404)
+            detail = bundles.bundle_detail(rd)
+            if detail is None:
+                continue  # corrupt bundle → skip its cells, never 500
+            details.append(meta_report.filter_detail_to_cells(detail, cells_by_run[run_name]))
+        include = bool(judging)
+        md = meta_report.render_meta_report_md(selected, details, GLOSSARY, include_judging=include)
+        suffix = "" if include else "-zum-bewerten"
+        fname = f"touchstone-meta-report-{len(selected)}-zellen{suffix}.md"
+        return Response(
+            md,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(
         request: Request,
