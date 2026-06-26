@@ -59,3 +59,68 @@ def test_leaderboard_csv_one_row_per_cell():
     assert reader[0]["decode_med"] == "18.2" and reader[0]["model_delta_gb"] == "4.1"
     # exact column order
     assert list(reader[0].keys())[0] == "run_name"
+
+
+from touchstone.gui.glossary import GLOSSARY
+from touchstone.gui.meta_report import render_meta_report_md
+from touchstone.pack import load_pack
+from touchstone.results import EvalResponse, ModelReport, Verdict
+
+PACK = "packs/ndassist.yaml"
+HOST = {"chip": "Apple M5 Pro", "ram_gb": "64.0 GB", "engine": "lm-studio"}
+
+
+def _resp(pid, model="m", variant="baseline", **over):
+    base = dict(pack_id="ndassist", pack_version=1, machine="t", model=model, quant="q4",
+                engine="lm-studio", engine_version="0", variant=variant, category="A",
+                prompt_id=pid, repeat=0, response_text="Antwort.", content_empty=False,
+                ttft_s=0.2, decode_tps=30.0, prefill_tps=90.0, e2e_s=1.5, prompt_tokens=100,
+                completion_tokens=50, is_cold_start=False, power_source="ac", peak_rss_mb=0.0,
+                sys_used_mb=20000.0, mem_pressure_max="normal", throttled=False, ok=True,
+                error="", seed=42, t_start=0.0, t_end=1.5, reasoning_chars=0)
+    base.update(over)
+    return EvalResponse(**base)
+
+
+def _detail(model="m", variant="baseline", run_name="r1"):
+    from pathlib import Path
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    rep = ModelReport(model=model, variant=variant,
+                      dim_scores={d.id: 4 for d in pk.dimensions}, dim_rationales={})
+    ver = Verdict(model=model, variant=variant, prompt_id=first.id, repeat=0, category="A",
+                  score=4, red_flag=False, rationale="gut", unscored=False, safety_critical=False)
+    return {"run_dir": Path(f"runs/{run_name}"), "manifest": {"host": HOST, "date": "2026-06-24"},
+            "pack": pk, "responses": [_resp(first.id, model, variant)], "verdicts": [ver],
+            "reports": [rep],
+            "master_rows": [{"model": model, "variant": variant, "pct": 80.0,
+                             "safety_passed": True, "safety_reason": "", "rubric_level": "hoch"}],
+            "cited_ids": {}, "perf": {}}
+
+
+def test_meta_report_judged_has_summary_and_detail():
+    sel = [_pr("r1", "m", "baseline", 80.0), _pr("r1", "m", "none", 40.0)]
+    md = render_meta_report_md(sel, [_detail("m", "baseline"), _detail("m", "none")],
+                               GLOSSARY, include_judging=True)
+    assert md.startswith("---\n") and "type: \"meta_report\"" in md
+    assert "## Summary" in md and "## Detail" in md
+    assert "Quality" in md.split("## Detail")[0]          # quality column present in summary
+    assert "## Bewertungs-Methode" in md and "## Metrik-Glossar" in md
+    assert md.count("## Metrik-Glossar") == 1             # glossary exactly once
+
+
+def test_meta_report_blank_hides_quality_everywhere():
+    sel = [_pr("r1", "m", "baseline", 80.0), _pr("r1", "m", "none", 40.0)]
+    md = render_meta_report_md(sel, [_detail("m", "baseline"), _detail("m", "none")],
+                               GLOSSARY, include_judging=False)
+    summary = md.split("## Detail")[0]
+    assert "Quality" not in summary                        # quality column dropped
+    assert "80" not in summary                             # no leaked score
+    assert "## 📋 Bewertungs-Auftrag" in md or "Vorlage:" in md
+    assert "## Master-Scorecard" not in md
+
+
+def test_meta_report_single_cell_no_trophy():
+    md = render_meta_report_md([_pr("r1", "m", "baseline", 80.0)], [_detail("m", "baseline")],
+                               GLOSSARY, include_judging=True)
+    assert "🏆" not in md.split("## Detail")[0]            # one cell → no winners
