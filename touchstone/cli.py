@@ -841,6 +841,74 @@ def judge(
         _finalize_run_sentinel(bundle, ok=True)
 
 
+judge_meta_app = typer.Typer(add_completion=False, help="Meta-evaluate the local judge's quality.")
+app.add_typer(judge_meta_app, name="judge-meta")
+
+
+@judge_meta_app.command("export")
+def judge_meta_export(
+    bundle: Path = typer.Argument(..., exists=True, help="a judged eval bundle (run dir)"),
+) -> None:
+    """Write judge_meta_request.md + an empty judge_meta_response.yaml for an external cloud AI."""
+    from touchstone.gui import bundles
+    from touchstone.gui.judge_meta import empty_response_template, render_request_md
+
+    detail = bundles.bundle_detail(bundle)
+    if detail is None or not detail.get("reports"):
+        typer.echo(
+            "Dieses Bundle hat noch keine Judge-Bewertung (reports.jsonl). "
+            "Bitte erst `touchstone judge` laufen lassen.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    cells = sorted({(r.model, r.variant) for r in detail["reports"]})
+    (bundle / "judge_meta_request.md").write_text(render_request_md(detail), encoding="utf-8")
+    (bundle / "judge_meta_response.yaml").write_text(
+        empty_response_template(detail["pack"], cells), encoding="utf-8"
+    )
+    typer.echo(
+        f"Geschrieben: {bundle / 'judge_meta_request.md'} + judge_meta_response.yaml\n"
+        "→ Request durch eine Cloud-KI jagen, judge_meta_response.yaml ausfüllen, dann "
+        "`touchstone judge-meta ingest` laufen lassen."
+    )
+
+
+@judge_meta_app.command("ingest")
+def judge_meta_ingest(
+    bundle: Path = typer.Argument(..., exists=True, help="the bundle with a filled response"),
+    response: Path | None = typer.Option(None, "--response", help="path to the filled YAML"),
+) -> None:
+    """Compute agreement + rationale-quality rubric → judge_quality.md."""
+    from touchstone.gui import bundles
+    from touchstone.gui.judge_meta import (
+        aggregate_rubric,
+        compute_agreement,
+        parse_meta_response,
+        render_judge_quality_md,
+    )
+
+    rpath = response or (bundle / "judge_meta_response.yaml")
+    if not rpath.exists():
+        typer.echo(
+            f"Keine Response-Datei: {rpath} (erst `judge-meta export` + ausfüllen).", err=True
+        )
+        raise typer.Exit(code=1)
+    detail = bundles.bundle_detail(bundle)
+    if detail is None or not detail.get("reports"):
+        typer.echo("Bundle ohne Judge-Bewertung — `touchstone judge` zuerst.", err=True)
+        raise typer.Exit(code=1)
+    try:
+        meta = parse_meta_response(rpath.read_text(encoding="utf-8"))
+    except Exception as exc:  # surface a clean message, never a stacktrace
+        typer.echo(f"judge_meta_response.yaml ungültig: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    agreement = compute_agreement(detail["pack"], detail["reports"], detail["master_rows"], meta)
+    rubric = aggregate_rubric(detail["reports"], meta)
+    md = render_judge_quality_md(detail, agreement, rubric, meta)
+    (bundle / "judge_quality.md").write_text(md, encoding="utf-8")
+    typer.echo(f"Geschrieben: {bundle / 'judge_quality.md'}")
+
+
 @app.command()
 def gui(
     runs: Path = typer.Option(

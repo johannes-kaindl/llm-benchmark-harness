@@ -67,7 +67,7 @@ def test_valid_pack_loads_with_defaults():
 
 def test_max_weighted_is_five_times_weight_sum():
     pack = Pack.model_validate(_minimal())
-    assert pack.max_weighted() == 5 * (3 + 3)  # 30
+    assert pack.max_weighted == 5 * (3 + 3)  # 30
 
 
 def test_all_prompts_iterates_in_order():
@@ -138,4 +138,4 @@ def test_shipped_ndassist_pack_parses():
     # The ND brief: 24 prompts, 7 weighted dimensions summing to 16 (max 80).
     assert len(pack.all_prompts()) == 24
     assert sum(d.weight for d in pack.dimensions) == 16
-    assert pack.max_weighted() == 80
+    assert pack.max_weighted == 80

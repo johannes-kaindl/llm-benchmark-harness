@@ -18,7 +18,7 @@ from touchstone.stats import median, percentile
 def weighted_total(dim_scores: dict[str, int], pack: Pack) -> tuple[int, int, float]:
     """(weighted_sum, max_weighted, pct). Missing dimensions count as 0."""
     wsum = sum(dim_scores.get(d.id, 0) * d.weight for d in pack.dimensions)
-    wmax = pack.max_weighted()
+    wmax = pack.max_weighted
     pct = (wsum / wmax * 100.0) if wmax else 0.0
     return wsum, wmax, pct
 
