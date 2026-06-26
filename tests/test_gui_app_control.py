@@ -32,18 +32,23 @@ def _client(tmp_path):
 
 
 def test_start_eval_calls_registry(tmp_path):
-    """Happy path: eval start returns 200 with run_dir and kind."""
+    """Happy path: eval start invokes the registry and redirects (PRG) to the overview."""
+    called = []
 
     class _Reg(RunRegistry):
         def start_eval(self, *, pack_path, config_path, resume_dir=None, models=None):
+            called.append((pack_path, config_path))
             return RunHandle("eval", tmp_path / "x", 1)
 
     reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())
     r = TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg)).post(
-        "/runs/eval", data={"pack_path": "packs/ndassist.yaml", "config_path": "config.m5.yaml"}
+        "/runs/eval",
+        data={"pack_path": "packs/ndassist.yaml", "config_path": "config.m5.yaml"},
+        follow_redirects=False,
     )
-    assert r.status_code in (200, 303)
-    assert r.json()["kind"] == "eval"
+    assert r.status_code == 303
+    assert r.headers["location"] == "/"
+    assert called == [("packs/ndassist.yaml", "config.m5.yaml")]
 
 
 def test_start_eval_passes_resume_dir(tmp_path):
@@ -118,23 +123,25 @@ def test_start_blocked_returns_conflict(tmp_path):
 
 
 def test_start_judge_calls_registry(tmp_path):
-    """Happy path: judge start returns 200 with run_dir and kind='judge'."""
+    """Happy path: judge start invokes the registry and redirects (PRG) to the overview."""
     bundle_dir = tmp_path / "2026-06-20_eval_ndassist"
     bundle_dir.mkdir()
+    called = []
 
     class _Reg(RunRegistry):
         def start_judge(self, *, bundle, judge_config_path, judge_model=""):
+            called.append(bundle.name)
             return RunHandle("judge", bundle, 2)
 
     reg = _Reg(runs_dir=tmp_path, launcher=_FakeLauncher())
     r = TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg)).post(
         "/runs/judge",
         data={"bundle": bundle_dir.name, "judge_config_path": "judge.yaml"},
+        follow_redirects=False,
     )
-    assert r.status_code == 200
-    data = r.json()
-    assert data["kind"] == "judge"
-    assert data["run_dir"] == bundle_dir.name
+    assert r.status_code == 303
+    assert r.headers["location"] == "/"
+    assert called == [bundle_dir.name]
 
 
 def test_start_judge_passes_judge_model(tmp_path):

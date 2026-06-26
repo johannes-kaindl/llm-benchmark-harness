@@ -58,9 +58,11 @@
       <tr>
         <td><a href="/result/{{ b.run_dir.name }}">{{ b.run_dir.name }}</a></td>
         <td>
-          {% if b.pack_id %}
-            {# cwd-relative pack path (absolute paths 404 on the /packs route) #}
+          {% if b.pack_rel %}
+            {# link only when the pack file actually exists — else the /packs route 404s #}
             <a href="/packs/{{ b.pack_rel }}" title="Kriterien ansehen">{{ b.pack_id }}</a>
+          {% elif b.pack_id %}
+            <span title="kein Pack-File auf der Platte">{{ b.pack_id }}</span>
           {% else %}
             <span class="muted">—</span>
           {% endif %}
