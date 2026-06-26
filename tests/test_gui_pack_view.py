@@ -46,3 +46,14 @@ def test_pack_view_shows_rubric_tests(tmp_path):
     assert r.status_code == 200
     # The per-prompt rubric (PackPrompt.tests) must be surfaced alongside the prompt.
     assert "Zerlegung in winzige Schritte, Umgang mit Aufschiebe-Lähmung" in r.text
+
+
+def test_pack_view_rejects_symlink_escape(tmp_path, monkeypatch):
+    # a symlink in packs/ pointing OUTSIDE must not leak the target (defense in depth)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "packs").mkdir()
+    (tmp_path / "secret.txt").write_text("top secret", encoding="utf-8")
+    (tmp_path / "packs" / "evil.yaml").symlink_to(tmp_path / "secret.txt")
+    r = _client(tmp_path).get("/packs/packs/evil.yaml")
+    assert r.status_code == 404
+    assert "top secret" not in r.text
