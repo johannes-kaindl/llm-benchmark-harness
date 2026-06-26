@@ -16,7 +16,9 @@ document.addEventListener("alpine:init", () => {
     ok: 0,
     failed: 0,
     preflight: [],
+    finished: false,
     _es: null,
+    _poll: null,
     start() {
       try {
         this._es = new EventSource(
@@ -39,11 +41,36 @@ document.addEventListener("alpine:init", () => {
         // preflight is folded into the view by build_view (Task 8); show only non-ok models
         this.preflight = (d.preflight || []).filter((p) => p.status !== "ok");
         this.pct = this.total ? Math.round((this.done / this.total) * 100) : 0;
-        if (d.finished && this._es) this._es.close();
+        if (d.finished && this._es) {
+          this._es.close();
+          this._es = null;
+          this.finished = true;
+          this._awaitFinalized();
+        }
       });
+    },
+    _awaitFinalized() {
+      // 'finished' fires at run_done — BEFORE the bundle is finalized and the sentinel marked
+      // terminal. The status badge/card are server-rendered, so we reload the overview to
+      // re-derive them — but only once the run is no longer active (condition, not a guessed
+      // delay), else discover would still classify it 'running'.
+      const tick = () => {
+        fetch("/run-active/" + encodeURIComponent(this.name))
+          .then((r) => r.json())
+          .then((d) => {
+            if (!d.active) {
+              location.reload();
+            } else {
+              this._poll = setTimeout(tick, 800);
+            }
+          })
+          .catch(() => location.reload()); // server gone/error: a reload is the safe fallback
+      };
+      tick();
     },
     destroy() {
       if (this._es) this._es.close();
+      if (this._poll) clearTimeout(this._poll);
     },
   }));
 });

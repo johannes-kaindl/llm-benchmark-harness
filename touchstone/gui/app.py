@@ -357,17 +357,6 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             active="config",
         )
 
-    @app.get("/endpoint-models")
-    def endpoint_models(config: str) -> dict[str, Any]:
-        """Models the selected config's endpoint advertises (/v1/models). Never 500s —
-        a dead endpoint returns {"models": [], "error": "..."}."""
-        # Restrict to the config*.yaml files the picker actually offers — this rejects path
-        # traversal AND prevents reading (and error-echoing the parsed content of) any other
-        # cwd YAML.
-        if config not in {str(p) for p in Path(".").glob("config*.yaml")}:
-            raise HTTPException(status_code=404)
-        return configs_mod.discover_endpoint_models(config)
-
     @app.get("/eval-model-options")
     def eval_model_options(config: str) -> dict[str, Any]:
         """Single-select model options for Eval-start: the endpoint's actually-served models
@@ -388,8 +377,8 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
 
     @app.get("/judge-endpoint-models")
     def judge_endpoint_models(judge_config: str) -> dict[str, Any]:
-        """Models the selected judge config's endpoint advertises. Never 500s. Same path guard
-        as /endpoint-models: only the judge*.yaml files the picker actually offers."""
+        """Models the selected judge config's endpoint advertises. Never 500s. Path-guarded like
+        /eval-model-options: only the judge*.yaml files the picker actually offers."""
         if judge_config not in {str(p) for p in Path(".").glob("judge*.yaml")}:
             raise HTTPException(status_code=404)
         return configs_mod.discover_judge_endpoint_models(judge_config)
@@ -623,6 +612,15 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
+
+    @app.get("/run-active/{name}")
+    def run_active(name: str) -> dict[str, bool]:
+        """Authoritative liveness for the overview's live card. True while the run's sentinel is
+        running+alive; False once finalized/crashed/missing. The SSE 'finished' frame fires at
+        run_done — BEFORE the bundle is finalized and the sentinel marked terminal — so the live
+        JS polls this and reloads only once it flips false, when discover re-classifies correctly."""
+        run_dir = _confine(name)
+        return {"active": is_active(read_sentinel(run_dir))}
 
 
 def serve(*, runs_dir: Path, port: int = 0, open_browser: bool = True) -> None:  # pragma: no cover
