@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title_suffix %} · Papierkorb{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/">Übersicht</a> › Papierkorb</nav>
+{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">🗑 Papierkorb</h1>
+  {% if trashed %}
+  <form method="post" action="/trash/purge" style="margin-left:auto"
+        onsubmit="return confirm('{{ trashed|length }} Lauf/Läufe endgültig löschen? Das kann nicht rückgängig gemacht werden.')">
+    <button type="submit" class="btn btn-danger">Papierkorb leeren ({{ trashed|length }})</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not trashed %}
+<div class="card"><p class="muted">Der Papierkorb ist leer.</p></div>
+{% else %}
+<div class="card">
+  <p class="muted text-xs" style="margin-bottom:0.6rem">
+    Gelöschte Läufe liegen unter <code>runs/.trash/</code> und werden nicht ausgewertet.
+    „Wiederherstellen" holt sie zurück; „Papierkorb leeren" gibt den Speicher endgültig frei.
+  </p>
+  <table class="bundle-table">
+    <thead><tr><th>Name</th><th>Aktion</th></tr></thead>
+    <tbody>
+      {% for name in trashed %}
+      <tr>
+        <td>{{ name }}</td>
+        <td>
+          <form method="post" action="/trash/restore" style="display:inline">
+            <input type="hidden" name="name" value="{{ name }}">
+            <button type="submit" class="btn btn-secondary">Wiederherstellen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

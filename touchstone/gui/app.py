@@ -29,6 +29,7 @@ from touchstone.gui import bundles, compare
 from touchstone.gui import configs as configs_mod
 from touchstone.gui import glossary as _glossary
 from touchstone.gui import packs as packs_mod
+from touchstone.gui import trash as trash_mod
 from touchstone.gui.control import RunRegistry
 from touchstone.pack import load_pack
 
@@ -95,7 +96,12 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         items = bundles.discover(runs_dir)
         compare_links = {b.run_dir.name: compare.axis_options_for_dir(b.run_dir) for b in items}
         return render(
-            "overview.html", request, bundles=items, compare_links=compare_links, active="overview"
+            "overview.html",
+            request,
+            bundles=items,
+            compare_links=compare_links,
+            trashed_count=len(trash_mod.list_trash(runs_dir)),
+            active="overview",
         )
 
     @app.get("/packs/{pack_path:path}", response_class=HTMLResponse)
@@ -572,6 +578,80 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
             raise HTTPException(status_code=404)
         registry.stop(RunHandle(str(s["kind"]), run_dir, int(s["pid"])))
         return {"stopped": name}
+
+    # Ledger files that make a bundle portable (same set as /export-bundle).
+    _LEDGER = [
+        "bundle.json",
+        "responses.jsonl",
+        "scores.csv",
+        "reports.jsonl",
+        "judgements.jsonl",
+        "scorecard.md",
+        "perf.csv",
+        "resources.jsonl",
+    ]
+
+    @app.post("/runs/batch-delete")
+    def batch_delete(names: list[str] = Form(default=[])) -> Any:
+        """Move the selected runs to runs/.trash/ (reversible). Skips a run that is currently
+        active (never trash a live measurement); confines every name. PRG-redirects to /."""
+        wanted = [n for n in names if n.strip()]
+        if not wanted:
+            raise HTTPException(status_code=400, detail="no runs selected")
+        for name in wanted:
+            run_dir = _confine(name)  # 404 on traversal
+            if not run_dir.is_dir():
+                continue  # already gone (stale selection) — skip
+            if is_active(read_sentinel(run_dir)):
+                continue  # a live run must not be trashed
+            trash_mod.move_to_trash(run_dir, _runs_dir)
+        return RedirectResponse("/", status_code=303)
+
+    @app.post("/runs/batch-export")
+    def batch_export(names: list[str] = Form(default=[])) -> Any:
+        """Bundle the selected runs' ledger files into one zip (each under <run_name>/…).
+        Returns an attachment so the browser downloads and stays on the page."""
+        wanted = [n for n in names if n.strip()]
+        if not wanted:
+            raise HTTPException(status_code=400, detail="no runs selected")
+        buf = io.BytesIO()
+        delivered = 0  # count runs actually archived (stale/gone names are skipped)
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for name in wanted:
+                run_dir = _confine(name)  # 404 on traversal
+                if not run_dir.is_dir():
+                    continue
+                delivered += 1
+                for fname in _LEDGER:
+                    p = run_dir / fname
+                    if p.exists():
+                        z.write(p, arcname=f"{run_dir.name}/{fname}")
+        buf.seek(0)
+        fname = f"touchstone-export-{delivered}-runs.zip"
+        return Response(
+            buf.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
+    @app.get("/trash", response_class=HTMLResponse)
+    def trash_view(request: Request) -> HTMLResponse:
+        return render("trash.html", request, trashed=trash_mod.list_trash(_runs_dir), active="")
+
+    @app.post("/trash/restore")
+    def trash_restore(name: str = Form(...)) -> Any:
+        # confine the trashed name under .trash before restoring
+        _confine(trash_mod.TRASH_DIRNAME + "/" + name)
+        try:
+            trash_mod.restore_from_trash(name, _runs_dir)
+        except ValueError:
+            raise HTTPException(status_code=404) from None
+        return RedirectResponse("/trash", status_code=303)
+
+    @app.post("/trash/purge")
+    def trash_purge() -> Any:
+        trash_mod.purge_trash(_runs_dir)
+        return RedirectResponse("/", status_code=303)
 
     @app.get("/live/{name}")
     def live_stream(name: str, kind: str = "eval") -> StreamingResponse:

@@ -275,8 +275,8 @@ def discover(runs_dir: Path) -> list[BundleSummary]:
         return []
     out: list[BundleSummary] = []
     for child in sorted(runs_dir.iterdir(), reverse=True):
-        if not child.is_dir():
-            continue
+        if not child.is_dir() or child.name.startswith("."):
+            continue  # skip dot-dirs (e.g. .trash) — not runs
         # Defensive: one corrupt bundle must never 500 the whole overview. A failed
         # classify is shown as an error row, not propagated up to the route.
         try:
