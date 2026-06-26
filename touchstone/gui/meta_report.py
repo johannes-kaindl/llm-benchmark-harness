@@ -208,7 +208,7 @@ def _bundle_detail_section(
         report_md.section_prompts_antworten(
             pack=pack,
             responses=responses,
-            verdicts=verdicts,
+            verdicts=verdicts if include_judging else [],
             glossary=glossary,
             title_by=title_by,
             top=top,

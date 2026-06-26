@@ -118,6 +118,9 @@ def test_meta_report_blank_hides_quality_everywhere():
     assert "80" not in summary                             # no leaked score
     assert "## 📋 Bewertungs-Auftrag" in md or "Vorlage:" in md
     assert "## Master-Scorecard" not in md
+    assert "**Judge:**" not in md          # no per-answer verdict badge
+    assert "Judge 4/5" not in md           # no score in callout titles
+    assert "— gut" not in md.split("## Bewertungs-Methode")[0]  # no judge rationale text in summary+detail
 
 
 def test_meta_report_single_cell_no_trophy():
