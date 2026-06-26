@@ -106,6 +106,255 @@ def _metric_link(
     return label if label is not None else key
 
 
+def _prompt_link(pid: str, title_by: dict[str, str], display: str | None = None) -> str:
+    """An Obsidian wikilink to a prompt's heading, or the bare id when unknown."""
+    return _wl(f"{pid} · {title_by[pid]}", display or pid) if pid in title_by else pid
+
+
+def section_methode(
+    *,
+    pack: Any,
+    include_judging: bool,
+    judge: dict[str, Any],
+    reports: list[Any],
+    title_by: dict[str, str],
+    known_ids: set[str],
+) -> list[str]:
+    b: list[str] = []
+    b.append("## Bewertungs-Methode\n")
+    ko = pack.ko_rule
+    b.append(
+        "Die Master-Dimensionen werden **holistisch** bewertet — ein einziger Judge-Aufruf "
+        "über *alle* Antworten eines Modells liefert pro Dimension einen Wert 1–5 plus eine "
+        "Begründung, die konkrete Prompt-IDs als Beleg nennt.\n"
+    )
+    if include_judging and judge:
+        t = judge.get("temperature")
+        b.append(
+            f"**Judge-Modell:** `{judge.get('model', '—')}`"
+            + (f" · Temperatur {t}" if t is not None else "")
+            + (f" · Endpoint `{judge.get('endpoint')}`" if judge.get("endpoint") else "")
+            + "\n"
+        )
+    elif include_judging and reports:
+        b.append(
+            "**Judge-Modell:** _nicht erfasst (älterer Lauf — ein neuer `judge`-Lauf speichert es)._\n"
+        )
+    b.append("**Gewichtete Master-Scorecard:** `Σ (Score × Gewicht) / Max × 100 = Qualität %`\n")
+    b.append("**K.-o.-Logik** (zwei unabhängige Zweige — einer genügt für „Nein“):\n")
+    b.append(
+        f"- *Dimensions-Floor* — eine Schlüssel-Dimension liegt ≤ Schwelle (hier: **{ko.dimension} ≤ {ko.threshold}**)."
+    )
+    b.append(
+        "- *Red-Flag-Prompt* — eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.\n"
+    )
+    if ko.red_flag_prompts:
+        links = ", ".join(
+            _prompt_link(pid, title_by) for pid in ko.red_flag_prompts if pid in known_ids
+        )
+        if links:
+            b.append(f"**Red-Flag-Kandidaten:** {links}\n")
+    b.append(
+        "**1–5-Skala:** " + " · ".join(f"{k} = {v}" for k, v in sorted(pack.scale.items())) + "\n"
+    )
+    b.append(
+        "**Reasoning-only:** Schreibt ein „Thinking“-Modell alles ins Reasoning-Feld ohne "
+        "sichtbare Antwort, wird die Antwort als *reasoning-only* markiert und aus dem Mittel "
+        "**ausgenommen** (Setup-Hinweis, kein Urteil). Eine wirklich leere Ausgabe bleibt 1.\n"
+    )
+    return b
+
+
+def section_master_scorecard(
+    *,
+    pack: Any,
+    master_rows: list[dict[str, Any]],
+    reports: list[Any],
+    cited_ids: dict[str, list[str]],
+    cells_by: dict[tuple[str, str], Any],
+    glossary: Mapping[str, Glossary],
+    title_by: dict[str, str],
+    known_ids: set[str],
+) -> list[str]:
+    b: list[str] = []
+    ko = pack.ko_rule
+    b.append("## Master-Scorecard\n")
+    reports_by = {(r.model, r.variant): r for r in reports}
+    if reports:
+        # Group rows by model to detect length-bias within a model's variants
+        models_in_rows: dict[str, list[dict[str, Any]]] = {}
+        for row in master_rows:
+            models_in_rows.setdefault(row["model"], []).append(row)
+
+        for row in master_rows:
+            model_key = row["model"]
+            variant_key = row["variant"]
+            rep = reports_by.get((model_key, variant_key))
+            cell = cells_by.get((model_key, variant_key))
+            answer_tokens = cell.answer_tokens_med if cell is not None else None
+            quality = cell.quality if cell is not None else None
+            b.append(f"### {model_key} · Variante `{variant_key}`\n")
+            # Use quality from ResultCell when available (canonical), else from master_rows
+            rubric = (quality.rubric_level if quality else None) or row.get("rubric_level", "—")
+            safety = quality.safety_passed if quality else None
+            if safety is None:
+                safety = row.get("safety_passed", True)
+            safety_reason = (quality.safety_reason if quality else None) or row.get(
+                "safety_reason", ""
+            )
+            b.append(
+                f"**{_metric_link('quality_pct', glossary)}: "
+                f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Rubrik: **{rubric}**"
+                + f" · Sicherheit: {'✓' if safety else '✗'}"
+                + ("" if safety else f" ({_cell(str(safety_reason))})")
+                + (f" · Ø Tokens/Antwort: **{answer_tokens}**" if answer_tokens is not None else "")
+                + "\n"
+            )
+            if rep and rep.dim_scores:
+                b.append("| Dimension | Gewicht | Score | Tokens (med) | Begründung |")
+                b.append("|---|---|---|---|---|")
+                for dim in pack.dimensions:
+                    score = rep.dim_scores.get(dim.id)
+                    rationale = (rep.dim_rationales or {}).get(dim.id, "")
+                    cite_key = f"{model_key}|{variant_key}|{dim.id}"
+                    cited = [c for c in cited_ids.get(cite_key, []) if c in known_ids]
+                    if cited:
+                        rationale = f"{rationale} · Belege: " + ", ".join(
+                            _prompt_link(c, title_by) for c in cited
+                        )
+                    ko_mark = (
+                        " **⛔ K.-o.**"
+                        if dim.id == ko.dimension and score is not None and score <= ko.threshold
+                        else ""
+                    )
+                    # Only show tokens on the first row of this cell (avoid repetition)
+                    toks_cell = str(answer_tokens) if answer_tokens is not None else "—"
+                    b.append(
+                        f"| {_wl(f'{dim.id} · {dim.name}', dim.id, in_table=True)} | {dim.weight} "
+                        f"| {score if score is not None else '—'}{ko_mark} "
+                        f"| {toks_cell} | {_cell(rationale) or '—'} |"
+                    )
+                    # Only show on first dim row; subsequent rows get "—"
+                    answer_tokens = None
+                b.append("")
+
+            # ── Length-bias disclaimer ──────────────────────────────
+            sibling_rows = models_in_rows.get(model_key, [])
+            if len(sibling_rows) == 2:
+                other_row = next((r for r in sibling_rows if r["variant"] != variant_key), None)
+                if other_row is not None:
+                    this_cell = cells_by.get((model_key, variant_key))
+                    other_cell = cells_by.get((model_key, other_row["variant"]))
+                    if (
+                        this_cell is not None
+                        and other_cell is not None
+                        and this_cell.answer_tokens_med is not None
+                        and other_cell.answer_tokens_med is not None
+                    ):
+                        this_pct = row.get("pct") or 0.0
+                        other_pct = other_row.get("pct") or 0.0
+                        if this_pct > other_pct:
+                            ratio = this_cell.answer_tokens_med / other_cell.answer_tokens_med
+                            if ratio >= 1.20:
+                                b.append(
+                                    f"> [!warning] Längen-Confound möglich\n"
+                                    f"> Variante `{variant_key}` erzielte einen höheren Score "
+                                    f"({_fmt(this_pct, '{:.0f}', '%')} vs. "
+                                    f"{_fmt(other_pct, '{:.0f}', '%')}), "
+                                    f"ist aber **{ratio:.2f}× länger** "
+                                    f"({this_cell.answer_tokens_med} vs. "
+                                    f"{other_cell.answer_tokens_med} Tokens/Antwort). "
+                                    f"Ausführlichkeit kann Scores künstlich erhöhen.\n"
+                                )
+    else:
+        b.append("_Keine Bewertung vorhanden (eval-only)._\n")
+    return b
+
+
+def section_dimensionen(pack: Any) -> list[str]:
+    b: list[str] = []
+    b.append("## Dimensionen\n")
+    for dim in pack.dimensions:
+        b.append(f"### {dim.id} · {dim.name}\n")
+        b.append(f"_Gewicht: {dim.weight}_\n")
+        if dim.about:
+            b.append(f"{dim.about}\n")
+    return b
+
+
+def section_prompt_varianten(pack: Any, glossary: Mapping[str, Glossary]) -> list[str]:
+    b: list[str] = []
+    b.append("## Prompt-Varianten\n")
+    for pv in pack.prompt_variants:
+        gloss_key = f"variant_{pv.id}"
+        label = _metric_link(gloss_key, glossary, pv.id) if gloss_key in glossary else pv.id
+        b.append(f"### Variante: {pv.id}\n")
+        b.append(f"{label}\n" if gloss_key in glossary else "")
+        if pv.system_prompt:
+            b.append(_callout("quote", "System-Prompt anzeigen", pv.system_prompt) + "\n")
+        else:
+            b.append("_(kein System-Prompt)_\n")
+    return b
+
+
+def section_prompts_antworten(
+    *,
+    pack: Any,
+    responses: list[Any],
+    verdicts: list[Any],
+    glossary: Mapping[str, Glossary],
+    title_by: dict[str, str],
+    top: str,
+) -> list[str]:
+    b: list[str] = []
+    b.append("## Prompts & Antworten\n")
+    verdict_by = {(v.model, v.variant, v.prompt_id, v.repeat): v for v in verdicts}
+    for cat in pack.categories:
+        b.append(f"### Kategorie {cat.id} · {cat.name}\n")
+        for p in cat.prompts:
+            flags = []
+            if p.safety_critical:
+                flags.append("🛡️ sicherheitskritisch")
+            if p.format_strict:
+                flags.append("📐 format-strikt")
+            b.append(
+                f"#### {p.id} · {p.title}" + (f"  ({' · '.join(flags)})" if flags else "") + "\n"
+            )
+            limit = "unbegrenzt" if p.max_tokens is None else str(p.max_tokens)
+            b.append(f"_Token-Limit: {limit} · Wiederholungen: {p.repeats}_\n")
+            if p.tests:
+                b.append(f"**Rubrik:** {p.tests}\n")
+            if p.green_flags:
+                b.append("**Green-Flags:** " + ", ".join(f"✅ {f}" for f in p.green_flags) + "\n")
+            if p.red_flags:
+                b.append("**Red-Flags:** " + ", ".join(f"❌ {f}" for f in p.red_flags) + "\n")
+            b.append(_callout("question", "Prompt anzeigen", p.prompt) + "\n")
+
+            answers = [r for r in responses if r.prompt_id == p.id]
+            if not answers:
+                b.append("_Keine Antworten in diesem Lauf._\n")
+            for r in answers:
+                v = verdict_by.get((r.model, r.variant, p.id, r.repeat))
+                cold = " · ❄️ Cold-Start" if getattr(r, "is_cold_start", False) else ""
+                judge = f" · Judge {v.score}/5" if v is not None else ""
+                title = f"Antwort · {r.model} / {r.variant} · Wdh {r.repeat}{judge}{cold}"
+                b.append(_callout("quote", title, _answer_body(r, v, glossary)) + "\n")
+            b.append(top)
+    return b
+
+
+def section_glossar(glossary: Mapping[str, Glossary]) -> list[str]:
+    b: list[str] = []
+    b.append("## Metrik-Glossar\n")
+    b.append("_Die Kennzahlen oben verlinken hierher._\n")
+    for _key, g in glossary.items():
+        b.append(f"### {g.term}\n")
+        b.append(f"{g.short}\n")
+        if g.long:
+            b.append(f"{g.long}\n")
+    return b
+
+
 def _frontmatter(
     *,
     run_name: str,
@@ -316,7 +565,7 @@ def render_report_md(
         cells_by = {(c.model, c.variant): c for c in doc.cells}
 
     def prompt_link(pid: str, display: str | None = None) -> str:
-        return _wl(f"{pid} · {title_by[pid]}", display or pid) if pid in title_by else pid
+        return _prompt_link(pid, title_by, display)
 
     out: list[str] = []
     w = out.append
@@ -411,41 +660,16 @@ def render_report_md(
         w(_eval_task(pack, responses, prompt_link, known_ids))
         w(top)
 
-    # ── Bewertungs-Methode ──────────────────────────────────────────────────
-    w("## Bewertungs-Methode\n")
-    ko = pack.ko_rule
-    w(
-        "Die Master-Dimensionen werden **holistisch** bewertet — ein einziger Judge-Aufruf "
-        "über *alle* Antworten eines Modells liefert pro Dimension einen Wert 1–5 plus eine "
-        "Begründung, die konkrete Prompt-IDs als Beleg nennt.\n"
-    )
-    if include_judging and judge:
-        t = judge.get("temperature")
-        w(
-            f"**Judge-Modell:** `{judge.get('model', '—')}`"
-            + (f" · Temperatur {t}" if t is not None else "")
-            + (f" · Endpoint `{judge.get('endpoint')}`" if judge.get("endpoint") else "")
-            + "\n"
+    # ── Bewertungs-Methode ──
+    out.extend(
+        section_methode(
+            pack=pack,
+            include_judging=include_judging,
+            judge=judge,
+            reports=reports,
+            title_by=title_by,
+            known_ids=known_ids,
         )
-    elif include_judging and reports:
-        w(
-            "**Judge-Modell:** _nicht erfasst (älterer Lauf — ein neuer `judge`-Lauf speichert es)._\n"
-        )
-    w("**Gewichtete Master-Scorecard:** `Σ (Score × Gewicht) / Max × 100 = Qualität %`\n")
-    w("**K.-o.-Logik** (zwei unabhängige Zweige — einer genügt für „Nein“):\n")
-    w(
-        f"- *Dimensions-Floor* — eine Schlüssel-Dimension liegt ≤ Schwelle (hier: **{ko.dimension} ≤ {ko.threshold}**)."
-    )
-    w("- *Red-Flag-Prompt* — eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.\n")
-    if ko.red_flag_prompts:
-        links = ", ".join(prompt_link(pid) for pid in ko.red_flag_prompts if pid in known_ids)
-        if links:
-            w(f"**Red-Flag-Kandidaten:** {links}\n")
-    w("**1–5-Skala:** " + " · ".join(f"{k} = {v}" for k, v in sorted(pack.scale.items())) + "\n")
-    w(
-        "**Reasoning-only:** Schreibt ein „Thinking“-Modell alles ins Reasoning-Feld ohne "
-        "sichtbare Antwort, wird die Antwort als *reasoning-only* markiert und aus dem Mittel "
-        "**ausgenommen** (Setup-Hinweis, kein Urteil). Eine wirklich leere Ausgabe bleibt 1.\n"
     )
     w(top)
 
@@ -472,171 +696,41 @@ def render_report_md(
     w(f"- **Engine:** {_engine_label}{_version_suffix}\n")
     w(top)
 
-    # ── Master-Scorecard (judged runs only) ─────────────────────────────────
+    # ── Master-Scorecard (judged runs only) ──
     if include_judging:
-        w("## Master-Scorecard\n")
-        reports_by = {(r.model, r.variant): r for r in reports}
-        if reports:
-            # Group rows by model to detect length-bias within a model's variants
-            models_in_rows: dict[str, list[dict[str, Any]]] = {}
-            for row in master_rows:
-                models_in_rows.setdefault(row["model"], []).append(row)
-
-            for row in master_rows:
-                model_key = row["model"]
-                variant_key = row["variant"]
-                rep = reports_by.get((model_key, variant_key))
-                cell = cells_by.get((model_key, variant_key))
-                answer_tokens = cell.answer_tokens_med if cell is not None else None
-                quality = cell.quality if cell is not None else None
-                w(f"### {model_key} · Variante `{variant_key}`\n")
-                # Use quality from ResultCell when available (canonical), else from master_rows
-                rubric = (quality.rubric_level if quality else None) or row.get("rubric_level", "—")
-                safety = quality.safety_passed if quality else None
-                if safety is None:
-                    safety = row.get("safety_passed", True)
-                safety_reason = (quality.safety_reason if quality else None) or row.get(
-                    "safety_reason", ""
-                )
-                w(
-                    f"**{_metric_link('quality_pct', glossary)}: "
-                    f"{_fmt(row.get('pct'), '{:.0f}', '%')}** · Rubrik: **{rubric}**"
-                    + f" · Sicherheit: {'✓' if safety else '✗'}"
-                    + ("" if safety else f" ({_cell(str(safety_reason))})")
-                    + (
-                        f" · Ø Tokens/Antwort: **{answer_tokens}**"
-                        if answer_tokens is not None
-                        else ""
-                    )
-                    + "\n"
-                )
-                if rep and rep.dim_scores:
-                    w("| Dimension | Gewicht | Score | Tokens (med) | Begründung |")
-                    w("|---|---|---|---|---|")
-                    for dim in pack.dimensions:
-                        score = rep.dim_scores.get(dim.id)
-                        rationale = (rep.dim_rationales or {}).get(dim.id, "")
-                        cite_key = f"{model_key}|{variant_key}|{dim.id}"
-                        cited = [c for c in cited_ids.get(cite_key, []) if c in known_ids]
-                        if cited:
-                            rationale = f"{rationale} · Belege: " + ", ".join(
-                                prompt_link(c) for c in cited
-                            )
-                        ko_mark = (
-                            " **⛔ K.-o.**"
-                            if dim.id == ko.dimension
-                            and score is not None
-                            and score <= ko.threshold
-                            else ""
-                        )
-                        # Only show tokens on the first row of this cell (avoid repetition)
-                        toks_cell = str(answer_tokens) if answer_tokens is not None else "—"
-                        w(
-                            f"| {_wl(f'{dim.id} · {dim.name}', dim.id, in_table=True)} | {dim.weight} "
-                            f"| {score if score is not None else '—'}{ko_mark} "
-                            f"| {toks_cell} | {_cell(rationale) or '—'} |"
-                        )
-                        # Only show on first dim row; subsequent rows get "—"
-                        answer_tokens = None
-                    w("")
-
-                # ── Length-bias disclaimer ──────────────────────────────
-                sibling_rows = models_in_rows.get(model_key, [])
-                if len(sibling_rows) == 2:
-                    other_row = next((r for r in sibling_rows if r["variant"] != variant_key), None)
-                    if other_row is not None:
-                        this_cell = cells_by.get((model_key, variant_key))
-                        other_cell = cells_by.get((model_key, other_row["variant"]))
-                        if (
-                            this_cell is not None
-                            and other_cell is not None
-                            and this_cell.answer_tokens_med is not None
-                            and other_cell.answer_tokens_med is not None
-                        ):
-                            this_pct = row.get("pct") or 0.0
-                            other_pct = other_row.get("pct") or 0.0
-                            if this_pct > other_pct:
-                                ratio = this_cell.answer_tokens_med / other_cell.answer_tokens_med
-                                if ratio >= 1.20:
-                                    w(
-                                        f"> [!warning] Längen-Confound möglich\n"
-                                        f"> Variante `{variant_key}` erzielte einen höheren Score "
-                                        f"({_fmt(this_pct, '{:.0f}', '%')} vs. "
-                                        f"{_fmt(other_pct, '{:.0f}', '%')}), "
-                                        f"ist aber **{ratio:.2f}× länger** "
-                                        f"({this_cell.answer_tokens_med} vs. "
-                                        f"{other_cell.answer_tokens_med} Tokens/Antwort). "
-                                        f"Ausführlichkeit kann Scores künstlich erhöhen.\n"
-                                    )
-        else:
-            w("_Keine Bewertung vorhanden (eval-only)._\n")
+        out.extend(
+            section_master_scorecard(
+                pack=pack,
+                master_rows=master_rows,
+                reports=reports,
+                cited_ids=cited_ids,
+                cells_by=cells_by,
+                glossary=glossary,
+                title_by=title_by,
+                known_ids=known_ids,
+            )
+        )
         w(top)
-
-    # ── Dimensionen ─────────────────────────────────────────────────────────
-    w("## Dimensionen\n")
-    for dim in pack.dimensions:
-        w(f"### {dim.id} · {dim.name}\n")
-        w(f"_Gewicht: {dim.weight}_\n")
-        if dim.about:
-            w(f"{dim.about}\n")
+    # ── Dimensionen ──
+    out.extend(section_dimensionen(pack))
     w(top)
-
-    # ── Prompt-Varianten ────────────────────────────────────────────────────
-    w("## Prompt-Varianten\n")
-    for pv in pack.prompt_variants:
-        gloss_key = f"variant_{pv.id}"
-        label = _metric_link(gloss_key, glossary, pv.id) if gloss_key in glossary else pv.id
-        w(f"### Variante: {pv.id}\n")
-        w(f"{label}\n" if gloss_key in glossary else "")
-        if pv.system_prompt:
-            w(_callout("quote", "System-Prompt anzeigen", pv.system_prompt) + "\n")
-        else:
-            w("_(kein System-Prompt)_\n")
+    # ── Prompt-Varianten ──
+    out.extend(section_prompt_varianten(pack, glossary))
     w(top)
-
-    # ── Prompts & Antworten ─────────────────────────────────────────────────
-    w("## Prompts & Antworten\n")
-    verdict_by = {(v.model, v.variant, v.prompt_id, v.repeat): v for v in verdicts}
-    for cat in pack.categories:
-        w(f"### Kategorie {cat.id} · {cat.name}\n")
-        for p in cat.prompts:
-            flags = []
-            if p.safety_critical:
-                flags.append("🛡️ sicherheitskritisch")
-            if p.format_strict:
-                flags.append("📐 format-strikt")
-            w(f"#### {p.id} · {p.title}" + (f"  ({' · '.join(flags)})" if flags else "") + "\n")
-            limit = "unbegrenzt" if p.max_tokens is None else str(p.max_tokens)
-            w(f"_Token-Limit: {limit} · Wiederholungen: {p.repeats}_\n")
-            if p.tests:
-                w(f"**Rubrik:** {p.tests}\n")
-            if p.green_flags:
-                w("**Green-Flags:** " + ", ".join(f"✅ {f}" for f in p.green_flags) + "\n")
-            if p.red_flags:
-                w("**Red-Flags:** " + ", ".join(f"❌ {f}" for f in p.red_flags) + "\n")
-            w(_callout("question", "Prompt anzeigen", p.prompt) + "\n")
-
-            answers = [r for r in responses if r.prompt_id == p.id]
-            if not answers:
-                w("_Keine Antworten in diesem Lauf._\n")
-            for r in answers:
-                v = verdict_by.get((r.model, r.variant, p.id, r.repeat))
-                cold = " · ❄️ Cold-Start" if getattr(r, "is_cold_start", False) else ""
-                judge = f" · Judge {v.score}/5" if v is not None else ""
-                title = f"Antwort · {r.model} / {r.variant} · Wdh {r.repeat}{judge}{cold}"
-                w(_callout("quote", title, _answer_body(r, v, glossary)) + "\n")
-            w(top)
-
-    # ── Metrik-Glossar ──────────────────────────────────────────────────────
-    w("## Metrik-Glossar\n")
-    w("_Die Kennzahlen oben verlinken hierher._\n")
-    for _key, g in glossary.items():
-        w(f"### {g.term}\n")
-        w(f"{g.short}\n")
-        if g.long:
-            w(f"{g.long}\n")
+    # ── Prompts & Antworten ──
+    out.extend(
+        section_prompts_antworten(
+            pack=pack,
+            responses=responses,
+            verdicts=verdicts,
+            glossary=glossary,
+            title_by=title_by,
+            top=top,
+        )
+    )
+    # ── Metrik-Glossar ──
+    out.extend(section_glossar(glossary))
     w(top)
-
     return "\n".join(out) + "\n"
 
 
