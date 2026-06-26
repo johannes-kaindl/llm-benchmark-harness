@@ -445,7 +445,14 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     @app.get("/export/{name}/{fname}")
     def export(name: str, fname: str) -> Any:
         # Only ledger files are exportable (transient event/sentinel files excluded — G10).
-        allowed = {"scorecard.md", "scores.csv", "perf.csv", "report.md", "aggregate.md"}
+        allowed = {
+            "scorecard.md",
+            "scores.csv",
+            "perf.csv",
+            "report.md",
+            "aggregate.md",
+            "judge_quality.md",
+        }
         if fname not in allowed:
             raise HTTPException(status_code=404)
         # Resolve and confine to runs_dir to prevent path traversal (e.g. %2e%2e segments).
@@ -642,6 +649,7 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
         "scorecard.md",
         "perf.csv",
         "resources.jsonl",
+        "judge_quality.md",
     ]
 
     @app.post("/runs/batch-delete")
