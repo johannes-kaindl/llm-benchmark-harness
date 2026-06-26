@@ -263,6 +263,22 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
 
+    @app.get("/export-meta-csv")
+    def export_meta_csv(rows: list[str] | None = Query(default=None)) -> Any:
+        """Leaderboard CSV (one row per selected /compare cell) — the analyst's data artifact."""
+        from touchstone.gui import meta_report
+
+        selected = meta_report.select_rows(aggregate_mod.pool_rows(runs_dir), rows)
+        if not selected:
+            raise HTTPException(status_code=400, detail="keine Auswahl")
+        body = meta_report.render_meta_leaderboard_csv(selected)
+        fname = f"touchstone-meta-leaderboard-{len(selected)}-zellen.csv"
+        return Response(
+            body,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(
         request: Request,
