@@ -534,3 +534,14 @@ def test_compare_has_import_control(tmp_path):
     assert 'type="file"' in body
     assert "/import-bundle" in body
     assert "Lauf importieren" in body
+
+
+# ── Task 8: /compare footer — meta-report + leaderboard export ────────────────
+
+
+def test_compare_page_has_meta_export_controls(tmp_path):
+    """GET /compare → page contains meta-report and leaderboard export buttons."""
+    body = _client(tmp_path).get("/compare").text
+    assert "/export-meta-report?" in body
+    assert "/export-meta-csv?" in body
+    assert "judging" in body  # the "mit Bewertung" toggle is wired

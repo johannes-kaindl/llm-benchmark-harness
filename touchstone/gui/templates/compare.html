@@ -7,7 +7,7 @@
   <span class="muted text-sm">Läufe auswählen und vergleichen</span>
 </div>
 
-<div class="card" x-data="{ sel: [], chip: '', pack: '', model: '' }">
+<div class="card" x-data="{ sel: [], chip: '', pack: '', model: '', judging: true }">
   <div class="card-title">Auswahl-Pool</div>
 
   {# Filter bar #}
@@ -95,14 +95,25 @@
   <p class="muted">Noch keine bewerteten Läufe vorhanden.</p>
   {% endif %}
 
-  {# Sticky compare footer when ≥1 row selected #}
-  <div x-show="sel.length > 0" style="margin-top:1rem; padding:0.5rem 0; border-top:1px solid var(--border,#444); display:flex; align-items:center; gap:1rem">
+  {# Sticky action footer when ≥1 row selected #}
+  <div x-show="sel.length > 0" style="margin-top:1rem; padding:0.5rem 0; border-top:1px solid var(--border,#444); display:flex; align-items:center; gap:1rem; flex-wrap:wrap">
     <span class="muted text-sm"><span x-text="sel.length"></span> Lauf/Läufe ausgewählt</span>
     <button style="padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:none; background:var(--accent,#4f8); color:#000; cursor:pointer"
             :disabled="sel.length < 2"
             :style="sel.length < 2 ? 'opacity:0.45;cursor:not-allowed' : ''"
             @click="window.location = '/compare?' + sel.map(id => 'rows=' + encodeURIComponent(id)).join('&')">
       Vergleichen (<span x-text="sel.length"></span>)
+    </button>
+    <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.85rem">
+      <input type="checkbox" x-model="judging"> mit Bewertung
+    </label>
+    <button style="padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:1px solid var(--accent,#4f8); background:transparent; color:inherit; cursor:pointer"
+            @click="window.location = '/export-meta-report?' + sel.map(id => 'rows=' + encodeURIComponent(id)).join('&') + '&judging=' + (judging ? 1 : 0)">
+      Meta-Report .md
+    </button>
+    <button style="padding:0.3rem 0.8rem; font-size:0.85rem; border-radius:4px; border:1px solid var(--border,#666); background:transparent; color:inherit; cursor:pointer"
+            @click="window.location = '/export-meta-csv?' + sel.map(id => 'rows=' + encodeURIComponent(id)).join('&')">
+      Leaderboard .csv
     </button>
   </div>
 </div>
