@@ -106,7 +106,7 @@ def validate_pack_yaml(text: str) -> dict[str, Any]:
         "dimensions": len(pack.dimensions),
         "variants": len(pack.prompt_variants),
         "categories": len(pack.categories),
-        "max_weighted": pack.max_weighted(),
+        "max_weighted": pack.max_weighted,
     }
     return {"ok": True, "errors": [], "summary": summary, "pack": pack}
 

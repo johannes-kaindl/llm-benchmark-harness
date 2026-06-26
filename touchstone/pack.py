@@ -154,6 +154,7 @@ class Pack(BaseModel):
         """Every (category, prompt) in declaration order."""
         return [(c, p) for c in self.categories for p in c.prompts]
 
+    @property
     def max_weighted(self) -> int:
         """Maximum achievable weighted score = 5 × sum(weights)."""
         return 5 * sum(d.weight for d in self.dimensions)
