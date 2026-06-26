@@ -56,6 +56,16 @@ def _is_local_origin(value: str) -> bool:
     return host in _LOCAL_HOSTNAMES or host.endswith(".localhost")
 
 
+def _resolve_within(rel: str, base: Path) -> Path:
+    """Resolve ``rel`` (following symlinks) and confine it within ``base``; raise 404 on escape.
+    Closes symlink-escape on the packs/ and config readers — a symlink inside the allowed dir
+    that points outside it would otherwise be followed (the save route already guards this way)."""
+    real = Path(rel).resolve()
+    if not real.is_relative_to(base.resolve()):
+        raise HTTPException(status_code=404)
+    return real
+
+
 def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
     app = FastAPI(title="touchstone", docs_url=None, redoc_url=None)
     # DNS-rebinding defense: only localhost/127.0.0.1 Host headers are accepted.
@@ -94,9 +104,11 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         candidate = Path(pack_path)
         if candidate.is_absolute() or ".." in candidate.parts:
             raise HTTPException(status_code=404)
+        # Resolve + confine to packs/ so a symlink inside it can't leak an out-of-tree target.
+        real = _resolve_within(pack_path, Path("packs"))
         try:
-            pk = load_pack(pack_path)
-        except (FileNotFoundError, OSError):
+            pk = load_pack(real)
+        except (FileNotFoundError, OSError, ValueError):
             raise HTTPException(status_code=404) from None
         return render("pack.html", request, pack=pk, path=pack_path, active="pack")
 
@@ -111,10 +123,8 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             if path not in set(offered):  # confine to the packs the editor actually offers
                 raise HTTPException(status_code=404)
             # Resolve + confine before reading so a symlink inside packs/ can't leak a target
-            # outside it (mirrors the save route's is_relative_to guard; glob lists symlinks).
-            target = Path(path).resolve()
-            if not target.is_relative_to(Path("packs").resolve()):
-                raise HTTPException(status_code=404)
+            # outside it (glob lists symlinks); shared with the viewer/export readers.
+            target = _resolve_within(path, Path("packs"))
             try:
                 yaml_text = target.read_text(encoding="utf-8")
             except (FileNotFoundError, OSError):
@@ -194,15 +204,19 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
         if kind == "config":
             offered = {str(p) for p in Path(".").glob("config*.yaml")}
             loader: Any = load_config
+            base = Path(".")
         elif kind == "pack":
             offered = {str(p) for p in Path("packs").glob("*.yaml")}
             loader = load_pack
+            base = Path("packs")
         else:
             raise HTTPException(status_code=404)
         if path not in offered:
             raise HTTPException(status_code=404)
+        # Resolve + confine so a symlink inside the offered dir can't leak an out-of-tree file.
+        real = _resolve_within(path, base)
         try:
-            model = loader(path)
+            model = loader(real)
         except (FileNotFoundError, OSError, ValueError):
             raise HTTPException(status_code=404) from None
         data = model.model_dump(mode="json")

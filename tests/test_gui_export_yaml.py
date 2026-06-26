@@ -25,6 +25,27 @@ def _client(tmp_path):
     return TestClient(gui_app.create_app(runs_dir=tmp_path, registry=reg))
 
 
+_VALID_PACK = """
+id: x
+title: X
+scale: {1: a, 2: b, 3: c, 4: d, 5: e}
+dimensions: [{id: Q1, name: Q, weight: 1}]
+ko_rule: {dimension: Q1, threshold: 2}
+prompt_variants: [{id: none, system_prompt: null}]
+categories: [{id: A, name: A, prompts: [{id: A1, title: T, prompt: "p"}]}]
+"""
+
+
+def test_export_yaml_rejects_symlink_escape(tmp_path, monkeypatch):
+    # a symlink in packs/ pointing to a VALID pack OUTSIDE packs/ must not be served
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "packs").mkdir()
+    (tmp_path / "outside.yaml").write_text(_VALID_PACK, encoding="utf-8")
+    (tmp_path / "packs" / "evil.yaml").symlink_to(tmp_path / "outside.yaml")
+    r = _client(tmp_path).get("/export-yaml?kind=pack&path=packs/evil.yaml")
+    assert r.status_code == 404
+
+
 def test_export_yaml_config_roundtrips(tmp_path):
     r = _client(tmp_path).get("/export-yaml?kind=config&path=config.m5.yaml")
     assert r.status_code == 200
