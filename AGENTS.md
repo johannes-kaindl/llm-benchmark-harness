@@ -243,6 +243,17 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   CPU wird GUI-seitig aus `resources.jsonl`-Fenstern berechnet (`compare._cpu_for_window`); da
   `cpu_pct` erst mit Ink. 7 kam und kein Bundle seither neu lief, ist CPU heute überall **„n. v."**
   (ein first-class getesteter Zustand). Pure Logik in `touchstone/gui/compare.py`.
+- **Meta-Report (`/export-meta-report`) muss `render_report_md`s judging=0-Strip selbst re-applizieren.**
+  `render_report_md` nullt verdicts/reports/master_rows **zentral** bei `include_judging=False` (ein Ort).
+  Die daraus extrahierten `report_md.section_*`-Helfer sind aber **nicht** judging-blind —
+  `section_prompts_antworten` rendert `· Judge n/5` + `**Judge:**`-Badge, sobald ein Verdict vorliegt.
+  `gui/meta_report.py` reicht daher unter judging=0 `verdicts=[]` durch (`_bundle_detail_section`) und ruft
+  `_eval_task` statt `section_master_scorecard`; sonst leaken Judge-Scores in den „Bewertungs-Auftrag" und
+  verankern die Re-Judge-Cloud-KI (Sub-Projekt F). **Wer einen weiteren Composer über die `section_*`-Helfer
+  baut, muss denselben Strip re-applizieren.** Die Bytegleichheit der Zerlegung sichert ein Golden-Test
+  (`tests/test_report_md_golden.py`); `pool_rows` folgt **keinen** Symlinks → ein extern hineingelinktes
+  Bundle erscheint nicht im `/compare`-Pool (Confinement sicher-by-construction, `is_relative_to`-Guard =
+  Defense-in-Depth).
 
 ## Memory
 

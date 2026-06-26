@@ -153,3 +153,17 @@ def test_export_meta_report_traversal_rejected(tmp_path):
     # a row id whose run_name escapes runs_dir must not read outside it
     r = _client(tmp_path).get("/export-meta-report?rows=../etc|m|baseline")
     assert r.status_code in (400, 404)  # filtered out (no such pool row) → 400, or guarded → 404
+
+
+def test_export_meta_report_symlinked_run_dir_does_not_escape(tmp_path):
+    # Security property: an external bundle symlinked INTO runs_dir must never be served.
+    # pool_rows() does not follow symlinked directories (Path.rglob, py3.12), so the symlink is
+    # never surfaced → empty selection → 400; the route's resolve()+is_relative_to guard is
+    # additional defense-in-depth for the resolved path. Either way the response is never 200.
+    external = tmp_path / "external_bundle"
+    _write_bundle(external, model="x")
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "evil").symlink_to(external, target_is_directory=True)
+    r = _client(runs).get("/export-meta-report?rows=evil|x|baseline")
+    assert r.status_code in (400, 404)

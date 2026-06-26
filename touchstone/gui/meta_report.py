@@ -33,10 +33,13 @@ def filter_detail_to_cells(detail: dict[str, Any], cells: set[tuple[str, str]]) 
     out["master_rows"] = [
         row for row in detail.get("master_rows") or [] if (row["model"], row["variant"]) in cells
     ]
+    # cited_ids keys are "model|variant|dim_id"; match by the exact "model|variant|" prefix
+    # (str.startswith accepts a tuple) so a name containing "|" isn't mis-split by position.
+    # (Residual ambiguity if two distinct cells share a "m|v|" prefix is the same project-wide
+    # pipe-convention limitation as the run_name|model|variant id scheme — out of scope here.)
+    cell_prefixes = tuple(f"{m}|{v}|" for m, v in cells)
     out["cited_ids"] = {
-        k: v
-        for k, v in (detail.get("cited_ids") or {}).items()
-        if (k.split("|", 2)[0], k.split("|", 2)[1]) in cells
+        k: v for k, v in (detail.get("cited_ids") or {}).items() if k.startswith(cell_prefixes)
     }
     return out
 

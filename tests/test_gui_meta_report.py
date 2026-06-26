@@ -76,6 +76,20 @@ def test_filter_detail_to_cells_narrows_only_cell_keyed_lists():
     assert len(detail["responses"]) == 3
 
 
+def test_filter_detail_to_cells_handles_pipe_in_model_name():
+    # cited_ids keys are "model|variant|dim_id"; a model/variant name containing "|"
+    # must still match by its exact (model, variant) prefix, not a positional split.
+    detail = {
+        "responses": [],
+        "verdicts": [],
+        "reports": [],
+        "master_rows": [],
+        "cited_ids": {"mo|del|baseline|d1": ["p1"], "other|baseline|d1": ["p2"]},
+    }
+    out = filter_detail_to_cells(detail, {("mo|del", "baseline")})
+    assert out["cited_ids"] == {"mo|del|baseline|d1": ["p1"]}
+
+
 def test_leaderboard_csv_one_row_per_cell():
     out = render_meta_leaderboard_csv(
         [_pr("r1", "a", "baseline", quality=40.0), _pr("r2", "b", "none", quality=None)]
