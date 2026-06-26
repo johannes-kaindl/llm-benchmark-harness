@@ -164,3 +164,91 @@ def test_render_judge_quality_md_has_all_sections():
     assert "Bei Score < 5 benennen, was besser wäre." in md  # recommendation rendered
     assert "🚩" in md  # Q2 Δ2 outlier flagged in the agreement table
     assert "qwen3-27b" in md  # judged-by judge model surfaced
+
+
+def test_render_request_md_partA_blank_partB_visible(tmp_path):
+    import json
+
+    from touchstone.gui import bundles
+    from touchstone.pack import load_pack
+
+    pk = load_pack(PACK)
+    first = next(p for _, p in pk.all_prompts())
+    d = tmp_path / "2026_eval_nd"
+    d.mkdir()
+    (d / "bundle.json").write_text(
+        json.dumps(
+            {
+                "pack_id": pk.id,
+                "pack_path": PACK,
+                "host": {"chip": "M5", "ram_gb": "64 GB"},
+                "date": "2026-06-24",
+                "judge": {"model": "qwen3-27b"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    base = {
+        "pack_id": pk.id,
+        "pack_version": 1,
+        "machine": "t",
+        "model": "m",
+        "quant": "q4",
+        "engine": "lm-studio",
+        "engine_version": "0",
+        "variant": "baseline",
+        "category": "A",
+        "prompt_id": first.id,
+        "repeat": 0,
+        "response_text": "Eine Antwort.",
+        "content_empty": False,
+        "ttft_s": 0.2,
+        "decode_tps": 30.0,
+        "prefill_tps": 90.0,
+        "e2e_s": 1.5,
+        "prompt_tokens": 100,
+        "completion_tokens": 50,
+        "is_cold_start": False,
+        "power_source": "ac",
+        "peak_rss_mb": 0.0,
+        "sys_used_mb": 20000.0,
+        "mem_pressure_max": "normal",
+        "throttled": False,
+        "ok": True,
+        "error": "",
+        "seed": 42,
+        "t_start": 0.0,
+        "t_end": 1.5,
+        "reasoning_chars": 0,
+    }
+    (d / "responses.jsonl").write_text(json.dumps(base) + "\n", encoding="utf-8")
+    header = "model,variant,metric_type,metric,weight,score"
+    rep_rows = [header] + [f"m,baseline,dimension,{dim.id},{dim.weight},4" for dim in pk.dimensions]
+    (d / "scores.csv").write_text("\n".join(rep_rows) + "\n", encoding="utf-8")
+    from touchstone.judge import write_reports_jsonl
+    from touchstone.results import ModelReport
+
+    write_reports_jsonl(
+        d / "reports.jsonl",
+        [
+            ModelReport(
+                model="m",
+                variant="baseline",
+                dim_scores={dim.id: 4 for dim in pk.dimensions},
+                dim_rationales={pk.dimensions[0].id: "gut"},
+            )
+        ],
+    )
+
+    from touchstone.gui.judge_meta import render_request_md
+
+    detail = bundles.bundle_detail(d)
+    md = render_request_md(detail)
+    # ordering instruction present
+    assert "Teil A" in md and "bevor" in md
+    # Part A = blank Bewertungs-Auftrag (a fillable scorecard row with empty score cell)
+    assert "## 📋 Bewertungs-Auftrag" in md
+    assert "| Score (1–5) | Begründung" in md
+    # Part B = the LOCAL judge's scorecard (visible scores+rationale)
+    assert "## Master-Scorecard" in md
+    assert "gut" in md  # the local rationale appears in Part B

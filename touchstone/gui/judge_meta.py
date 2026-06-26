@@ -303,3 +303,81 @@ def render_judge_quality_md(
         w("_Keine Empfehlungen geliefert._")
     w("")
     return "\n".join(out) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Task 4: render_request_md
+# ---------------------------------------------------------------------------
+
+
+def render_request_md(detail: dict[str, Any]) -> str:
+    """The cloud-AI request: instruction + answers + method + Part A (blank, fresh scoring) +
+    Part B (the local judge's scores+rationales, for critique). Reuses the E section helpers."""
+    from touchstone.gui import report_md
+    from touchstone.gui.glossary import GLOSSARY
+
+    pack = detail["pack"]
+    run_dir = detail.get("run_dir")
+    manifest = detail.get("manifest") or {}
+    host = manifest.get("host") or {}
+    responses = detail.get("responses") or []
+    verdicts = detail.get("verdicts") or []
+    reports = detail.get("reports") or []
+    master_rows = detail.get("master_rows") or []
+    cited_ids = detail.get("cited_ids") or {}
+    title_by = {p.id: p.title for _, p in pack.all_prompts()}
+    known_ids = {p.id for _, p in pack.all_prompts()}
+    doc = report_md._load_doc(run_dir, pack, responses, verdicts, reports, host, manifest)
+    cells_by = {(c.model, c.variant): c for c in doc.cells} if doc is not None else {}
+
+    def prompt_link(pid: str, display: str | None = None) -> str:
+        return report_md._prompt_link(pid, title_by, display)
+
+    out: list[str] = []
+    w = out.append
+    w("# Judge-Qualitäts-Anfrage\n")
+    w(
+        "Du bewertest die Qualität eines **lokalen LLM-Judges**. Arbeite in zwei Teilen:\n"
+        "1. **Teil A — bewerte die Antworten SELBST frisch** (deine eigenen Scores), **bevor** du "
+        "Teil B liest. So bleibt deine Bewertung unvoreingenommen.\n"
+        "2. **Teil B — benote die Begründungen des lokalen Judges** (erst danach lesen).\n"
+        "3. Trage alles in `judge_meta_response.yaml` ein (Schema dort).\n"
+    )
+    out.extend(
+        report_md.section_methode(
+            pack=pack,
+            include_judging=False,
+            judge={},
+            reports=[],
+            title_by=title_by,
+            known_ids=known_ids,
+        )
+    )
+    out.extend(report_md.section_dimensionen(pack))
+    out.extend(report_md.section_prompt_varianten(pack, GLOSSARY))
+    out.extend(
+        report_md.section_prompts_antworten(
+            pack=pack,
+            responses=responses,
+            verdicts=[],
+            glossary=GLOSSARY,
+            title_by=title_by,
+            top="",
+        )
+    )
+    w("\n---\n\n# Teil A — Deine frische Bewertung (zuerst ausfüllen)\n")
+    w(report_md._eval_task(pack, responses, prompt_link, known_ids))
+    w("\n---\n\n# Teil B — Begründungen des lokalen Judges (erst jetzt lesen, dann kritisieren)\n")
+    out.extend(
+        report_md.section_master_scorecard(
+            pack=pack,
+            master_rows=master_rows,
+            reports=reports,
+            cited_ids=cited_ids,
+            cells_by=cells_by,
+            glossary=GLOSSARY,
+            title_by=title_by,
+            known_ids=known_ids,
+        )
+    )
+    return "\n".join(out) + "\n"
