@@ -1,5 +1,8 @@
+import csv
+import io
+
 from touchstone.aggregate import PoolRow
-from touchstone.gui.meta_report import filter_detail_to_cells, select_rows
+from touchstone.gui.meta_report import filter_detail_to_cells, render_meta_leaderboard_csv, select_rows
 
 
 def _pr(run_name, model, variant, quality=40.0):
@@ -44,3 +47,15 @@ def test_filter_detail_to_cells_narrows_only_cell_keyed_lists():
     # untouched keys pass through, original not mutated
     assert out["pack"] == "PK" and out["perf"] == {"p": 2}
     assert len(detail["responses"]) == 3
+
+
+def test_leaderboard_csv_one_row_per_cell():
+    out = render_meta_leaderboard_csv([_pr("r1", "a", "baseline", quality=40.0),
+                                       _pr("r2", "b", "none", quality=None)])
+    reader = list(csv.DictReader(io.StringIO(out)))
+    assert reader[0]["run_name"] == "r1" and reader[0]["model"] == "a"
+    assert reader[0]["quality_pct"] == "40.0"
+    assert reader[1]["quality_pct"] == ""  # None → empty cell
+    assert reader[0]["decode_med"] == "18.2" and reader[0]["model_delta_gb"] == "4.1"
+    # exact column order
+    assert list(reader[0].keys())[0] == "run_name"

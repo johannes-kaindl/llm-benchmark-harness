@@ -5,6 +5,8 @@ cells, plus a leaderboard CSV. Pure (PoolRows + detail dicts → str), unit-test
 
 from __future__ import annotations
 
+import csv
+import io
 from typing import Any
 
 from touchstone.aggregate import PoolRow
@@ -33,3 +35,48 @@ def filter_detail_to_cells(detail: dict[str, Any], cells: set[tuple[str, str]]) 
         if (k.split("|", 2)[0], k.split("|", 2)[1]) in cells
     }
     return out
+
+
+_CSV_COLUMNS = [
+    "run_name",
+    "model",
+    "variant",
+    "pack",
+    "pack_version",
+    "chip",
+    "ram_gb",
+    "quant",
+    "quality_pct",
+    "ttft_p50",
+    "decode_med",
+    "model_delta_gb",
+    "peak_ram_gb",
+    "power",
+]
+
+
+def render_meta_leaderboard_csv(selected: list[PoolRow]) -> str:
+    """One row per selected cell — the analyst's spreadsheet artifact (always real data)."""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=_CSV_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for r in selected:
+        writer.writerow(
+            {
+                "run_name": r.run_name,
+                "model": r.model,
+                "variant": r.variant,
+                "pack": r.pack,
+                "pack_version": r.pack_version,
+                "chip": r.chip,
+                "ram_gb": r.ram_gb,
+                "quant": r.quant,
+                "quality_pct": "" if r.quality_pct is None else r.quality_pct,
+                "ttft_p50": r.ttft_p50,
+                "decode_med": r.decode_med,
+                "model_delta_gb": r.model_delta_gb,
+                "peak_ram_gb": r.peak_ram_gb,
+                "power": r.power,
+            }
+        )
+    return buf.getvalue()
