@@ -615,17 +615,19 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
         if not wanted:
             raise HTTPException(status_code=400, detail="no runs selected")
         buf = io.BytesIO()
+        delivered = 0  # count runs actually archived (stale/gone names are skipped)
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for name in wanted:
                 run_dir = _confine(name)  # 404 on traversal
                 if not run_dir.is_dir():
                     continue
+                delivered += 1
                 for fname in _LEDGER:
                     p = run_dir / fname
                     if p.exists():
                         z.write(p, arcname=f"{run_dir.name}/{fname}")
         buf.seek(0)
-        fname = f"touchstone-export-{len(wanted)}-runs.zip"
+        fname = f"touchstone-export-{delivered}-runs.zip"
         return Response(
             buf.getvalue(),
             media_type="application/zip",

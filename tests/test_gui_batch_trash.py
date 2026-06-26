@@ -150,3 +150,14 @@ def test_overview_trash_indicator_only_when_nonempty(tmp_path):
     trash.move_to_trash(_mkrun(tmp_path, "junk"), tmp_path)
     body = _client(tmp_path).get("/").text
     assert "Papierkorb:" in body and 'href="/trash"' in body
+
+
+def test_batch_export_filename_counts_delivered_not_requested(tmp_path):
+    # a stale/gone name is skipped → the filename must reflect what was actually archived
+    _mkrun(tmp_path, "run_a")
+    r = _client(tmp_path).post("/runs/batch-export", data={"names": ["run_a", "ghost_run"]})
+    assert r.status_code == 200
+    assert "1-runs" in r.headers["content-disposition"]  # 1 delivered, not 2 requested
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    assert any(n.startswith("run_a/") for n in z.namelist())
+    assert not any(n.startswith("ghost_run/") for n in z.namelist())

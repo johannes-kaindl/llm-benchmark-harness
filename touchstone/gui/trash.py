@@ -55,7 +55,9 @@ def restore_from_trash(name: str, runs_dir: Path) -> Path:
     src = _confined_under(td / name, td)
     if not src.is_dir():
         raise ValueError(f"no trashed run {name!r}")
-    dest = _collision_free(runs_dir / Path(name).name)
+    # Confine the destination too (symmetric with src) — defensive against future callers,
+    # though runs_dir/<basename> is inherently under runs_dir.
+    dest = _confined_under(_collision_free(runs_dir / Path(name).name), runs_dir)
     shutil.move(str(src), str(dest))
     return dest
 
