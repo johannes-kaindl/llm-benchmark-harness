@@ -75,6 +75,35 @@ def test_route_valid_models_json_spawns_with_flag(tmp_path):
     assert "--models-json" in rec.calls[0]
 
 
+def test_route_redirects_to_overview_not_json(tmp_path):
+    # post-redirect-get: a plain form POST must land back in the GUI, not on a raw JSON dict
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/eval",
+        data={
+            "pack_path": "packs/ndassist.yaml",
+            "config_path": "config.m5.yaml",
+            "models_json": '[{"id":"a"}]',
+        },
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/"
+    assert "--models-json" in rec.calls[0]  # still spawned
+
+
+def test_judge_route_redirects_to_overview(tmp_path):
+    (tmp_path / "b1").mkdir()
+    client, rec = _client_and_launcher(tmp_path)
+    r = client.post(
+        "/runs/judge",
+        data={"bundle": "b1", "judge_config_path": "judge.yaml"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/"
+
+
 def test_route_empty_array_is_400_and_no_spawn(tmp_path):
     client, rec = _client_and_launcher(tmp_path)
     r = client.post(

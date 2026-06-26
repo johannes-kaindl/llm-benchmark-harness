@@ -539,12 +539,14 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e)) from None
         try:
-            h = registry.start_eval(
+            registry.start_eval(
                 pack_path=pack_path, config_path=config_path, resume_dir=resume, models=models
             )
         except RunInProgress as e:
             raise HTTPException(status_code=409, detail=str(e)) from None
-        return {"run_dir": h.run_dir.name, "kind": h.kind}
+        # Post-redirect-get: the start forms are plain HTML POSTs, so return a redirect to the
+        # overview (where the live card shows) instead of a JSON body the browser would display.
+        return RedirectResponse("/", status_code=303)
 
     @app.post("/runs/judge")
     def start_judge(
@@ -554,12 +556,13 @@ def _register_control_routes(app: FastAPI, *, runs_dir: Path, registry: RunRegis
     ) -> Any:
         bundle_dir = _confine(bundle)
         try:
-            h = registry.start_judge(
+            registry.start_judge(
                 bundle=bundle_dir, judge_config_path=judge_config_path, judge_model=judge_model
             )
         except RunInProgress as e:
             raise HTTPException(status_code=409, detail=str(e)) from None
-        return {"run_dir": h.run_dir.name, "kind": h.kind}
+        # Post-redirect-get: land back on the overview, not on a raw JSON handle.
+        return RedirectResponse("/", status_code=303)
 
     @app.post("/runs/stop")
     def stop_run(name: str = Form(...)) -> Any:

@@ -254,3 +254,21 @@ def test_recompute_verdict_real_bundle():
     s = bundles.classify(Path(REAL))
     assert s is not None and s.status == "judged"
     assert s.rubric_level in {"hoch", "solide", "teilweise", "ungenügend"}
+
+
+# ── _pack_rel must not link to a pack file that does not exist (overview 404 bug) ──
+
+
+def test_pack_rel_links_only_existing_pack(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "packs").mkdir()
+    (tmp_path / "packs" / "real.yaml").write_text("x", encoding="utf-8")
+    # existing pack → cwd-relative link
+    assert bundles._pack_rel(None, "real") == "packs/real.yaml"
+    assert bundles._pack_rel(str(tmp_path / "packs" / "real.yaml"), "real") == "packs/real.yaml"
+    # non-existent pack (crashed run's kind-fallback "eval"/"smoke") → no link (would 404)
+    assert bundles._pack_rel(None, "eval") == ""
+    assert bundles._pack_rel(None, "smoke") == ""
+    assert bundles._pack_rel(None, "") == ""
+    # absolute path outside cwd → no link (the /packs route rejects absolute anyway)
+    assert bundles._pack_rel("/etc/passwd", "x") == ""

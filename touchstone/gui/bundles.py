@@ -26,21 +26,30 @@ class BundleSummary:
 
 
 def _pack_rel(pack_path: str | None, pack_id: str) -> str:
-    """A cwd-relative pack path the /packs/{path} route accepts (absolute paths 404).
+    """A cwd-relative pack path the /packs/{path} route accepts, or "" when no such file exists.
 
     bundle.json may carry an absolute resolved pack_path (production) or a relative one
-    (older bundles/fixtures). Make it relative to cwd when it lives under cwd; otherwise
-    fall back to the conventional ``packs/<pack_id>.yaml`` so the link is never absolute.
+    (older bundles/fixtures); we fall back to the conventional ``packs/<pack_id>.yaml``.
+    Returning "" when the candidate isn't a real cwd-relative file lets the overview render the
+    pack id as plain text instead of a link that 404s — crashed runs have no manifest, so their
+    pack_id is the run *kind* ("eval"/"smoke"), for which no packs/<id>.yaml exists.
     """
+    candidate = ""
     if pack_path:
         p = Path(pack_path)
         if not p.is_absolute():
-            return pack_path
-        try:
-            return str(p.relative_to(Path.cwd()))
-        except ValueError:
-            pass
-    return f"packs/{pack_id}.yaml" if pack_id else ""
+            candidate = pack_path
+        else:
+            try:
+                candidate = str(p.relative_to(Path.cwd()))
+            except ValueError:
+                candidate = ""
+    if not candidate and pack_id:
+        candidate = f"packs/{pack_id}.yaml"
+    # Only offer a link when it resolves to a real, cwd-relative file (else /packs 404s).
+    if candidate and not Path(candidate).is_absolute() and Path(candidate).exists():
+        return candidate
+    return ""
 
 
 def classify(run_dir: Path) -> BundleSummary | None:
