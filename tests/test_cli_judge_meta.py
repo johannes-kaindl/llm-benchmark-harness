@@ -128,3 +128,15 @@ def test_ingest_missing_response_errors(tmp_path):
     _judged_bundle(d)
     res = runner.invoke(app, ["judge-meta", "ingest", str(d)])
     assert res.exit_code != 0
+
+
+def test_ingest_invalid_yaml_errors(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _judged_bundle(d)
+    # malformed: a cell missing required fresh_scores/critique → pydantic ValidationError
+    (d / "judge_meta_response.yaml").write_text(
+        "cells:\n  - model: m\n    variant: baseline\n", encoding="utf-8"
+    )
+    res = runner.invoke(app, ["judge-meta", "ingest", str(d)])
+    assert res.exit_code != 0
+    assert "ungültig" in res.output.lower()
