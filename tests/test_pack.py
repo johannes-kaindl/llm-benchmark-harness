@@ -164,6 +164,9 @@ def test_shipped_buero_pack_parses():
     assert pack.ko_rule.dimension == "Q1"
     assert pack.ko_rule.threshold == 2
     assert pack.ko_rule.red_flag_prompts == ["A4", "B3", "C4", "D1", "E1", "E2"]
+    # curated scope: only a red flag on a curated bait (or the Q1 floor) disqualifies —
+    # a non-hallucination quality flaw (tone/format) lowers the score, not a knock-out.
+    assert pack.ko_rule.red_flag_scope == "curated"
     # Field conventions: exactly the 6 K.-o. prompts are safety_critical.
     sc = sorted(p.id for _, p in pack.all_prompts() if p.safety_critical)
     assert sc == ["A4", "B3", "C4", "D1", "E1", "E2"]

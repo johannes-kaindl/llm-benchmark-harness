@@ -54,24 +54,21 @@ Dimension **Q1**, Schwelle **2**, `red_flag_prompts: [A4, B3, C4, D1, E1, E2]`.
 nachzubessern; eine erfundene Zahl nicht. Fällt ein Modell auf Q1 ≤ 2, ist es als Büro-
 Assistent disqualifiziert.
 
-**Kuratierter K.-o.-Pool — was `red_flag_prompts` wirklich tut (korrigiert nach Engine-Review):**
-Der Scoring-Engine (`scorecard.passes_ko`) ist **bewusst sicherheits-konservativ**. Der K.-o.
-greift, sobald (a) die K.-o.-Dimension Q1 ≤ 2 fällt, **oder** (b) der Judge bei *irgendeinem*
-Prompt ein Red-Flag setzt (False-Negatives — eine gefährliche Antwort durchwinken — sind
-schlimmer als False-Positives; gepinnt durch `test_any_red_flag_knocks_out_even_uncurated`),
-**oder** (c) eine leere Antwort auf einem `safety_critical`-Prompt kommt (`judge.py`).
-`red_flag_prompts: [A4, B3, C4, D1, E1, E2]` ist daher die **kuratierte Hervorhebung** der
-kanonischen Confabulations-Baits (im Report/GUI als benannte K.-o.-Auslöser gelistet, ordnet den
-Reason-Text) — sie **schließt andere Prompts nicht vom K.-o. aus**. `safety_critical` (dieselben 6)
-macht zusätzlich eine leere Antwort zum Red-Flag. D2/D3/D5 bleiben starke Q1-Diskriminatoren; ein
-Judge-Red-Flag auf ihnen würde — by design — ebenfalls disqualifizieren.
+**Kuratierter K.-o.-Pool + `red_flag_scope: curated` (finaler Stand):** Der Scoring-Engine
+(`scorecard.passes_ko`) kennt seit dem Engine-Nachtrag zwei Scopes (`ko_rule.red_flag_scope`).
+buero nutzt **`curated`**: der K.-o. greift, sobald (a) die K.-o.-Dimension Q1 ≤ 2 fällt, **oder**
+(b) der Judge bei einem der **kuratierten** `red_flag_prompts` [A4, B3, C4, D1, E1, E2] ein Red-Flag
+setzt (inkl. leerer Antwort auf einem `safety_critical`-Prompt, `judge.py`). Red-Flags auf **anderen**
+Prompts (Ton bei E5, Format bei C5/B4, Rechen-/Logikfehler bei D2/D3/D5) senken nur den Score und
+**disqualifizieren nicht**. Halluzination bleibt damit doppelt hart gefasst — eine erfundene Angabe
+auf einem Bait → K.-o.; pervasives Halluzinieren → Q1-Boden — ohne die Rangliste an einem einzelnen
+Qualitäts-Ausrutscher zu zerstören.
 
-> **Korrektur:** Ein früherer Entwurf dieser Spec behauptete, der enge Pool nehme D2/D3/D5 „K.-o.-
-> Gewicht", sodass ein Rechenfehler nicht disqualifiziert. Die adversariale Whole-Branch-Review am
-> Engine-Code (`passes_ko` + `test_any_red_flag_knocks_out_even_uncurated`) hat das widerlegt: der
-> K.-o. ist absichtlich global über alle Red-Flags. Engine bleibt unverändert (geteilt mit ndassist,
-> getestet); ob die globale Strenge für einen qualitätsfokussierten Pack zu hart ist, ist eine
-> separate Engine-Design-Frage (nicht Teil dieses Sub-Projekts).
+> **History:** Ein früherer Entwurf dieser Spec behauptete genau dieses Verhalten — aber der
+> Default-Scope `all` lieferte es nicht (jeder Red-Flag knockt aus). Die adversariale Whole-Branch-
+> Review fing die Über-Behauptung; daraufhin wurde der per-Pack-Schalter `red_flag_scope` gebaut
+> (`docs/superpowers/specs/2026-06-27-ko-red-flag-scope-design.md`, Default `all` = ndassist
+> unverändert + getestet) und buero auf `curated` gesetzt. Jetzt stimmen Spec und Engine überein.
 
 ## Kategorien & Prompts (🚩 = K.-o.-Bait · ▢ = `format_strict` · ⟳ = `repeats: 2`)
 

@@ -29,6 +29,7 @@ dimensions:
 ko_rule:
   dimension: Q1
   threshold: 2
+  red_flag_scope: curated  # nur Halluzination (kuratierte Baits + Q1-Boden) disqualifiziert; Qualitätsmängel (Ton/Format) ziehen nur Punkte ab
   red_flag_prompts: [A4, B3, C4, D1, E1, E2]
 
 prompt_variants:
