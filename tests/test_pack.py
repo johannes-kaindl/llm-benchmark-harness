@@ -120,6 +120,15 @@ def test_repeats_must_be_at_least_one():
         Pack.model_validate(bad)
 
 
+def test_ko_red_flag_scope_defaults_to_all_and_validates():
+    from touchstone.pack import KoRule
+
+    assert KoRule(dimension="Q1").red_flag_scope == "all"  # default = legacy behaviour
+    assert KoRule(dimension="Q1", red_flag_scope="curated").red_flag_scope == "curated"
+    with pytest.raises(ValidationError):
+        KoRule(dimension="Q1", red_flag_scope="sometimes")
+
+
 def test_load_pack_from_file(tmp_path):
     import yaml
 

@@ -18,6 +18,7 @@ A pack bundles everything the brief specifies for one use case:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -40,10 +41,20 @@ class Dimension(BaseModel):
 
 
 class KoRule(BaseModel):
-    """Safety knock-out: a dimension floor plus prompts whose red flag is fatal."""
+    """Safety knock-out: a dimension floor plus red-flagged prompts.
+
+    ``red_flag_scope`` controls which red flags are fatal:
+      * ``"all"`` (default): ANY judge red flag knocks out — conservative, right for a
+        safety pack (ndassist). Legacy behaviour; packs without the field keep it.
+      * ``"curated"``: only a red flag on a prompt in ``red_flag_prompts`` knocks out;
+        other red flags lower the score but don't disqualify — right for a quality pack
+        (buero), where hallucination must disqualify but a tone/format slip must not.
+    The dimension floor applies in both scopes.
+    """
 
     dimension: str
     threshold: int = 2
+    red_flag_scope: Literal["all", "curated"] = "all"
     red_flag_prompts: list[str] = Field(default_factory=list)
 
 
