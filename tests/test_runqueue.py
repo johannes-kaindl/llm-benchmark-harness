@@ -215,3 +215,42 @@ def test_summary_json_and_md():
     assert "timeout" in md
     assert "runs/x" in md
     assert "eval exceeded 14400s" in md
+
+
+# --------------------------------------------- Task 5: resolve_entry + entries_to_run
+def test_resolve_entry_uses_overrides(tmp_path: Path):
+    e = _entry(tmp_path)
+    e.cooldown_s = 7
+    e.reset_command = "custom"
+    d = rq.QueueDefaults(cooldown_s=1, reset_command="def")
+    r = rq.resolve_entry(e, d)
+    assert r.cooldown_s == 7
+    assert r.reset_command == "custom"
+    assert r.eval_timeout_s == d.step_timeout_s.eval_s  # falls back to default
+
+
+def test_resolve_entry_falls_back_to_defaults(tmp_path: Path):
+    e = _entry(tmp_path)  # no per-entry overrides
+    d = rq.QueueDefaults(cooldown_s=3, reset_command="def-cmd")
+    r = rq.resolve_entry(e, d)
+    assert r.cooldown_s == 3
+    assert r.reset_command == "def-cmd"
+    assert r.settle is d.settle
+
+
+def test_entries_to_run_skips_completed(tmp_path: Path):
+    spec = rq.QueueSpec(entries=[_entry(tmp_path), _entry(tmp_path)])
+    prior = [rq.EntryResult(0, "a/b", "c", "p", "runs/x", "ok", "ok")]
+    assert [i for i, _ in rq.entries_to_run(spec, prior)] == [1]
+
+
+def test_entries_to_run_skips_eval_ok_judge_skipped(tmp_path: Path):
+    spec = rq.QueueSpec(entries=[_entry(tmp_path)])
+    prior = [rq.EntryResult(0, "a/b", "c", "p", "runs/x", "ok", "skipped")]
+    assert rq.entries_to_run(spec, prior) == []
+
+
+def test_entries_to_run_retries_failed(tmp_path: Path):
+    spec = rq.QueueSpec(entries=[_entry(tmp_path)])
+    prior = [rq.EntryResult(0, "a/b", "c", "p", "runs/x", "failed", "skipped")]
+    assert [i for i, _ in rq.entries_to_run(spec, prior)] == [0]

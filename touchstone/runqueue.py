@@ -244,3 +244,40 @@ def render_summary_md(spec: QueueSpec, results: list[EntryResult], *, started_is
         lines += ["", "## Fehler", ""]
         lines += [f"- **{r.model_id}** (#{r.index}): {r.error}" for r in errs]
     return "\n".join(lines) + "\n"
+
+
+# ------------------------------------------ effective entry + resume skip-logic
+def _pick[T](v: T | None, d: T) -> T:
+    return d if v is None else v
+
+
+@dataclass
+class ResolvedEntry:
+    reset_command: str
+    settle: SettleSpec
+    eval_timeout_s: float
+    judge_timeout_s: float
+    cooldown_s: float
+
+
+def resolve_entry(entry: QueueEntry, defaults: QueueDefaults) -> ResolvedEntry:
+    """Flatten a queue entry against the queue defaults (per-entry keys win when set)."""
+    st = entry.step_timeout_s or defaults.step_timeout_s
+    return ResolvedEntry(
+        reset_command=_pick(entry.reset_command, defaults.reset_command),
+        settle=entry.settle or defaults.settle,
+        eval_timeout_s=st.eval_s,
+        judge_timeout_s=st.judge_s,
+        cooldown_s=_pick(entry.cooldown_s, defaults.cooldown_s),
+    )
+
+
+def _completed(r: EntryResult) -> bool:
+    return r.eval_status == "ok" and r.judge_status in ("ok", "skipped")
+
+
+def entries_to_run(spec: QueueSpec, prior: list[EntryResult]) -> list[tuple[int, QueueEntry]]:
+    """Indices+entries still to run: skip those whose prior result is complete (eval ok AND
+    judge ok/skipped); retry failed/timeout/partial ones."""
+    done = {r.index for r in prior if _completed(r)}
+    return [(i, e) for i, e in enumerate(spec.entries) if i not in done]
