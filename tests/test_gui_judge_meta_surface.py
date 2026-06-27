@@ -266,3 +266,30 @@ def test_ingest_traversal_404(tmp_path):
         "/judge-meta-ingest/..%2f..%2fetc", data={"yaml_text": "cells: []\n"}
     )
     assert r.status_code == 404
+
+
+def test_result_page_shows_judge_meta_card_when_judged(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _judged_bundle(d)
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    assert "Judge-Qualität (Meta-Eval)" in r.text
+    assert f"/export-judge-meta-request/{d.name}" in r.text
+    assert f"/export-judge-meta-template/{d.name}" in r.text
+
+
+def test_result_page_hides_judge_meta_card_when_unjudged(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _judged_bundle(d)
+    (d / "reports.jsonl").unlink()  # strip the judging → eval-only bundle
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert r.status_code == 200
+    assert "Judge-Qualität (Meta-Eval)" not in r.text
+
+
+def test_result_page_shows_download_when_quality_exists(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _judged_bundle(d)
+    (d / "judge_quality.md").write_text("# Judge-Qualität\n", encoding="utf-8")
+    r = _client(tmp_path).get(f"/result/{d.name}")
+    assert f"/export/{d.name}/judge_quality.md" in r.text
