@@ -21,7 +21,7 @@
 </div>
 {% endif %}
 
-<div x-data="{ station: '{{ 'judge' if (eval_only_bundles and not resume) else 'eval' }}' }">
+<div x-data="{ station: '{{ 'judge' if bundle else 'eval' }}' }">
   <div class="flow-bar">
     <button @click="station='eval'" :class="station==='eval' && 'active'">Eval starten</button>
     <span>→</span>

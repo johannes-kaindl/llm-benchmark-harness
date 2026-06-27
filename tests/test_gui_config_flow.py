@@ -61,6 +61,29 @@ def test_config_links_to_pack_editor(tmp_path):
     assert "Pack bearbeiten" in body
 
 
+def test_config_default_station_is_eval_not_judge(tmp_path):
+    # Bug: arriving at "Konfig + Start" while unjudged bundles exist defaulted to the Judge tab.
+    # Plain /config must default to the Eval tab; the Judge tab is for an explicit ?bundle.
+    body = _client(tmp_path).get("/config").text
+    assert "station: 'eval'" in body
+    body_judge = _client(tmp_path).get("/config?bundle=2026-01-01_eval_x").text
+    assert "station: 'judge'" in body_judge
+
+
+def test_sidebar_station_numbers_are_consecutive(tmp_path):
+    # Bug: the sidebar showed vestigial 1/3/6. The three top-level destinations are now 1/2/3.
+    body = _client(tmp_path).get("/config").text
+    assert "2 · Konfig + Start" in body and "3 · Konfig + Start" not in body
+    assert "3 · Vergleich" in body and "6 · Vergleich" not in body
+
+
+def test_config_picker_shows_inline_endpoint_summary(tmp_path):
+    # Bug: you picked a config blind. The picker now previews endpoint/machine/engine inline.
+    body = _client(tmp_path).get("/config").text
+    assert "summary()" in body  # the inline preview line is rendered
+    assert '"base_url"' in body  # config_summaries embedded for the Alpine component
+
+
 def test_config_sidesteps_import_always_resume_conditional(tmp_path):
     # no resume → import present, resume hint absent
     body = _client(tmp_path).get("/config").text

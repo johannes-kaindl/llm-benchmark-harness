@@ -7,8 +7,9 @@
 "use strict";
 
 document.addEventListener("alpine:init", () => {
-  Alpine.data("modelPicker", (byConfig, configs) => ({
+  Alpine.data("modelPicker", (byConfig, configs, summaries) => ({
     byConfig: byConfig,
+    summaries: summaries || {}, // {config_path: {machine, engine, base_url}} for the inline preview
     // Default to the first ORDERED config (configs is order_configs()-sorted, embed/vlm last).
     // Don't rely on byConfig key order — that would depend on JSON preserving insertion order.
     config: (configs && configs[0]) || Object.keys(byConfig)[0] || "",
@@ -67,6 +68,10 @@ document.addEventListener("alpine:init", () => {
     },
     servedCount() {
       return this.options.filter((o) => o.served).length;
+    },
+    summary() {
+      // {machine, engine, base_url} of the selected config, for the inline preview line.
+      return this.summaries[this.config] || null;
     },
     optionLabel(o) {
       if (!o.served) return o.id + " (nicht geladen)";

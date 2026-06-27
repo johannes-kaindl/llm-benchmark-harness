@@ -504,6 +504,7 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             packs=pack_files,
             configs=config_files,
             models_by_config=configs_mod.models_by_config(config_files),
+            config_summaries=configs_mod.config_summaries(config_files),
             judge_configs=judge_config_files,
             eval_only_bundles=eval_only,
             resume=resume,

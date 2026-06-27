@@ -24,10 +24,10 @@
     </div>
     <button type="submit" class="btn btn-primary">Fortsetzen</button>
     {% else %}
-    <div x-data='modelPicker({{ models_by_config | tojson }}, {{ configs | tojson }})'>
+    <div x-data='modelPicker({{ models_by_config | tojson }}, {{ configs | tojson }}, {{ config_summaries | tojson }})'>
       <div class="form-group">
         <label class="form-label" for="config_path">Config
-          <a class="text-xs" :href="'/config-view/' + config" target="_blank" rel="noopener" title="Config ansehen">ⓘ</a>
+          <a class="text-xs" :href="'/config-view/' + config" target="_blank" rel="noopener" title="Volle Config ansehen">ⓘ ansehen</a>
         </label>
         <select class="form-select" id="config_path" name="config_path"
                 x-model="config" @change="syncFromConfig()">
@@ -35,6 +35,8 @@
           <option value="{{ c }}">{{ c }}</option>
           {% endfor %}
         </select>
+        <p class="muted text-xs" x-cloak x-show="summary()" style="margin-top:0.3rem"
+           x-text="summary() ? ('→ ' + summary().base_url + ' · ' + summary().machine + (summary().engine ? ' · ' + summary().engine : '')) : ''"></p>
       </div>
       <div class="form-group">
         <label class="form-label">Modell

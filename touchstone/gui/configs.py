@@ -46,6 +46,31 @@ def models_by_config(files: list[str]) -> dict[str, list[dict[str, Any]]]:
     return {f: [m.model_dump() for m in config_models(f)] for f in files}
 
 
+def config_summaries(files: list[str]) -> dict[str, dict[str, str]]:
+    """{config_path: {"machine", "engine", "base_url"}} for an at-a-glance picker preview.
+
+    Parses only those fields (NEVER the api_key) and tolerates malformed files (skipped),
+    so the picker can show which endpoint/machine a config targets BEFORE you start a run —
+    no more choosing a config blind.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for f in files:
+        try:
+            raw = yaml.safe_load(Path(f).read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        endpoint = raw.get("endpoint")
+        base_url = endpoint.get("base_url", "") if isinstance(endpoint, dict) else ""
+        out[f] = {
+            "machine": str(raw.get("machine", "") or ""),
+            "engine": str(raw.get("engine", "") or ""),
+            "base_url": str(base_url or ""),
+        }
+    return out
+
+
 def order_configs(paths: list[str]) -> list[str]:
     """Sort config paths so *embed*/*vlm* files sort last (the picker shouldn't default to
     the embedding config). Within each group, alphabetical."""
