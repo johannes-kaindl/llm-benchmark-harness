@@ -6,6 +6,8 @@
 {% endblock %}
 {% block body %}
 <script src="/static/sparkline.js" defer></script>
+<!-- non-deferred so judgeMeta is registered before the deferred Alpine fires alpine:init -->
+<script src="/static/judge_meta.js"></script>
 
 <div class="page-header">
   <h1 class="page-title">{{ run_dir.name }}</h1>
@@ -470,6 +472,47 @@
     {% else %}
       <div class="muted text-xs" style="padding:0.6rem 0.8rem">Keine Ressourcen-Daten erfasst.</div>
     {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Judge-Qualität (Meta-Eval) ────────────────────────────────────────────── #}
+{% if detail and detail.reports %}
+<div class="card" x-data="judgeMeta('{{ run_dir.name }}')">
+  <div class="card-title">Judge-Qualität (Meta-Eval)</div>
+  <p class="muted text-sm" style="margin-bottom:0.5rem">
+    Lässt eine externe Cloud-KI die Qualität des lokalen Judges prüfen (Kalibrierung +
+    Begründungs-Güte). Teil A (eigene frische Bewertung) <strong>zuerst</strong> ausfüllen, dann Teil B.
+  </p>
+  <div class="flex gap-2" style="margin-bottom:0.75rem; flex-wrap:wrap">
+    <a href="/export-judge-meta-request/{{ run_dir.name }}" class="btn btn-primary"
+       title="Anfrage-Markdown für die Cloud-KI (Teil A blank + Teil B lokale Begründungen).">Anfrage (.md)</a>
+    <a href="/export-judge-meta-template/{{ run_dir.name }}" class="btn btn-secondary"
+       title="Leere Antwort-Vorlage (YAML) zum Ausfüllen durch die Cloud-KI.">Antwort-Vorlage (.yaml)</a>
+    {% if (run_dir / "judge_quality.md").exists() %}
+    <a href="/export/{{ run_dir.name }}/judge_quality.md" class="btn btn-secondary"
+       title="Bereits ausgewertet — Neu-Einlesen überschreibt.">judge_quality.md</a>
+    {% endif %}
+  </div>
+  <label class="text-sm" style="display:block; margin-bottom:0.25rem">
+    Ausgefüllte Antwort (YAML) einfügen:
+  </label>
+  <textarea x-model="yamlText" rows="8" spellcheck="false"
+            style="width:100%; font-family:monospace; font-size:0.8rem; white-space:pre; overflow:auto"
+            placeholder="cells:&#10;  - model: …"></textarea>
+  <div class="flex gap-2 items-center" style="margin-top:0.5rem">
+    <button type="button" class="btn btn-primary" @click="ingest()" :disabled="busy"
+            x-text="busy ? 'Werte aus…' : 'Auswerten'"></button>
+    <span class="text-xs" style="color:var(--ja)" x-show="ok === true" x-cloak>✓ judge_quality.md geschrieben</span>
+  </div>
+  <template x-if="ok === false">
+    <ul class="text-xs" style="color:var(--nein); margin:0.5rem 0 0 1rem">
+      <template x-for="e in errors" :key="e"><li x-text="e"></li></template>
+    </ul>
+  </template>
+  <div x-show="ok === true" x-cloak style="margin-top:0.75rem" x-html="summaryHtml"></div>
+  <div x-show="ok === true" x-cloak style="margin-top:0.5rem">
+    <a class="btn btn-secondary" :href="downloadUrl">judge_quality.md herunterladen</a>
   </div>
 </div>
 {% endif %}
