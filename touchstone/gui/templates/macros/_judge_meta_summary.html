@@ -1,0 +1,34 @@
+{# Inline judge-quality summary rendered from AgreementResult + RubricSummary (no MD→HTML).
+   Shown in the result page's Judge-Qualität card after a successful ingest. #}
+{% set ns = namespace(outliers=0) %}
+{% for c in agreement.cells %}{% for d in c.dims if d.outlier %}{% set ns.outliers = ns.outliers + 1 %}{% endfor %}{% endfor %}
+<div class="text-sm" style="margin-bottom:0.5rem">
+  <strong>mean|Δ| zum Referenz-Judge:</strong>
+  {{ agreement.bundle_mean_abs_delta if agreement.bundle_mean_abs_delta is not none else "—" }}
+  · <strong>{{ ns.outliers }}</strong> Ausreißer 🚩
+</div>
+<table class="text-xs" style="width:100%; border-collapse:collapse">
+  <thead>
+    <tr style="text-align:left; border-bottom:1px solid var(--border)">
+      <th>Zelle</th><th>Quality% lokal</th><th>Cloud</th><th>Δ</th><th>K.-o.</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in agreement.cells %}
+    <tr>
+      <td>{{ c.model }} · {{ c.variant }}</td>
+      <td>{{ c.local_quality_pct if c.local_quality_pct is not none else "—" }}</td>
+      <td>{{ c.cloud_quality_pct if c.cloud_quality_pct is not none else "—" }}</td>
+      <td>{{ c.quality_delta if c.quality_delta is not none else "—" }}</td>
+      <td>{% if c.ko_concordant %}✓{% else %}✗{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="text-xs muted" style="margin-top:0.5rem">
+  Begründungs-Qualität —
+  Belege: {{ rubric.cites_evidence[0] }}/{{ rubric.cites_evidence[1] }} ·
+  Verbesserung benannt (&lt;5): {{ rubric.names_improvement[0] }}/{{ rubric.names_improvement[1] }} ·
+  Höhe begründet: {{ rubric.justifies_level[0] }}/{{ rubric.justifies_level[1] }} ·
+  Sicherheit: {{ rubric.catches_safety[0] }}/{{ rubric.catches_safety[1] }}
+</div>

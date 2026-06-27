@@ -364,6 +364,46 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             headers={"Content-Disposition": 'attachment; filename="judge_meta_response.yaml"'},
         )
 
+    _MAX_META_YAML = 1_000_000  # a response YAML over ~1 MB is abuse, not a use case
+
+    @app.post("/judge-meta-ingest/{name}")
+    def judge_meta_ingest(name: str, yaml_text: str = Form(...)) -> dict[str, Any]:
+        """Validate + ingest a pasted judge_meta_response.yaml: compute agreement + rubric, write
+        judge_quality.md into the bundle, return an inline summary. Never 500s — a parse/schema
+        error is a normal {ok:false} result (pack-editor pattern)."""
+        from touchstone.gui import judge_meta
+
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
+            raise HTTPException(status_code=404)
+        if len(yaml_text) > _MAX_META_YAML:
+            raise HTTPException(status_code=400, detail="response YAML too large")
+        detail = bundles.bundle_detail(rd)
+        if detail is None:
+            raise HTTPException(status_code=404)
+        if not detail.get("reports"):
+            raise HTTPException(
+                status_code=400, detail="Bundle ohne Judge-Bewertung — erst touchstone judge"
+            )
+        try:
+            meta = judge_meta.parse_meta_response(yaml_text)
+        except Exception as exc:
+            return {"ok": False, "errors": [str(exc)]}
+        agreement = judge_meta.compute_agreement(
+            detail["pack"], detail["reports"], detail["master_rows"], meta
+        )
+        rubric = judge_meta.aggregate_rubric(detail["reports"], meta)
+        md = judge_meta.render_judge_quality_md(detail, agreement, rubric, meta)
+        (rd / "judge_quality.md").write_text(md, encoding="utf-8")
+        summary_html = _templates.get_template("macros/_judge_meta_summary.html").render(
+            agreement=agreement, rubric=rubric
+        )
+        return {
+            "ok": True,
+            "summary_html": summary_html,
+            "download_url": f"/export/{name}/judge_quality.md",
+        }
+
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(
         request: Request,

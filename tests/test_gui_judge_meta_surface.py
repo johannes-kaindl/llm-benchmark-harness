@@ -167,3 +167,76 @@ def test_export_template_refuses_unjudged(tmp_path):
     (d / "responses.jsonl").write_text("", encoding="utf-8")
     r = _client(tmp_path).get(f"/export-judge-meta-template/{d.name}")
     assert r.status_code == 400
+
+
+def test_export_template_traversal_404(tmp_path):
+    _judged_bundle(tmp_path / "2026_eval_nd")
+    r = _client(tmp_path).get("/export-judge-meta-template/..%2f..%2fetc")
+    assert r.status_code == 404
+
+
+def test_ingest_valid_writes_and_returns_summary(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    pk = _judged_bundle(d)
+    r = _client(tmp_path).post(
+        f"/judge-meta-ingest/{d.name}", data={"yaml_text": _valid_response_yaml(pk)}
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["download_url"] == f"/export/{d.name}/judge_quality.md"
+    assert "Begründungs-Qualität" in body["summary_html"]
+    assert (d / "judge_quality.md").exists()
+    assert "## Headline" in (d / "judge_quality.md").read_text(encoding="utf-8")
+
+
+def test_ingest_malformed_yaml_returns_errors_not_500(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _judged_bundle(d)
+    # a cell missing required fresh_scores/critique → pydantic ValidationError
+    r = _client(tmp_path).post(
+        f"/judge-meta-ingest/{d.name}",
+        data={"yaml_text": "cells:\n  - model: m\n    variant: baseline\n"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert body["errors"]
+
+
+def test_ingest_non_mapping_yaml_returns_errors(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _judged_bundle(d)
+    r = _client(tmp_path).post(
+        f"/judge-meta-ingest/{d.name}", data={"yaml_text": "- just\n- a\n- list\n"}
+    )
+    assert r.status_code == 200
+    assert r.json()["ok"] is False
+
+
+def test_ingest_unjudged_400(tmp_path):
+    pk = load_pack(PACK)
+    d = tmp_path / "2026_eval_raw"
+    d.mkdir()
+    (d / "bundle.json").write_text(
+        json.dumps({"pack_id": pk.id, "pack_path": PACK, "host": {}, "date": "x"}),
+        encoding="utf-8",
+    )
+    (d / "responses.jsonl").write_text("", encoding="utf-8")
+    r = _client(tmp_path).post(f"/judge-meta-ingest/{d.name}", data={"yaml_text": "cells: []\n"})
+    assert r.status_code == 400
+
+
+def test_ingest_oversize_400(tmp_path):
+    d = tmp_path / "2026_eval_nd"
+    _judged_bundle(d)
+    r = _client(tmp_path).post(f"/judge-meta-ingest/{d.name}", data={"yaml_text": "x" * 1_000_001})
+    assert r.status_code == 400
+
+
+def test_ingest_traversal_404(tmp_path):
+    _judged_bundle(tmp_path / "2026_eval_nd")
+    r = _client(tmp_path).post(
+        "/judge-meta-ingest/..%2f..%2fetc", data={"yaml_text": "cells: []\n"}
+    )
+    assert r.status_code == 404
