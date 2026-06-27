@@ -21,9 +21,9 @@ entries:
   - config: config.m5-lmstudio.yaml
     pack: packs/buero.yaml
     model: { id: "google/gemma-4-12b" }
-    judge_config: judge.yaml
+    judge_config: judge.example.yaml
 
   - config: config.m5-lmstudio.yaml
     pack: packs/buero.yaml
     model: { id: "qwen/qwen3.6-27b" }
-    judge_config: judge.yaml
+    judge_config: judge.example.yaml

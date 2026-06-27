@@ -95,10 +95,17 @@ def test_load_queue_rejects_duplicate_entries(tmp_path: Path):
 
 def test_run_dir_for_sanitizes_slashes():
     assert (
-        rq.run_dir_for("2026-06-27_2200", "qwen/qwen3.6-27b", "buero")
-        == "2026-06-27_2200_qwen-qwen3.6-27b_eval_buero"
+        rq.run_dir_for("2026-06-27_2200", "qwen/qwen3.6-27b", "buero", 0)
+        == "2026-06-27_2200_e0_qwen-qwen3.6-27b_eval_buero"
     )
-    assert rq.run_dir_for("t", "a/b", "p") == rq.run_dir_for("t", "a/b", "p")
+    assert rq.run_dir_for("t", "a/b", "p", 1) == rq.run_dir_for("t", "a/b", "p", 1)
+
+
+def test_run_dir_for_index_disambiguates_slug_collisions():
+    # distinct model ids that slugify equal must NOT collide (would silently overwrite a bundle)
+    a = rq.run_dir_for("t", "m:q4", "p", 0)
+    b = rq.run_dir_for("t", "m-q4", "p", 1)
+    assert a != b
 
 
 # ----------------------------------------------------------- Task 2: settle-wait
@@ -454,20 +461,25 @@ def test_run_reset_nonzero_is_false():
 def test_make_run_step_timeout_kills(tmp_path: Path):
     import subprocess
 
+    created: list = []
+
     class FakePopen:
         def __init__(self, argv, **k):
             self.argv = argv
             self.returncode = None
             self.killed = False
+            self.terminated = False
+            created.append(self)
 
         def wait(self, timeout=None):
-            if timeout is not None and not self.killed:
+            # SIGTERM is ignored — only kill() lets wait() return
+            if not self.killed:
                 raise subprocess.TimeoutExpired(self.argv, timeout)
             self.returncode = -9
             return -9
 
         def terminate(self):
-            pass
+            self.terminated = True
 
         def kill(self):
             self.killed = True
@@ -475,6 +487,42 @@ def test_make_run_step_timeout_kills(tmp_path: Path):
     step = rq.make_run_step(clock=lambda: 0.0, popen=FakePopen, grace_s=0)
     out = step("eval", ["x"], 1.0, tmp_path)
     assert out.status == "timeout"
+    # the named SIGKILL escalation must actually be reached, not just status=timeout
+    assert created[0].terminated and created[0].killed
+
+
+def test_make_run_step_unkillable_does_not_hang(tmp_path: Path):
+    # a process stuck in D-state never reaps even after SIGKILL; the post-kill wait must be
+    # bounded so one wedged step can't sink the whole overnight queue.
+    import subprocess
+
+    class StuckPopen:
+        def __init__(self, argv, **k):
+            self.argv = argv
+            self.returncode = None
+
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired(self.argv, timeout)  # never returns
+
+        def terminate(self):
+            pass
+
+        def kill(self):
+            pass
+
+    step = rq.make_run_step(clock=lambda: 0.0, popen=StuckPopen, grace_s=0)
+    out = step("eval", ["x"], 1.0, tmp_path)  # must return, not hang
+    assert out.status == "timeout"
+
+
+def test_make_run_step_spawn_failure_is_failed(tmp_path: Path):
+    # an OSError at spawn time (bad python, ENOMEM, EMFILE) must NOT crash the queue
+    class BoomPopen:
+        def __init__(self, argv, **k):
+            raise OSError("cannot spawn")
+
+    step = rq.make_run_step(clock=lambda: 0.0, popen=BoomPopen)
+    assert step("eval", ["x"], 10.0, tmp_path).status == "failed"
 
 
 def test_make_run_step_ok_when_artifacts_present(tmp_path: Path):
@@ -542,3 +590,148 @@ def test_run_check_probes_each_distinct_model(tmp_path: Path):
 def test_shipped_queue_example_validates():
     spec = rq.load_queue("queue.example.yaml")
     assert len(spec.entries) >= 1
+
+
+# ------------------------------------------------- review fixes: robustness gaps
+def test_load_prior_results_corrupt_returns_empty(tmp_path: Path):
+    qd = tmp_path / "q"
+    qd.mkdir()
+    (qd / "summary.json").write_text('{"entries": [{"index": 0, "model_id": "foo', encoding="utf-8")
+    assert rq.load_prior_results(qd) == []  # half-written file -> [] (resume degrades, no crash)
+
+
+def test_build_eval_argv_resume_uses_resume_flag(tmp_path: Path):
+    e = _entry(tmp_path)
+    argv = rq.build_eval_argv(e, tmp_path / "bundle", python="PY", resume=True)
+    assert "--resume" in argv
+    assert "--run-dir" not in argv  # --resume targets the bundle dir on its own
+    assert argv[argv.index("--resume") + 1] == str(tmp_path / "bundle")
+
+
+def test_run_queue_resume_retry_replaces_row(tmp_path: Path):
+    # a prior failed entry that now succeeds must REPLACE its row, not append a duplicate
+    spec = _spec_two(tmp_path, judge=False)
+    prior = [
+        rq.EntryResult(0, "a/b", "c", "p", "runs/x", "failed", "skipped", error="eval failed"),
+        rq.EntryResult(1, "c/d", "c", "p", "runs/y", "ok", "skipped"),
+    ]
+    res = rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=lambda *a: rq.StepOutcome("ok", 1.0),
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+        prior=prior,
+    )
+    idx0 = [r for r in res if r.index == 0]
+    assert len(idx0) == 1  # exactly one row for index 0
+    assert idx0[0].eval_status == "ok"  # the retried, now-successful one
+    assert len(res) == 2  # done == total, no duplicate
+
+
+def test_run_queue_writes_summary_incrementally(tmp_path: Path):
+    # summary.json must contain entry 0 BEFORE entry 1 starts (crash robustness / resume basis)
+    import json
+
+    spec = _spec_two(tmp_path, judge=False)
+    qd = tmp_path / "q"
+    seen_counts: list[int] = []
+
+    def run_step(kind, argv, timeout, bundle):
+        f = qd / "summary.json"
+        seen_counts.append(len(json.loads(f.read_text())["entries"]) if f.exists() else 0)
+        return rq.StepOutcome("ok", 1.0)
+
+    rq.run_queue(
+        spec,
+        queue_dir=qd,
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=run_step,
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+    )
+    assert seen_counts == [0, 1]  # entry 0's eval sees 0 on disk; entry 1's eval sees 1
+
+
+def test_run_queue_judge_failure_recorded(tmp_path: Path):
+    spec = _spec_two(tmp_path)  # judge=True
+
+    def run_step(kind, argv, timeout, bundle):
+        return rq.StepOutcome("ok" if kind == "eval" else "failed", 1.0)
+
+    res = rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=run_step,
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+    )
+    assert all(r.eval_status == "ok" for r in res)
+    assert all(r.judge_status == "failed" for r in res)
+    assert all(r.error.startswith("judge") for r in res)
+    # a judge-failed entry is NOT complete -> a later resume re-runs it
+    assert [i for i, _ in rq.entries_to_run(spec, res)] == [0, 1]
+
+
+def test_run_queue_settle_timeout_warns(tmp_path: Path):
+    # spec: on settle timeout -> warn + continue (don't swallow it silently)
+    spec = _spec_two(tmp_path, judge=False)
+    spec.defaults.settle = rq.SettleSpec(timeout_s=1, plateau_polls=99, poll_interval_s=1)
+    warned: list[str] = []
+    ticking = {"t": 0.0}
+
+    def clock() -> float:
+        return ticking["t"]
+
+    def sleep(s: float) -> None:
+        ticking["t"] += s  # drive past settle.timeout_s so settle never plateaus
+
+    rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=lambda *a: rq.StepOutcome("ok", 1.0),
+        reset_run=lambda c: True,
+        ram_poll=lambda: 9999.0,
+        sleep=sleep,
+        clock=clock,
+        ts="T",
+        started_iso="I",
+        log=warned.append,
+    )
+    assert any("settle" in w.lower() for w in warned)
+
+
+def test_run_check_writes_check_md(tmp_path: Path):
+    spec = _spec_two(tmp_path, judge=False)
+    check_dir = tmp_path / "check"
+    rq.run_check(
+        spec,
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1000.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        probe=lambda entry, model: (True, "ok", 42),
+        emit=lambda s: None,
+        check_dir=check_dir,
+    )
+    md = (check_dir / "check.md").read_text(encoding="utf-8")
+    assert "a/b" in md and "c/d" in md

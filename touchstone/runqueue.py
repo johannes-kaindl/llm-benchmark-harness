@@ -11,7 +11,9 @@ Named ``runqueue`` (not ``queue``) so it never shadows the stdlib ``queue`` modu
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -102,9 +104,11 @@ def _slug(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", s).strip("-")
 
 
-def run_dir_for(ts: str, model_id: str, pack_id: str) -> str:
-    """Deterministic bundle dir name (timestamp + sanitized model id + pack id)."""
-    return f"{ts}_{_slug(model_id)}_eval_{_slug(pack_id)}"
+def run_dir_for(ts: str, model_id: str, pack_id: str, index: int) -> str:
+    """Deterministic, collision-free bundle dir name. The entry ``index`` disambiguates so two
+    distinct entries that slugify equally (e.g. ``m:q4`` vs ``m-q4``) or share model+pack across
+    different configs never map to the same dir and silently overwrite each other."""
+    return f"{ts}_e{index}_{_slug(model_id)}_eval_{_slug(pack_id)}"
 
 
 # ----------------------------------------------------------------- settle-wait
@@ -147,8 +151,13 @@ def wait_until_settled(
 
 
 # ----------------------------------------------- argv builders + step classifier
-def build_eval_argv(entry: QueueEntry, bundle_dir: Path, *, python: str) -> list[str]:
-    """``python -m touchstone eval`` argv for one entry (exactly one model via --models-json)."""
+def build_eval_argv(
+    entry: QueueEntry, bundle_dir: Path, *, python: str, resume: bool = False
+) -> list[str]:
+    """``python -m touchstone eval`` argv for one entry (exactly one model via --models-json).
+    ``resume=True`` targets the bundle dir via ``--resume`` (continue a partial matrix instead of
+    restarting from 0%); otherwise ``--run-dir`` is used for a fresh bundle."""
+    target_flag = "--resume" if resume else "--run-dir"
     return [
         python,
         "-m",
@@ -160,7 +169,7 @@ def build_eval_argv(entry: QueueEntry, bundle_dir: Path, *, python: str) -> list
         str(entry.pack),
         "--models-json",
         json.dumps([entry.model.model_dump()]),
-        "--run-dir",
+        target_flag,
         str(bundle_dir),
         "--emit-events",
     ]
@@ -313,18 +322,26 @@ def _pack_id(pack: Path, cache: dict[Path, str]) -> str:
     return cache[pack]
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    """Write via a temp file + ``os.replace`` so a crash mid-write can never leave a truncated
+    file (resume reads summary.json — a half-written one would otherwise break it)."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def _write_summary(
     queue_dir: Path, spec: QueueSpec, results: list[EntryResult], started_iso: str
 ) -> None:
     queue_dir.mkdir(parents=True, exist_ok=True)
-    (queue_dir / "summary.json").write_text(
+    _atomic_write(
+        queue_dir / "summary.json",
         json.dumps(
             summary_json_obj(spec, results, started_iso=started_iso), indent=2, ensure_ascii=False
         ),
-        encoding="utf-8",
     )
-    (queue_dir / "summary.md").write_text(
-        render_summary_md(spec, results, started_iso=started_iso), encoding="utf-8"
+    _atomic_write(
+        queue_dir / "summary.md", render_summary_md(spec, results, started_iso=started_iso)
     )
 
 
@@ -348,20 +365,36 @@ def run_queue(
     -> eval (subprocess via ``run_step``) -> optional judge -> record. Continue on any error;
     write ``summary.json``/``summary.md`` after each entry. Returns prior + new results."""
     results: list[EntryResult] = list(prior or [])
+    todo = entries_to_run(spec, results)
+    rerun = {i for i, _ in todo}
+    # resume must REPLACE a retried entry's stale row, not append a duplicate (else done > total)
+    results = [r for r in results if r.index not in rerun]
     pack_cache: dict[Path, str] = {}
-    for i, entry in entries_to_run(spec, results):
+    for i, entry in todo:
         rv = resolve_entry(entry, spec.defaults)
         # 1. reset + settle -> clean RAM baseline before this entry's eval
         if rv.reset_command and not reset_run(rv.reset_command):
             log(f"⚠ reset failed (entry {i}: {rv.reset_command!r}); continuing")
-        wait_until_settled(ram_poll, sleep, clock, settle=rv.settle)
+        settled = wait_until_settled(ram_poll, sleep, clock, settle=rv.settle)
+        if not settled.settled:
+            log(
+                f"⚠ settle timed out after {settled.waited_s:.0f}s (entry {i}); "
+                f"RAM {settled.final_mb:.0f}MB — baseline may be dirty, continuing"
+            )
         if rv.cooldown_s > 0:
             sleep(rv.cooldown_s)
-        # 2. eval
-        bundle = output_dir / run_dir_for(ts, entry.model.id, _pack_id(entry.pack, pack_cache))
+        # 2. eval. NOTE: queue-spawned eval/judge run as plain CLI subprocesses and do NOT take the
+        # GUI one-run sentinel lock (RunRegistry) — coexistence with a hand-triggered GUI run is a
+        # deferred v2 concern (see spec "Koexistenz mit der GUI-One-Run-Lock").
+        bundle = output_dir / run_dir_for(ts, entry.model.id, _pack_id(entry.pack, pack_cache), i)
+        # a prior partial bundle (timed-out/failed eval) -> --resume continues it instead of 0%
+        resuming_eval = (bundle / "responses.jsonl").exists()
         r = EntryResult(i, entry.model.id, str(entry.config), str(entry.pack), str(bundle))
         ev = run_step(
-            "eval", build_eval_argv(entry, bundle, python=python), rv.eval_timeout_s, bundle
+            "eval",
+            build_eval_argv(entry, bundle, python=python, resume=resuming_eval),
+            rv.eval_timeout_s,
+            bundle,
         )
         r.eval_status, r.eval_seconds = ev.status, ev.seconds
         # 3. judge (only if eval ok and a judge_config is set)
@@ -382,6 +415,7 @@ def run_queue(
             if jv.status != "ok":
                 r.error = f"judge {jv.status}"
         results.append(r)
+        results.sort(key=lambda x: x.index)
         _write_summary(queue_dir, spec, results, started_iso)
     return results
 
@@ -433,7 +467,12 @@ def make_run_step(
 
     def run_step(kind: str, argv: list[str], timeout_s: float, bundle: Path) -> StepOutcome:
         start = clock()
-        proc = popen(argv)
+        try:
+            proc = popen(argv)
+        except (OSError, ValueError):
+            # spawn-time failure (bad executable, ENOMEM/EAGAIN, EMFILE) -> failed entry, never
+            # propagate: the unattended queue must keep going (continue-on-error).
+            return StepOutcome("failed", clock() - start)
         timed_out = False
         try:
             proc.wait(timeout=timeout_s)
@@ -444,7 +483,10 @@ def make_run_step(
                 proc.wait(timeout=grace_s)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                proc.wait()
+                # bounded reap: a D-state process won't die even on SIGKILL; don't block the
+                # whole night on the reap — leak the zombie (one slot) rather than hang forever.
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    proc.wait(timeout=grace_s)
         status = classify_step(proc.returncode, timed_out, _artifacts_ok(kind, bundle))
         return StepOutcome(status, clock() - start)
 
@@ -484,9 +526,11 @@ def run_check(
     clock: Callable[[], float] | None = None,
     probe: Callable[[QueueEntry, ModelSpec], tuple[bool, str, int]] | None = None,
     emit: Callable[[str], None] = print,
+    check_dir: str | Path | None = None,
 ) -> list[dict[str, object]]:
     """Verify the model-switch chain before a real overnight run: per distinct model, reset +
-    settle + one tiny request, recording load/evict + RAM before/after. No matrix, no judge."""
+    settle + one tiny request, recording load/evict + RAM before/after. No matrix, no judge.
+    When ``check_dir`` is given, persist ``check.md`` + ``check.json`` (the spec's on-disk record)."""
     import time as _t
 
     sleep = sleep or _t.sleep
@@ -516,16 +560,39 @@ def run_check(
         emit(
             f"  {mark} {model.id}  status={status}  ΔRAM={after - before:+.0f} MB  content={content}"
         )
+    if check_dir is not None:
+        _write_check(Path(check_dir), rows)
     return rows
+
+
+def _write_check(check_dir: Path, rows: list[dict[str, object]]) -> None:
+    check_dir.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "# Nacht-Queue `--check` — Modell-Wechsel-Probe",
+        "",
+        "| Modell | geladen | status | content | ΔRAM (MB) |",
+        "|--------|---------|--------|---------|-----------|",
+    ]
+    for r in rows:
+        mark = "✓" if r["loaded"] else "✗"
+        lines.append(
+            f"| {r['model']} | {mark} | {r['status']} | {r['content_chars']} | {r['ram_delta_mb']} |"
+        )
+    _atomic_write(check_dir / "check.md", "\n".join(lines) + "\n")
+    _atomic_write(check_dir / "check.json", json.dumps(rows, indent=2, ensure_ascii=False))
 
 
 def load_prior_results(queue_dir: str | Path) -> list[EntryResult]:
     """Reconstruct EntryResults from a queue dir's ``summary.json`` (for ``--resume``).
-    Missing/unreadable file → empty list."""
+    Missing OR corrupt/half-written file → empty list (resume degrades to 'rerun all', never
+    crashes on the very partial-write a crashed night produces)."""
     p = Path(queue_dir) / "summary.json"
     if not p.exists():
         return []
-    obj = json.loads(p.read_text(encoding="utf-8"))
+    try:
+        obj = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
     out: list[EntryResult] = []
     for e in obj.get("entries", []):
         out.append(

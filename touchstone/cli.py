@@ -946,8 +946,10 @@ def queue_cmd(
     """Run several models overnight, sequentially: per entry reset→settle→eval→[judge]."""
     spec = rq.load_queue(queue_file)
     if check:
+        check_dir = Path("./runs") / f"{_timestamp()}_check"
         console.print("[bold]touchstone queue --check[/] — Modell-Wechsel-Probe")
-        rq.run_check(spec, emit=console.print)
+        rq.run_check(spec, emit=console.print, check_dir=check_dir)
+        console.print(f"[green]✓[/] check.md: [cyan]{check_dir / 'check.md'}[/]")
         return
     output_dir = Path("./runs")
     if resume is not None:
