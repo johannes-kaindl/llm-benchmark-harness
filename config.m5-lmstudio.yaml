@@ -1,0 +1,26 @@
+# M5 (64 GB) → LM Studio (:1234). Gleiche Maschine wie config.m5, treibt aber den
+# LM-Studio-OpenAI-Endpoint statt mlx_lm.server (:8080). Für qualitative eval-Läufe
+# (buero/ndassist), während LM Studio das Modell auf diesem M5 hostet.
+endpoint:
+  base_url: "http://localhost:1234/v1"
+  api_key: "not-needed"
+
+machine: "M5-64GB"
+engine: "lm-studio"
+runs_per_cell: 8
+seed: 42
+temperature: 0.0
+context_buckets: [4096, 16384, 32768]
+scenarios: [bodydouble, compose, rag_synth]
+
+models:
+  - { id: "google/gemma-4-12b-qat", quant: "QAT" }
+
+server_process_match: "LM Studio"
+output_dir: "./runs"
+power_check: true
+
+embed:
+  model: "text-embedding-nomic-embed-text-v1.5"
+  num_chunks: 200
+  chunk_tokens: 512
