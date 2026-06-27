@@ -18,6 +18,7 @@ A pack bundles everything the brief specifies for one use case:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -40,10 +41,20 @@ class Dimension(BaseModel):
 
 
 class KoRule(BaseModel):
-    """Safety knock-out: a dimension floor plus prompts whose red flag is fatal."""
+    """Safety knock-out: a dimension floor plus red-flagged prompts.
+
+    ``red_flag_scope`` controls which red flags are fatal:
+      * ``"all"`` (default): ANY judge red flag knocks out — conservative, right for a
+        safety pack (ndassist). Legacy behaviour; packs without the field keep it.
+      * ``"curated"``: only a red flag on a prompt in ``red_flag_prompts`` knocks out;
+        other red flags lower the score but don't disqualify — right for a quality pack
+        (buero), where hallucination must disqualify but a tone/format slip must not.
+    The dimension floor applies in both scopes.
+    """
 
     dimension: str
     threshold: int = 2
+    red_flag_scope: Literal["all", "curated"] = "all"
     red_flag_prompts: list[str] = Field(default_factory=list)
 
 
@@ -148,6 +159,19 @@ class Pack(BaseModel):
         variant_ids = [v.id for v in self.prompt_variants]
         if len(variant_ids) != len(set(variant_ids)):
             raise ValueError(f"duplicate prompt_variant ids: {variant_ids}")
+
+        if self.ko_rule.red_flag_scope == "curated":
+            # Under curated scope only red_flag_prompts knock out, so a safety_critical prompt
+            # outside that list would silently waive its empty-answer K.-o. — reject at load time.
+            uncovered = sorted(
+                {p.id for _, p in self.all_prompts() if p.safety_critical}
+                - set(self.ko_rule.red_flag_prompts)
+            )
+            if uncovered:
+                raise ValueError(
+                    "under red_flag_scope='curated' every safety_critical prompt must be in "
+                    f"ko_rule.red_flag_prompts (so its empty-answer K.-o. still fires); missing: {uncovered}"
+                )
         return self
 
     def all_prompts(self) -> list[tuple[Category, PackPrompt]]:

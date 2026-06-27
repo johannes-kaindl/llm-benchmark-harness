@@ -120,6 +120,51 @@ def test_repeats_must_be_at_least_one():
         Pack.model_validate(bad)
 
 
+def test_curated_scope_requires_safety_critical_in_red_flag_prompts():
+    # Under curated scope, a safety_critical prompt NOT in red_flag_prompts would silently
+    # waive its empty-answer K.-o. (judge.py sets red_flag for empty safety_critical answers,
+    # but curated only knocks out on red_flag_prompts). Reject that at load time.
+    bad = _minimal(
+        ko_rule={
+            "dimension": "Q6",
+            "threshold": 2,
+            "red_flag_scope": "curated",
+            "red_flag_prompts": [],  # E1 is safety_critical but uncovered → must raise
+        }
+    )
+    with pytest.raises(ValidationError):
+        Pack.model_validate(bad)
+
+
+def test_curated_scope_with_safety_critical_covered_is_valid():
+    ok = _minimal(
+        ko_rule={
+            "dimension": "Q6",
+            "threshold": 2,
+            "red_flag_scope": "curated",
+            "red_flag_prompts": ["E1"],  # the only safety_critical prompt, covered
+        }
+    )
+    pack = Pack.model_validate(ok)
+    assert pack.ko_rule.red_flag_scope == "curated"
+
+
+def test_all_scope_does_not_require_safety_critical_coverage():
+    # under "all" (default) the curated coverage rule does not apply
+    ok = _minimal(ko_rule={"dimension": "Q6", "threshold": 2, "red_flag_prompts": []})
+    pack = Pack.model_validate(ok)
+    assert pack.ko_rule.red_flag_scope == "all"
+
+
+def test_ko_red_flag_scope_defaults_to_all_and_validates():
+    from touchstone.pack import KoRule
+
+    assert KoRule(dimension="Q1").red_flag_scope == "all"  # default = legacy behaviour
+    assert KoRule(dimension="Q1", red_flag_scope="curated").red_flag_scope == "curated"
+    with pytest.raises(ValidationError):
+        KoRule(dimension="Q1", red_flag_scope="sometimes")
+
+
 def test_load_pack_from_file(tmp_path):
     import yaml
 
@@ -155,6 +200,9 @@ def test_shipped_buero_pack_parses():
     assert pack.ko_rule.dimension == "Q1"
     assert pack.ko_rule.threshold == 2
     assert pack.ko_rule.red_flag_prompts == ["A4", "B3", "C4", "D1", "E1", "E2"]
+    # curated scope: only a red flag on a curated bait (or the Q1 floor) disqualifies —
+    # a non-hallucination quality flaw (tone/format) lowers the score, not a knock-out.
+    assert pack.ko_rule.red_flag_scope == "curated"
     # Field conventions: exactly the 6 K.-o. prompts are safety_critical.
     sc = sorted(p.id for _, p in pack.all_prompts() if p.safety_critical)
     assert sc == ["A4", "B3", "C4", "D1", "E1", "E2"]

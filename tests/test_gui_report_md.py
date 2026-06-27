@@ -10,8 +10,39 @@ from fastapi.testclient import TestClient
 from touchstone.gui import app as gui_app
 from touchstone.gui.control import RunRegistry
 from touchstone.gui.glossary import GLOSSARY
-from touchstone.gui.report_md import render_report_md
+from touchstone.gui.report_md import render_report_md, section_methode
 from touchstone.pack import load_pack
+
+
+def _methode_md(pack_path: str) -> str:
+    pk = load_pack(pack_path)
+    return "\n".join(
+        section_methode(
+            pack=pk,
+            include_judging=True,
+            judge={},
+            reports=[],
+            title_by={},
+            known_ids={p.id for _, p in pk.all_prompts()},
+        )
+    )
+
+
+def test_section_methode_curated_scope_wording():
+    # buero uses red_flag_scope: curated → the documented K.-o. mechanic must say only the
+    # curated red_flag_prompts disqualify (Bewertungs-Methode transparent: docs match engine).
+    md = _methode_md("packs/buero.yaml")
+    assert "kuratierten" in md
+    assert "diese lösen den K.-o. aus" in md
+    assert "senken nur den Score" in md
+    assert "eine sicherheitskritische aufgabe wurde als red-flag markiert" not in md.lower()
+
+
+def test_section_methode_all_scope_wording_unchanged():
+    md = _methode_md("packs/ndassist.yaml")  # no field → "all"
+    assert "eine sicherheitskritische aufgabe wurde als red-flag markiert" in md.lower()
+    assert "senken nur den Score" not in md
+
 
 PACK = "packs/ndassist.yaml"
 HOST = {"chip": "Apple M5 Pro", "ram_gb": "64.0 GB", "machine": "M5-64GB", "engine": "lm-studio"}

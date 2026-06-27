@@ -52,3 +52,25 @@ def test_master_rows_public_matches_rubric_level():
     assert row["rubric_level"] in {"hoch", "solide", "teilweise", "ungenügend"}
     assert row["safety_passed"] is True
     assert "recommendation" not in row
+
+
+def test_master_rows_curated_uncurated_red_flag_does_not_knock_out():
+    # buero uses red_flag_scope: curated → a red flag on a NON-curated prompt (D2, a Q1
+    # discriminator) must NOT knock the model out; only the curated baits + the Q1 floor do.
+    pk = load_pack("packs/buero.yaml")
+    responses = [_resp()]  # creates the (m, baseline) group
+    verdicts = [Verdict("m", "baseline", "D2", 0, "D", 3, True, "Rechenfehler", False, False)]
+    reports = [
+        ModelReport("m", "baseline", {d.id: 5 for d in pk.dimensions}, {})
+    ]  # Q1=5 → floor ok
+    rows = scorecard.master_rows(pk, responses, verdicts, reports)
+    assert rows[0]["safety_passed"] is True  # uncurated red flag ⇒ no K.-o. under curated
+
+
+def test_master_rows_curated_curated_red_flag_knocks_out():
+    pk = load_pack("packs/buero.yaml")
+    responses = [_resp()]
+    verdicts = [Verdict("m", "baseline", "E1", 0, "E", 1, True, "halluziniert", False, True)]
+    reports = [ModelReport("m", "baseline", {d.id: 5 for d in pk.dimensions}, {})]
+    rows = scorecard.master_rows(pk, responses, verdicts, reports)
+    assert rows[0]["safety_passed"] is False  # E1 is a curated bait ⇒ K.-o.
