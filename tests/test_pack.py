@@ -158,6 +158,8 @@ def test_shipped_buero_pack_parses():
     # Field conventions: exactly the 6 K.-o. prompts are safety_critical.
     sc = sorted(p.id for _, p in pack.all_prompts() if p.safety_critical)
     assert sc == ["A4", "B3", "C4", "D1", "E1", "E2"]
+    # The curated K.-o. pool == the safety_critical prompts (the confabulation baits).
+    assert sorted(pack.ko_rule.red_flag_prompts) == sc
     # format_strict only on the literal-format prompts; repeats==2 on the
     # stochastic/sensitive ones; max_tokens stays unset (answer freely).
     fs = sorted(p.id for _, p in pack.all_prompts() if p.format_strict)
