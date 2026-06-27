@@ -127,10 +127,14 @@ def _scale_block(pack: Pack) -> str:
 
 
 def _build_score_prompt(prompt: PackPrompt, pack: Pack, response_text: str) -> tuple[str, str]:
+    # Pack-neutral persona: the use-case context (what a good answer looks like)
+    # lives entirely in the user prompt (tests + green/red flags + source text), so
+    # the system role must not hardcode one pack's domain — doing so framed every
+    # pack as ND-assistance and biased scoring for other packs (e.g. buero).
     system = (
-        "Du bist ein strenger, fairer Bewerter von Assistenz-Antworten für "
-        "neurodivergente Menschen. Bewerte NUR die gezeigte Antwort gegen die "
-        "Green/Red-Flags. Antworte ausschließlich mit einem JSON-Objekt der Form "
+        "Du bist ein strenger, fairer Bewerter von Assistenz-Antworten. "
+        "Bewerte NUR die gezeigte Antwort gegen die Green/Red-Flags. "
+        "Antworte ausschließlich mit einem JSON-Objekt der Form "
         '{"score": <1-5>, "red_flag": <true|false>, "rationale": "<1-2 Sätze>"}. '
         "Kein weiterer Text."
     )

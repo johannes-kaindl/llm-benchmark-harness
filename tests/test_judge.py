@@ -143,6 +143,21 @@ def test_score_response_calls_backend_and_builds_verdict():
     assert len(backend.calls) == 1
 
 
+def test_score_prompt_persona_is_pack_neutral():
+    # The per-prompt judge persona must not hardcode one pack's domain: it framed
+    # EVERY pack as a "Bewerter ... für neurodivergente Menschen", which biases
+    # scoring for non-ND packs (e.g. buero, Büro-/Wissensarbeit) toward ND-warmth
+    # instead of terse factual fidelity. The domain context already lives in the
+    # user prompt (tests + green/red flags + source text).
+    pack = _make_pack()
+    backend = FakeBackend('{"score": 3, "red_flag": false, "rationale": "x"}')
+    _, prompt = pack.all_prompts()[0]  # A1, non-empty answer → backend is called
+    score_response(backend, _resp("A1", "A"), prompt, pack)
+    system, _user = backend.calls[0]
+    assert "neurodivergent" not in system.lower()
+    assert "Green/Red-Flags" in system  # still anchored to the rubric
+
+
 def test_score_response_empty_content_autoscored_without_backend():
     pack = _make_pack()
     backend = FakeBackend('{"score": 5, "red_flag": false, "rationale": "x"}')
