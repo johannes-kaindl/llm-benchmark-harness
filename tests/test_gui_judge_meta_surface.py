@@ -212,6 +212,32 @@ def test_ingest_non_mapping_yaml_returns_errors(tmp_path):
     )
     assert r.status_code == 200
     assert r.json()["ok"] is False
+    assert r.json()["errors"]
+
+
+def test_ingest_parseable_but_mismatched_cell_no_500(tmp_path):
+    # A schema-valid response whose cell names a model/variant NOT in the bundle.
+    # The bundle's only cell is (m, baseline); this names (other, other). The
+    # downstream agreement/rubric/render must tolerate it (no local report) → 200,
+    # never a 500 — proving the narrow parse-only guard is sufficient.
+    d = tmp_path / "2026_eval_nd"
+    pk = _judged_bundle(d)
+    dims = "{" + ", ".join(f"{dim.id}: 3" for dim in pk.dimensions) + "}"
+    crit = "\n".join(
+        f"        {dim.id}: {{cites_evidence: false, names_improvement: false, "
+        f"justifies_level: false, catches_safety: false}}"
+        for dim in pk.dimensions
+    )
+    yaml_text = (
+        "cells:\n  - model: other\n    variant: other\n"
+        f"    fresh_scores: {{dimensions: {dims}, ko_fired: false, overall: Nein}}\n"
+        f"    critique:\n      dimensions:\n{crit}\n      summary: 'x'\n"
+        "recommendations: []\n"
+    )
+    r = _client(tmp_path).post(f"/judge-meta-ingest/{d.name}", data={"yaml_text": yaml_text})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert (d / "judge_quality.md").exists()
 
 
 def test_ingest_unjudged_400(tmp_path):
