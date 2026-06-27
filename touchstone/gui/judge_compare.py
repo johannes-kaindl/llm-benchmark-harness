@@ -61,7 +61,10 @@ def judge_quality_rows(runs_dir: Path) -> list[JudgeQualityRow]:
             continue  # a deleted bundle must not appear in the comparison
         try:
             fm = parse_frontmatter(p.read_text(encoding="utf-8"))
-        except OSError:
+        except (
+            OSError,
+            ValueError,
+        ):  # UnicodeDecodeError (a ValueError) on a non-UTF-8 file → skip, never crash
             continue
         if fm is None or fm.get("type") != "judge_quality":
             continue

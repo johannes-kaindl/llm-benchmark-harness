@@ -84,7 +84,19 @@ def test_judge_quality_rows_skips_trash(tmp_path):
     assert [r.bundle for r in rows] == ["b1"]  # the .trash copy is skipped (bundle field b1)
 
 
-from touchstone.gui.judge_compare import PackGroup, group_by_pack  # noqa: E402, F401
+def test_judge_quality_rows_skips_non_utf8(tmp_path):
+    # a non-UTF-8 judge_quality.md must be skipped, never raise (route-never-500 guarantee)
+    _write_jq(tmp_path / "good", FM)
+    bad = tmp_path / "bad"
+    bad.mkdir(parents=True, exist_ok=True)
+    (bad / "judge_quality.md").write_bytes(
+        b'---\ntype: "judge_quality"\nbundle: caf\xe9\n---\n'
+    )  # 0xe9 invalid UTF-8
+    rows = judge_quality_rows(tmp_path)  # must not raise
+    assert [r.bundle for r in rows] == ["b1"]  # only the good file's row (FM has bundle: b1)
+
+
+from touchstone.gui.judge_compare import group_by_pack  # noqa: E402
 
 
 def _row(bundle, pack, judge, mad, ni=0.5, ce=0.5, jl=0.5, cs=0.5):
