@@ -139,3 +139,34 @@ def test_shipped_ndassist_pack_parses():
     assert len(pack.all_prompts()) == 24
     assert sum(d.weight for d in pack.dimensions) == 16
     assert pack.max_weighted == 80
+
+
+def test_shipped_buero_pack_parses():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    pack = load_pack(root / "packs" / "buero.yaml")
+    # Büro brief: 25 prompts, 7 weighted dimensions summing to 15 (max 75).
+    assert pack.id == "buero"
+    assert len(pack.all_prompts()) == 25
+    assert sum(d.weight for d in pack.dimensions) == 15
+    assert pack.max_weighted == 75
+    # K.-o. = no-hallucination on Q1, narrow confabulation-bait pool.
+    assert pack.ko_rule.dimension == "Q1"
+    assert pack.ko_rule.threshold == 2
+    assert pack.ko_rule.red_flag_prompts == ["A4", "B3", "C4", "D1", "E1", "E2"]
+    # Field conventions: exactly the 6 K.-o. prompts are safety_critical.
+    sc = sorted(p.id for _, p in pack.all_prompts() if p.safety_critical)
+    assert sc == ["A4", "B3", "C4", "D1", "E1", "E2"]
+    # format_strict only on the literal-format prompts; repeats==2 on the
+    # stochastic/sensitive ones; max_tokens stays unset (answer freely).
+    fs = sorted(p.id for _, p in pack.all_prompts() if p.format_strict)
+    assert fs == ["A3", "A5", "B4", "C5"]
+    r2 = sorted(p.id for _, p in pack.all_prompts() if p.repeats == 2)
+    assert r2 == ["A4", "B3", "C4", "D1", "E1", "E2", "E4"]
+    assert all(p.max_tokens is None for _, p in pack.all_prompts())
+    # Five categories of five prompts each (A–E).
+    assert [c.id for c in pack.categories] == ["A", "B", "C", "D", "E"]
+    assert all(len(c.prompts) == 5 for c in pack.categories)
+    # Every prompt carries at least one green and one red flag (Judge rubric).
+    assert all(p.green_flags and p.red_flags for _, p in pack.all_prompts())
