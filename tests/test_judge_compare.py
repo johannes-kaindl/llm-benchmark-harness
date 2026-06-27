@@ -2,6 +2,7 @@ from pathlib import Path
 
 from touchstone.gui.judge_compare import (
     PACK_UNKNOWN,
+    JudgeQualityRow,
     judge_quality_rows,
     parse_frontmatter,
 )
@@ -81,3 +82,41 @@ def test_judge_quality_rows_skips_trash(tmp_path):
     _write_jq(tmp_path / ".trash" / "deleted", FM)
     rows = judge_quality_rows(tmp_path)
     assert [r.bundle for r in rows] == ["b1"]  # the .trash copy is skipped (bundle field b1)
+
+
+from touchstone.gui.judge_compare import PackGroup, group_by_pack  # noqa: E402, F401
+
+
+def _row(bundle, pack, judge, mad, ni=0.5, ce=0.5, jl=0.5, cs=0.5):
+    return JudgeQualityRow(bundle, pack, judge, mad, ni, ce, jl, cs)
+
+
+def test_group_by_pack_splits_and_picks_winners():
+    rows = [
+        _row("b1", "ndassist", "judgeA", 0.5, ce=0.8),
+        _row("b2", "ndassist", "judgeB", 0.2, ce=0.4),  # lower mean|Δ| → calibration winner
+        _row("b3", "buero", "judgeA", 0.9),
+    ]
+    groups = group_by_pack(rows)
+    assert [g.pack for g in groups] == ["buero", "ndassist"]  # sorted by pack
+    nd = next(g for g in groups if g.pack == "ndassist")
+    assert nd.winners["mean_abs_delta"] == "b2|judgeB"  # lower is better
+    assert nd.winners["cites_evidence_rate"] == "b1|judgeA"  # higher is better
+    buero = next(g for g in groups if g.pack == "buero")
+    assert buero.winners["mean_abs_delta"] == "b3|judgeA"  # sole row wins its group
+
+
+def test_group_by_pack_tie_no_winner():
+    rows = [_row("b1", "p", "jA", 0.5), _row("b2", "p", "jB", 0.5)]  # equal mean|Δ|
+    g = group_by_pack(rows)[0]
+    assert g.winners["mean_abs_delta"] is None  # tie → no trophy
+
+
+def test_group_by_pack_all_none_metric_no_winner():
+    rows = [
+        JudgeQualityRow("b1", "p", "jA", None, None, None, None, None),
+        JudgeQualityRow("b2", "p", "jB", 0.5, None, None, None, None),
+    ]
+    g = group_by_pack(rows)[0]
+    assert g.winners["cites_evidence_rate"] is None  # no scored values in this column
+    assert g.winners["mean_abs_delta"] == "b2|jB"  # only b2 has a value → sole winner

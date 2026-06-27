@@ -79,3 +79,45 @@ def judge_quality_rows(runs_dir: Path) -> list[JudgeQualityRow]:
         )
     rows.sort(key=lambda r: (r.pack, r.bundle, r.judge_model))
     return rows
+
+
+_HIGHER_IS_BETTER = [
+    "names_improvement_rate",
+    "cites_evidence_rate",
+    "justifies_level_rate",
+    "catches_safety_rate",
+]
+
+
+@dataclass
+class PackGroup:
+    pack: str
+    rows: list[JudgeQualityRow]
+    winners: dict[str, str | None]
+
+
+def _winner(rows: list[JudgeQualityRow], attr: str, higher: bool) -> str | None:
+    """The row.key with the best (max if higher else min) non-None value of attr, or None
+    if no row has a value or there is a tie (mirrors aggregate._winner: tie → no trophy)."""
+    scored = [(getattr(r, attr), r.key) for r in rows if getattr(r, attr) is not None]
+    if not scored:
+        return None
+    best = (max if higher else min)(v for v, _ in scored)
+    leaders = [k for v, k in scored if v == best]
+    return leaders[0] if len(leaders) == 1 else None
+
+
+def group_by_pack(rows: list[JudgeQualityRow]) -> list[PackGroup]:
+    """Group rows by pack (only same-pack rows are comparable) and pick a per-metric winner
+    within each group: mean_abs_delta lower = better, the rubric rates higher = better."""
+    by: dict[str, list[JudgeQualityRow]] = {}
+    for r in rows:
+        by.setdefault(r.pack, []).append(r)
+    groups: list[PackGroup] = []
+    for pack in sorted(by):
+        grp = by[pack]
+        winners: dict[str, str | None] = {"mean_abs_delta": _winner(grp, "mean_abs_delta", False)}
+        for metric in _HIGHER_IS_BETTER:
+            winners[metric] = _winner(grp, metric, True)
+        groups.append(PackGroup(pack=pack, rows=grp, winners=winners))
+    return groups
