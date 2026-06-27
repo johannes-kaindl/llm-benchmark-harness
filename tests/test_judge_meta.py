@@ -85,6 +85,7 @@ class _Ko:
 
 class _Pack:
     def __init__(self):
+        self.id = "ndassist"
         self.dimensions = [_Dim("Q1", 1), _Dim("Q2", 1)]
         self.ko_rule = _Ko()
 
@@ -252,3 +253,47 @@ def test_render_request_md_partA_blank_partB_visible(tmp_path):
     # Part B = the LOCAL judge's scorecard (visible scores+rationale)
     assert "## Master-Scorecard" in md
     assert "gut" in md  # the local rationale appears in Part B
+
+
+def test_render_judge_quality_md_frontmatter_enriched():
+    pk = _Pack()
+    local = [ModelReport(model="m", variant="baseline", dim_scores={"Q1": 4, "Q2": 5})]
+    rows = [{"model": "m", "variant": "baseline", "safety_passed": True}]
+    fresh = parse_meta_response(
+        "cells:\n  - model: m\n    variant: baseline\n"
+        "    fresh_scores: {dimensions: {Q1: 4, Q2: 2}, ko_fired: false, overall: Ja}\n"
+        "    critique:\n      dimensions:\n"
+        "        Q1: {cites_evidence: false, names_improvement: false, justifies_level: true, catches_safety: true}\n"
+        "      summary: ''\n"
+    )
+    agg = compute_agreement(pk, local, rows, fresh)
+    rub = aggregate_rubric(local, fresh)
+    detail = {
+        "run_dir": Path("runs/2026_eval_x"),
+        "manifest": {"judge": {"model": "j"}},
+        "pack": pk,
+    }
+    md = render_judge_quality_md(detail, agg, rub, fresh)
+    # enriched frontmatter: pack id + the 3 previously body-only rubric rates
+    assert "pack: ndassist" in md
+    # Q1 is the only scored critique dim (local<5): cites false→0/1, justifies true→1/1, safety true→1/1
+    assert "cites_evidence_rate: 0.0" in md
+    assert "justifies_level_rate: 1.0" in md
+    assert "catches_safety_rate: 1.0" in md
+
+
+def test_render_judge_quality_md_tolerates_missing_pack():
+    # An older caller may pass a detail without "pack" — must not raise; frontmatter pack: —
+    pk = _Pack()
+    local = [ModelReport(model="m", variant="baseline", dim_scores={"Q1": 4, "Q2": 5})]
+    rows = [{"model": "m", "variant": "baseline", "safety_passed": True}]
+    fresh = parse_meta_response(
+        "cells:\n  - model: m\n    variant: baseline\n"
+        "    fresh_scores: {dimensions: {Q1: 4, Q2: 2}, ko_fired: false, overall: Ja}\n"
+        "    critique: {dimensions: {}, summary: ''}\n"
+    )
+    agg = compute_agreement(pk, local, rows, fresh)
+    rub = aggregate_rubric(local, fresh)
+    detail = {"run_dir": Path("runs/x"), "manifest": {}}  # no "pack" key
+    md = render_judge_quality_md(detail, agg, rub, fresh)
+    assert "pack: —" in md

@@ -470,6 +470,15 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
                 diff = aggregate_mod.diff_rows(selected)
         return render("compare.html", request, pool=pool, diff=diff, active="compare")
 
+    @app.get("/compare-judges", response_class=HTMLResponse)
+    def compare_judges(request: Request) -> HTMLResponse:
+        """Cross-judge aggregate: judge_quality.md across bundles, grouped by pack, with a
+        per-metric winner per group. Read-only; scans runs_dir (no user path param)."""
+        from touchstone.gui import judge_compare
+
+        groups = judge_compare.group_by_pack(judge_compare.judge_quality_rows(runs_dir))
+        return render("compare_judges.html", request, groups=groups, active="compare")
+
     @app.get("/compare/{name}")
     def compare_axis(request: Request, name: str) -> RedirectResponse:
         qs = request.url.query

@@ -242,12 +242,21 @@ def render_judge_quality_md(
 
     bmad = agreement.bundle_mean_abs_delta
     ni_n, ni_t = rubric.names_improvement
+    ce_n, ce_t = rubric.cites_evidence
+    jl_n, jl_t = rubric.justifies_level
+    cs_n, cs_t = rubric.catches_safety
+    pack_obj = detail.get("pack")
+    pack_id = pack_obj.id if pack_obj is not None else "—"
     w("---")
     w('type: "judge_quality"')
     w(f"bundle: {bundle}")
+    w(f"pack: {pack_id}")
     w(f'judge_model: "{judge_model}"')
     w(f"mean_abs_delta: {bmad if bmad is not None else 'null'}")
     w(f"names_improvement_rate: {round(ni_n / ni_t, 2) if ni_t else 'null'}")
+    w(f"cites_evidence_rate: {round(ce_n / ce_t, 2) if ce_t else 'null'}")
+    w(f"justifies_level_rate: {round(jl_n / jl_t, 2) if jl_t else 'null'}")
+    w(f"catches_safety_rate: {round(cs_n / cs_t, 2) if cs_t else 'null'}")
     w("---\n")
 
     w(f"# Judge-Qualität — {bundle} · Judge `{judge_model}`\n")
