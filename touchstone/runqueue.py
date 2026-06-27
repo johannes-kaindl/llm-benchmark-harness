@@ -12,6 +12,8 @@ Named ``runqueue`` (not ``queue``) so it never shadows the stdlib ``queue`` modu
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -92,3 +94,42 @@ def _slug(s: str) -> str:
 def run_dir_for(ts: str, model_id: str, pack_id: str) -> str:
     """Deterministic bundle dir name (timestamp + sanitized model id + pack id)."""
     return f"{ts}_{_slug(model_id)}_eval_{_slug(pack_id)}"
+
+
+# ----------------------------------------------------------------- settle-wait
+@dataclass
+class SettleOutcome:
+    settled: bool  # True = RAM plateau reached; False = timed out
+    waited_s: float
+    final_mb: float
+    polls: int
+
+
+def wait_until_settled(
+    ram_poll: Callable[[], float],
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+    *,
+    settle: SettleSpec,
+) -> SettleOutcome:
+    """Poll system RAM until it plateaus (``|Δ| < epsilon_mb`` for ``plateau_polls`` polls in
+    a row) or ``timeout_s`` elapses. Condition-based, not a fixed sleep — so a freshly unloaded
+    endpoint's baseline tick lands on the settled (low) state. ``sleep`` advances ``clock`` in
+    tests."""
+    start = clock()
+    prev = ram_poll()
+    polls = 1
+    stable = 0
+    while True:
+        if clock() - start >= settle.timeout_s:
+            return SettleOutcome(False, clock() - start, prev, polls)
+        sleep(settle.poll_interval_s)
+        cur = ram_poll()
+        polls += 1
+        if abs(cur - prev) < settle.epsilon_mb:
+            stable += 1
+            if stable >= settle.plateau_polls:
+                return SettleOutcome(True, clock() - start, cur, polls)
+        else:
+            stable = 0
+        prev = cur

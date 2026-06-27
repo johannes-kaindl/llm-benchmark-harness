@@ -86,3 +86,50 @@ def test_run_dir_for_sanitizes_slashes():
         == "2026-06-27_2200_qwen-qwen3.6-27b_eval_buero"
     )
     assert rq.run_dir_for("t", "a/b", "p") == rq.run_dir_for("t", "a/b", "p")
+
+
+# ----------------------------------------------------------- Task 2: settle-wait
+def _fake_time():
+    t = {"now": 0.0}
+
+    def clock() -> float:
+        return t["now"]
+
+    def sleep(s: float) -> None:
+        t["now"] += s
+
+    return clock, sleep, t
+
+
+def test_settle_reaches_plateau():
+    vals = iter([5000, 4000, 3000, 2980, 2975, 2972])  # drops then flattens
+    clock, sleep, _ = _fake_time()
+    out = rq.wait_until_settled(
+        lambda: next(vals),
+        sleep,
+        clock,
+        settle=rq.SettleSpec(timeout_s=100, plateau_polls=2, poll_interval_s=2, epsilon_mb=50),
+    )
+    assert out.settled is True
+    # deltas 3000->2980 (20) and 2980->2975 (5) are the first two-in-a-row < epsilon -> settle
+    # at 2975 (poll #5), without consuming the trailing 2972.
+    assert out.final_mb == 2975
+    assert out.polls == 5
+
+
+def test_settle_times_out_when_never_stable():
+    n = {"v": 9000.0}
+
+    def ram() -> float:
+        n["v"] -= 1000  # always drops > epsilon
+        return n["v"]
+
+    clock, sleep, _ = _fake_time()
+    out = rq.wait_until_settled(
+        ram,
+        sleep,
+        clock,
+        settle=rq.SettleSpec(timeout_s=6, plateau_polls=3, poll_interval_s=2, epsilon_mb=50),
+    )
+    assert out.settled is False
+    assert out.waited_s >= 6
