@@ -80,6 +80,19 @@ def test_load_queue_no_entries_raises(tmp_path: Path):
         rq.load_queue(q)
 
 
+def test_load_queue_rejects_duplicate_entries(tmp_path: Path):
+    # same (config, pack, model) twice would map to the SAME bundle dir -> silent overwrite
+    cfg, pack = _cfg(tmp_path), _pack(tmp_path)
+    q = _write(
+        tmp_path / "q.yaml",
+        f"entries:\n"
+        f"  - config: {cfg}\n    pack: {pack}\n    model: dup\n"
+        f"  - config: {cfg}\n    pack: {pack}\n    model: dup\n",
+    )
+    with pytest.raises(ValueError, match="duplicate"):
+        rq.load_queue(q)
+
+
 def test_run_dir_for_sanitizes_slashes():
     assert (
         rq.run_dir_for("2026-06-27_2200", "qwen/qwen3.6-27b", "buero")
@@ -413,3 +426,80 @@ def test_run_queue_resumes_prior(tmp_path: Path):
         prior=prior,
     )
     assert seen == ["eval", "judge"]  # only entry 1 ran
+
+
+# --------------------------------------- Task 7: real reset / step / prior-results
+def test_run_reset_handles_missing_binary():
+    assert rq.run_reset("definitely-not-a-real-binary-xyz --flags") is False
+
+
+def test_run_reset_empty_is_noop():
+    assert rq.run_reset("") is True
+
+
+def test_run_reset_ok():
+    class R:
+        returncode = 0
+
+    assert rq.run_reset("whatever args", runner=lambda *a, **k: R()) is True
+
+
+def test_run_reset_nonzero_is_false():
+    class R:
+        returncode = 3
+
+    assert rq.run_reset("whatever", runner=lambda *a, **k: R()) is False
+
+
+def test_make_run_step_timeout_kills(tmp_path: Path):
+    import subprocess
+
+    class FakePopen:
+        def __init__(self, argv, **k):
+            self.argv = argv
+            self.returncode = None
+            self.killed = False
+
+        def wait(self, timeout=None):
+            if timeout is not None and not self.killed:
+                raise subprocess.TimeoutExpired(self.argv, timeout)
+            self.returncode = -9
+            return -9
+
+        def terminate(self):
+            pass
+
+        def kill(self):
+            self.killed = True
+
+    step = rq.make_run_step(clock=lambda: 0.0, popen=FakePopen, grace_s=0)
+    out = step("eval", ["x"], 1.0, tmp_path)
+    assert out.status == "timeout"
+
+
+def test_make_run_step_ok_when_artifacts_present(tmp_path: Path):
+    (tmp_path / "responses.jsonl").write_text("{}\n", encoding="utf-8")
+
+    class FakePopen:
+        def __init__(self, argv, **k):
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            return 0
+
+    step = rq.make_run_step(clock=lambda: 0.0, popen=FakePopen)
+    assert step("eval", ["x"], 10.0, tmp_path).status == "ok"
+
+
+def test_load_prior_results_roundtrip(tmp_path: Path):
+    qd = tmp_path / "q"
+    res = [rq.EntryResult(0, "a/b", "c", "p", "runs/x", "ok", "ok", 1.0, 2.0)]
+    rq._write_summary(qd, rq.QueueSpec(entries=[]), res, "ISO")
+    back = rq.load_prior_results(qd)
+    assert back[0].model_id == "a/b"
+    assert back[0].eval_status == "ok"
+    assert back[0].eval_seconds == 1.0
+
+
+def test_load_prior_results_missing_is_empty(tmp_path: Path):
+    assert rq.load_prior_results(tmp_path / "nope") == []

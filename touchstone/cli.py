@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import csv
 import json
+import sys
 import time
 import webbrowser
 from collections.abc import Callable, Iterator
@@ -24,6 +25,7 @@ from touchstone import aggregate as aggregate_mod
 from touchstone import events as events_mod
 from touchstone import hostinfo, report
 from touchstone import judge_events as judge_events_mod
+from touchstone import runqueue as rq
 from touchstone import scorecard as scorecard_mod
 from touchstone.client import OpenAIStreamClient
 from touchstone.config import Config, apply_models_override, load_config
@@ -927,6 +929,50 @@ def gui(
         )
         raise typer.Exit(code=1) from None
     serve(runs_dir=runs, port=port, open_browser=not no_open)
+
+
+@app.command(name="queue")
+def queue_cmd(
+    queue_file: Path = typer.Option(..., "--queue", "-q", exists=True, help="queue.yaml"),
+    resume: Path | None = typer.Option(
+        None, "--resume", help="continue an existing runs/<ts>_queue dir (skip completed entries)"
+    ),
+) -> None:
+    """Run several models overnight, sequentially: per entry reset→settle→eval→[judge]."""
+    spec = rq.load_queue(queue_file)
+    output_dir = Path("./runs")
+    if resume is not None:
+        queue_dir = resume
+        prior = rq.load_prior_results(queue_dir)
+        ts = queue_dir.name.replace("_queue", "")
+        console.print(f"[bold]touchstone queue[/] (resume) → [cyan]{queue_dir}[/]")
+    else:
+        ts = _timestamp()
+        queue_dir = output_dir / f"{ts}_queue"
+        prior = []
+        console.print(
+            f"[bold]touchstone queue[/] → [cyan]{queue_dir}[/] ({len(spec.entries)} Einträge)"
+        )
+    results = rq.run_queue(
+        spec,
+        queue_dir=queue_dir,
+        output_dir=output_dir,
+        python=sys.executable,
+        run_step=rq.make_run_step(clock=time.monotonic),
+        reset_run=rq.run_reset,
+        ram_poll=rq.default_ram_poll,
+        sleep=time.sleep,
+        clock=time.monotonic,
+        ts=ts,
+        started_iso=datetime.now().isoformat(timespec="seconds"),
+        prior=prior,
+        log=lambda m: console.print(f"[yellow]{m}[/]"),
+    )
+    ok = sum(1 for r in results if r.eval_status == "ok")
+    console.print(
+        f"[green]Queue fertig[/] — {ok}/{len(results)} eval ok · "
+        f"Summary: [cyan]{queue_dir / 'summary.md'}[/]"
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

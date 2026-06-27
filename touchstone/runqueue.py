@@ -13,9 +13,12 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -77,6 +80,7 @@ def load_queue(path: str | Path) -> QueueSpec:
         raise ValueError(f"invalid queue.yaml: {e}") from e
     if not spec.entries:
         raise ValueError("queue.yaml has no entries")
+    seen: set[tuple[str, str, str]] = set()
     for i, entry in enumerate(spec.entries):
         if not entry.config.exists():
             raise ValueError(f"entry {i}: config not found: {entry.config}")
@@ -84,6 +88,12 @@ def load_queue(path: str | Path) -> QueueSpec:
             raise ValueError(f"entry {i}: pack not found: {entry.pack}")
         if entry.judge_config is not None and not entry.judge_config.exists():
             raise ValueError(f"entry {i}: judge_config not found: {entry.judge_config}")
+        # (config, pack, model) must be unique — two equal entries map to the same bundle dir
+        # and would silently overwrite each other mid-night.
+        key = (str(entry.config), str(entry.pack), entry.model.id)
+        if key in seen:
+            raise ValueError(f"entry {i}: duplicate (config, pack, model): {key}")
+        seen.add(key)
     return spec
 
 
@@ -374,3 +384,94 @@ def run_queue(
         results.append(r)
         _write_summary(queue_dir, spec, results, started_iso)
     return results
+
+
+# ----------------------------------- real wiring (subprocess / psutil / resume)
+def default_ram_poll() -> float:
+    """System used memory in MB (mirrors sampler.sample_once's sys_used_mb)."""
+    import psutil
+
+    return psutil.virtual_memory().used / (1024 * 1024)
+
+
+def run_reset(command: str, *, runner: Callable[..., object] = subprocess.run) -> bool:
+    """Run the between-entries reset command (e.g. ``lms unload --all``). True iff it exited 0.
+    An empty command is a no-op (True). Never raises — a missing binary / OS error → False."""
+    if not command.strip():
+        return True
+    try:
+        result = runner(shlex.split(command), capture_output=True, timeout=120)
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return False
+    return getattr(result, "returncode", 1) == 0
+
+
+def _artifacts_ok(kind: str, bundle: Path) -> bool:
+    if kind == "eval":
+        return (bundle / "responses.jsonl").exists()
+    return (bundle / "reports.jsonl").exists() and (bundle / "scores.csv").exists()
+
+
+class _Proc(Protocol):
+    returncode: int | None
+
+    def wait(self, timeout: float | None = ...) -> int: ...
+    def terminate(self) -> None: ...
+    def kill(self) -> None: ...
+
+
+def make_run_step(
+    *,
+    clock: Callable[[], float],
+    popen: Callable[..., _Proc] = subprocess.Popen,
+    grace_s: float = 10,
+) -> RunStep:
+    """Build the real ``run_step``: spawn the argv, wait up to ``timeout_s``; on timeout escalate
+    terminate -> (grace) -> kill; classify by exit code + finalize artifacts. Completion is the
+    process EXIT (+ artifacts), never a progress bar — so the holistic judge phase (which emits
+    no events) can't be mistaken for 'done' or 'hung'."""
+
+    def run_step(kind: str, argv: list[str], timeout_s: float, bundle: Path) -> StepOutcome:
+        start = clock()
+        proc = popen(argv)
+        timed_out = False
+        try:
+            proc.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            proc.terminate()
+            try:
+                proc.wait(timeout=grace_s)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+        status = classify_step(proc.returncode, timed_out, _artifacts_ok(kind, bundle))
+        return StepOutcome(status, clock() - start)
+
+    return run_step
+
+
+def load_prior_results(queue_dir: str | Path) -> list[EntryResult]:
+    """Reconstruct EntryResults from a queue dir's ``summary.json`` (for ``--resume``).
+    Missing/unreadable file → empty list."""
+    p = Path(queue_dir) / "summary.json"
+    if not p.exists():
+        return []
+    obj = json.loads(p.read_text(encoding="utf-8"))
+    out: list[EntryResult] = []
+    for e in obj.get("entries", []):
+        out.append(
+            EntryResult(
+                index=int(e["index"]),
+                model_id=e["model_id"],
+                config=e["config"],
+                pack=e["pack"],
+                bundle_dir=e["bundle_dir"],
+                eval_status=e["eval_status"],
+                judge_status=e["judge_status"],
+                eval_seconds=float(e["eval_seconds"]),
+                judge_seconds=float(e["judge_seconds"]),
+                error=e.get("error", ""),
+            )
+        )
+    return out
