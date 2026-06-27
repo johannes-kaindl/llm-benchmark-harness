@@ -316,6 +316,54 @@ def create_app(*, runs_dir: Path, registry: RunRegistry) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="{fname}"'},
         )
 
+    @app.get("/export-judge-meta-request/{name}")
+    def export_judge_meta_request(name: str) -> Any:
+        """Stream the judge-quality request markdown (Teil A blank fresh-scoring + Teil B the
+        local judge's rationales) for a judged bundle — to hand to an external cloud AI.
+        Stream-only: nothing is written to the bundle (the filled response returns via ingest)."""
+        from touchstone.gui import judge_meta
+
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
+            raise HTTPException(status_code=404)
+        detail = bundles.bundle_detail(rd)
+        if detail is None:
+            raise HTTPException(status_code=404)
+        if not detail.get("reports"):
+            raise HTTPException(
+                status_code=400, detail="Bundle ohne Judge-Bewertung — erst touchstone judge"
+            )
+        md = judge_meta.render_request_md(detail)
+        return Response(
+            md,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="judge_meta_request.md"'},
+        )
+
+    @app.get("/export-judge-meta-template/{name}")
+    def export_judge_meta_template(name: str) -> Any:
+        """Stream the empty judge_meta_response.yaml skeleton (one entry per cell × pack
+        dimension) the cloud AI fills. Stream-only."""
+        from touchstone.gui import judge_meta
+
+        rd = (runs_dir / name).resolve()
+        if not rd.is_relative_to(runs_dir.resolve()) or not rd.is_dir():
+            raise HTTPException(status_code=404)
+        detail = bundles.bundle_detail(rd)
+        if detail is None:
+            raise HTTPException(status_code=404)
+        if not detail.get("reports"):
+            raise HTTPException(
+                status_code=400, detail="Bundle ohne Judge-Bewertung — erst touchstone judge"
+            )
+        cells = sorted({(r.model, r.variant) for r in detail["reports"]})
+        body = judge_meta.empty_response_template(detail["pack"], cells)
+        return Response(
+            body,
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": 'attachment; filename="judge_meta_response.yaml"'},
+        )
+
     @app.get("/result/{name}", response_class=HTMLResponse)
     def result(
         request: Request,
