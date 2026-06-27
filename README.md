@@ -54,7 +54,8 @@ weighted dimensions + a safety knock-out + system-prompt variants) deterministic
 machine under test, capturing answers and tech-specs; `judge` then scores them with a pluggable
 LLM-as-judge into a weighted scorecard (`aggregate` rolls many bundles into one Hardware×Quality
 table). Generation and judging are **two decoupled phases**, both incremental and resumable.
-A new use case is a new YAML, not new code.
+A new use case is a new YAML, not new code. Two packs ship today: `ndassist`
+(Neurodivergenz-Assistent) and `buero` (Büro-/Wissensarbeit-Assistent).
 
 **Web control-center (`touchstone gui`).** An optional local FastAPI server (the `[gui]` extra —
 build-free HTMX/Alpine, isolated from the measurement core) puts the whole workflow in the

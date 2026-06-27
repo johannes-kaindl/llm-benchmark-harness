@@ -65,8 +65,10 @@ loadview.py latest host-load snapshot from resources.jsonl (used by the eval vie
 The qualitative half is **two decoupled phases**: `eval` (deterministic, on the
 machine under test — fills tech-specs, leaves quality blank) and `judge` (optional,
 non-deterministic — fills quality from the captured answers). A use-case is a **pack**
-(`packs/*.yaml`); a new use case is a new YAML, no code. `packs/ndassist.yaml` is the
-first one (Neurodivergenz-Assistent, 24 prompts). Both phases are **incremental +
+(`packs/*.yaml`); a new use case is a new YAML, no code. Two packs ship:
+`packs/ndassist.yaml` (Neurodivergenz-Assistent, 24 prompts, safety K.-o.) and
+`packs/buero.yaml` (Büro-/Wissensarbeit-Assistent, 25 prompts, K.-o. = no-hallucination
+on faktische Zuverlässigkeit). Both phases are **incremental +
 resumable**: answers/verdicts are appended as they finish, so an interrupted run is
 continued with `eval --resume <bundle>` (or just re-running `judge`) — done cells are
 skipped, a half-written final line is tolerated.

@@ -54,7 +54,8 @@ gewichtete Dimensionen + Sicherheits-K.-o. + System-Prompt-Varianten) auf der Te
 erfasst Antworten + Tech-Specs; `judge` bewertet sie dann mit einem pluggable LLM-as-judge zu
 einer gewichteten Scorecard (`aggregate` rollt viele Bundles in eine Hardware×Qualität-Tabelle).
 Generierung und Bewertung sind **zwei entkoppelte Phasen**, beide inkrementell und fortsetzbar.
-Ein neuer Use-Case ist ein neues YAML, kein neuer Code.
+Ein neuer Use-Case ist ein neues YAML, kein neuer Code. Mitgeliefert sind zwei Packs:
+`ndassist` (Neurodivergenz-Assistent) und `buero` (Büro-/Wissensarbeit-Assistent).
 
 **Web-Steuerzentrale (`touchstone gui`).** Ein optionaler lokaler FastAPI-Server (das `[gui]`-Extra
 — build-freies HTMX/Alpine, vom Mess-Kern isoliert) bringt den ganzen Ablauf in den Browser:
