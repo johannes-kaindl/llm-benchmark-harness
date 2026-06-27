@@ -20,6 +20,29 @@ def test_config_models_parses_models(tmp_path):
     assert specs[1].max_tokens_default == 400
 
 
+def test_config_summaries_extracts_endpoint_machine_engine(tmp_path):
+    c = _write(
+        tmp_path / "config.x.yaml",
+        "endpoint:\n  base_url: 'http://localhost:1234/v1'\n  api_key: 'secret'\n"
+        "machine: 'M5-64GB'\nengine: 'lm-studio'\nmodels:\n  - {id: 'a'}\n",
+    )
+    s = configs.config_summaries([c])[c]
+    assert s == {
+        "machine": "M5-64GB",
+        "engine": "lm-studio",
+        "base_url": "http://localhost:1234/v1",
+    }
+    assert "secret" not in str(s)  # the api_key is never surfaced
+
+
+def test_config_summaries_tolerates_missing_fields_and_bad_files(tmp_path):
+    minimal = _write(tmp_path / "config.min.yaml", "machine: m\nmodels:\n  - {id: 'a'}\n")
+    broken = _write(tmp_path / "config.broken.yaml", "endpoint: [not, a, mapping\n")
+    out = configs.config_summaries([minimal, broken])
+    assert out[minimal] == {"machine": "m", "engine": "", "base_url": ""}  # missing → empty strings
+    assert broken not in out  # malformed YAML is skipped, never raises
+
+
 def test_models_by_config_carries_thinking_fields(tmp_path):
     # the picker template embeds models_by_config as JSON; the thinking knobs must travel with it
     # so the JS can forward them into models_json (GUI eval start).
