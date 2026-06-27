@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title_suffix %} · Judge-Vergleich{% endblock %}
+{% block breadcrumb %}
+<nav class="breadcrumb muted text-sm"><a href="/compare">Vergleich</a> › Judge-Qualität</nav>
+{% endblock %}
+{% block body %}
+<div class="page-header">
+  <h1 class="page-title">Judge-Qualität vergleichen</h1>
+  <span class="muted text-sm">welches Modell ist der bessere Judge — pro Pack</span>
+</div>
+
+{% if not groups %}
+<div class="card">
+  <p class="muted">Noch keine <code>judge_quality.md</code> vorhanden. Erzeuge sie über die Karte
+  „Judge-Qualität (Meta-Eval)" auf einer Ergebnisseite (judge-meta Export → Cloud-KI → Einlesen).</p>
+</div>
+{% else %}
+{% for g in groups %}
+<div class="card">
+  <div class="card-title">Pack: {{ g.pack }}</div>
+  <p class="muted text-xs" style="margin-bottom:0.5rem">
+    Vergleichbar nur bei gleichem Pack + gleicher Cloud-Referenz. 🏆 = bester Wert in dieser Spalte
+    (niedrigstes mean|Δ|, höchste Raten); Gleichstand → keine Markierung.
+  </p>
+  <table class="bundle-table">
+    <thead>
+      <tr>
+        <th>Bundle</th>
+        <th>Judge-Modell</th>
+        <th>mean|Δ|</th>
+        <th>Verbesserung benannt</th>
+        <th>Belege</th>
+        <th>Höhe begründet</th>
+        <th>Sicherheit</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in g.rows %}
+      <tr>
+        <td>{{ r.bundle }}</td>
+        <td>{{ r.judge_model }}</td>
+        <td>{% if r.mean_abs_delta is not none %}{{ r.mean_abs_delta }}{% if g.winners.mean_abs_delta == r.key %} 🏆{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.names_improvement_rate is not none %}{{ (r.names_improvement_rate * 100) | round | int }}%{% if g.winners.names_improvement_rate == r.key %} 🏆{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.cites_evidence_rate is not none %}{{ (r.cites_evidence_rate * 100) | round | int }}%{% if g.winners.cites_evidence_rate == r.key %} 🏆{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.justifies_level_rate is not none %}{{ (r.justifies_level_rate * 100) | round | int }}%{% if g.winners.justifies_level_rate == r.key %} 🏆{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r.catches_safety_rate is not none %}{{ (r.catches_safety_rate * 100) | round | int }}%{% if g.winners.catches_safety_rate == r.key %} 🏆{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}
