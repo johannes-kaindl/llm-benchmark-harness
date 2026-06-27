@@ -281,7 +281,8 @@ def test_result_page_shows_judge_meta_card_when_judged(tmp_path):
 def test_result_page_hides_judge_meta_card_when_unjudged(tmp_path):
     d = tmp_path / "2026_eval_nd"
     _judged_bundle(d)
-    (d / "reports.jsonl").unlink()  # strip the judging → eval-only bundle
+    (d / "reports.jsonl").unlink()
+    (d / "scores.csv").unlink()  # remove the scores.csv fallback too → genuinely unjudged
     r = _client(tmp_path).get(f"/result/{d.name}")
     assert r.status_code == 200
     assert "Judge-Qualität (Meta-Eval)" not in r.text

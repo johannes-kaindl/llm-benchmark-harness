@@ -477,7 +477,7 @@
 {% endif %}
 
 {# ── Judge-Qualität (Meta-Eval) ────────────────────────────────────────────── #}
-{% if detail and (run_dir / "reports.jsonl").exists() %}
+{% if detail and detail.reports %}
 <div class="card" x-data="judgeMeta('{{ run_dir.name }}')">
   <div class="card-title">Judge-Qualität (Meta-Eval)</div>
   <p class="muted text-sm" style="margin-bottom:0.5rem">
