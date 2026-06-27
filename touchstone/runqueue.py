@@ -11,6 +11,7 @@ Named ``runqueue`` (not ``queue``) so it never shadows the stdlib ``queue`` modu
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -133,3 +134,51 @@ def wait_until_settled(
         else:
             stable = 0
         prev = cur
+
+
+# ----------------------------------------------- argv builders + step classifier
+def build_eval_argv(entry: QueueEntry, bundle_dir: Path, *, python: str) -> list[str]:
+    """``python -m touchstone eval`` argv for one entry (exactly one model via --models-json)."""
+    return [
+        python,
+        "-m",
+        "touchstone",
+        "eval",
+        "--config",
+        str(entry.config),
+        "--pack",
+        str(entry.pack),
+        "--models-json",
+        json.dumps([entry.model.model_dump()]),
+        "--run-dir",
+        str(bundle_dir),
+        "--emit-events",
+    ]
+
+
+def build_judge_argv(entry: QueueEntry, bundle_dir: Path, *, python: str) -> list[str]:
+    """``python -m touchstone judge`` argv for one entry's bundle (judge_config must be set)."""
+    argv = [
+        python,
+        "-m",
+        "touchstone",
+        "judge",
+        "--bundle",
+        str(bundle_dir),
+        "--judge-config",
+        str(entry.judge_config),
+        "--emit-events",
+    ]
+    if entry.judge_model:
+        argv += ["--judge-model", entry.judge_model]
+    return argv
+
+
+def classify_step(returncode: int | None, timed_out: bool, artifacts_ok: bool) -> str:
+    """A step is ``timeout`` if killed, ``failed`` on non-zero exit or missing finalize
+    artifacts (exit 0 alone is not enough), else ``ok``."""
+    if timed_out:
+        return "timeout"
+    if returncode != 0:
+        return "failed"
+    return "ok" if artifacts_ok else "failed"

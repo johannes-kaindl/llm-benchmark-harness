@@ -133,3 +133,56 @@ def test_settle_times_out_when_never_stable():
     )
     assert out.settled is False
     assert out.waited_s >= 6
+
+
+# ----------------------------------------------- Task 3: argv builders + classify
+def _entry(tmp_path: Path) -> rq.QueueEntry:
+    return rq.QueueEntry(
+        config=_cfg(tmp_path),
+        pack=_pack(tmp_path),
+        model={"id": "a/b"},
+        judge_config=_write(tmp_path / "j.yaml", "model: jm\n"),
+        judge_model="jm",
+    )
+
+
+def test_build_eval_argv(tmp_path: Path):
+    import json
+
+    e = _entry(tmp_path)
+    argv = rq.build_eval_argv(e, tmp_path / "bundle", python="PY")
+    assert argv[:4] == ["PY", "-m", "touchstone", "eval"]
+    mj = argv[argv.index("--models-json") + 1]
+    assert json.loads(mj) == [
+        {
+            "id": "a/b",
+            "quant": "",
+            "max_tokens_default": 400,
+            "reasoning_headroom_tokens": 0,
+            "extra_body": {},
+        }
+    ]
+    assert "--emit-events" in argv
+    assert argv[argv.index("--run-dir") + 1] == str(tmp_path / "bundle")
+
+
+def test_build_judge_argv_with_model_override(tmp_path: Path):
+    e = _entry(tmp_path)
+    argv = rq.build_judge_argv(e, tmp_path / "bundle", python="PY")
+    assert argv[:4] == ["PY", "-m", "touchstone", "judge"]
+    assert argv[argv.index("--bundle") + 1] == str(tmp_path / "bundle")
+    assert argv[argv.index("--judge-model") + 1] == "jm"
+
+
+def test_build_judge_argv_without_model_override(tmp_path: Path):
+    e = _entry(tmp_path)
+    e.judge_model = ""
+    argv = rq.build_judge_argv(e, tmp_path / "bundle", python="PY")
+    assert "--judge-model" not in argv
+
+
+def test_classify_step():
+    assert rq.classify_step(None, True, False) == "timeout"
+    assert rq.classify_step(1, False, True) == "failed"
+    assert rq.classify_step(0, False, False) == "failed"  # exit 0 but artifacts missing
+    assert rq.classify_step(0, False, True) == "ok"
