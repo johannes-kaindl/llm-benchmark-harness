@@ -184,6 +184,9 @@ def test_build_eval_argv(tmp_path: Path):
     ]
     assert "--emit-events" in argv
     assert argv[argv.index("--run-dir") + 1] == str(tmp_path / "bundle")
+    # never --resume: eval ignores --models-json on resume, so a queue retry MUST be a fresh
+    # --run-dir run for the entry's model (else the matrix rebuilds from config.models = wrong model)
+    assert "--resume" not in argv
 
 
 def test_build_judge_argv_with_model_override(tmp_path: Path):
@@ -592,6 +595,22 @@ def test_shipped_queue_example_validates():
     assert len(spec.entries) >= 1
 
 
+def test_shipped_queue_example_references_only_tracked_files():
+    # the example must validate on a FRESH clone — every referenced file must be git-tracked,
+    # not merely exist locally (a local gitignored judge.yaml once masked exactly this blocker).
+    import subprocess
+
+    out = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True)
+    tracked = set(out.stdout.split())
+    spec = rq.load_queue("queue.example.yaml")
+    for e in spec.entries:
+        for p in (e.config, e.pack, e.judge_config):
+            if p is not None:
+                assert str(p) in tracked, (
+                    f"{p} (referenced by queue.example.yaml) is not git-tracked"
+                )
+
+
 # ------------------------------------------------- review fixes: robustness gaps
 def test_load_prior_results_corrupt_returns_empty(tmp_path: Path):
     qd = tmp_path / "q"
@@ -600,12 +619,66 @@ def test_load_prior_results_corrupt_returns_empty(tmp_path: Path):
     assert rq.load_prior_results(qd) == []  # half-written file -> [] (resume degrades, no crash)
 
 
-def test_build_eval_argv_resume_uses_resume_flag(tmp_path: Path):
-    e = _entry(tmp_path)
-    argv = rq.build_eval_argv(e, tmp_path / "bundle", python="PY", resume=True)
-    assert "--resume" in argv
-    assert "--run-dir" not in argv  # --resume targets the bundle dir on its own
-    assert argv[argv.index("--resume") + 1] == str(tmp_path / "bundle")
+def test_run_queue_retry_eval_uses_run_dir_not_resume(tmp_path: Path):
+    # a retried entry whose partial bundle already has responses.jsonl must STILL spawn a fresh
+    # --run-dir eval (not --resume): eval drops --models-json on resume -> wrong/mixed-model bundle.
+    spec = _spec_two(tmp_path, judge=False)
+    bundle0 = tmp_path / "runs" / rq.run_dir_for("T", "a/b", "pk", 0)
+    bundle0.mkdir(parents=True)
+    (bundle0 / "responses.jsonl").write_text("{}\n", encoding="utf-8")
+    prior = [
+        rq.EntryResult(0, "a/b", "c", "p", str(bundle0), "failed", "skipped"),
+        rq.EntryResult(1, "c/d", "c", "p", "runs/y", "ok", "skipped"),
+    ]
+    captured: list[list[str]] = []
+
+    def run_step(kind, argv, timeout, bundle):
+        if kind == "eval":
+            captured.append(argv)
+        return rq.StepOutcome("ok", 1.0)
+
+    rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=run_step,
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+        prior=prior,
+    )
+    assert len(captured) == 1  # only entry 0 retried
+    assert "--run-dir" in captured[0]
+    assert "--resume" not in captured[0]
+
+
+def test_run_queue_drops_out_of_range_prior(tmp_path: Path):
+    # an unsupported flow (queue.yaml shrank between crash and resume) must not make done > total
+    spec = _spec_two(tmp_path, judge=False)  # indices 0, 1
+    prior = [
+        rq.EntryResult(0, "a/b", "c", "p", "runs/x", "ok", "skipped"),
+        rq.EntryResult(1, "c/d", "c", "p", "runs/y", "ok", "skipped"),
+        rq.EntryResult(2, "gone/m", "c", "p", "runs/z", "ok", "skipped"),  # no longer in spec
+    ]
+    res = rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=lambda *a: rq.StepOutcome("ok", 1.0),
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+        prior=prior,
+    )
+    assert {r.index for r in res} == {0, 1}  # out-of-range index 2 dropped
 
 
 def test_run_queue_resume_retry_replaces_row(tmp_path: Path):

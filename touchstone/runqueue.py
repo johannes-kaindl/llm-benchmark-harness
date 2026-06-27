@@ -151,13 +151,12 @@ def wait_until_settled(
 
 
 # ----------------------------------------------- argv builders + step classifier
-def build_eval_argv(
-    entry: QueueEntry, bundle_dir: Path, *, python: str, resume: bool = False
-) -> list[str]:
+def build_eval_argv(entry: QueueEntry, bundle_dir: Path, *, python: str) -> list[str]:
     """``python -m touchstone eval`` argv for one entry (exactly one model via --models-json).
-    ``resume=True`` targets the bundle dir via ``--resume`` (continue a partial matrix instead of
-    restarting from 0%); otherwise ``--run-dir`` is used for a fresh bundle."""
-    target_flag = "--resume" if resume else "--run-dir"
+    Always ``--run-dir`` (a fresh run), NEVER ``eval --resume``: eval drops ``--models-json`` on
+    resume (the model override only applies on a non-resume start), so a per-eval ``--resume``
+    would rebuild the matrix from ``config.models`` — the wrong model — and corrupt the bundle.
+    Queue resume is therefore entry-granular: an incomplete eval is re-run from scratch."""
     return [
         python,
         "-m",
@@ -169,7 +168,7 @@ def build_eval_argv(
         str(entry.pack),
         "--models-json",
         json.dumps([entry.model.model_dump()]),
-        target_flag,
+        "--run-dir",
         str(bundle_dir),
         "--emit-events",
     ]
@@ -367,8 +366,10 @@ def run_queue(
     results: list[EntryResult] = list(prior or [])
     todo = entries_to_run(spec, results)
     rerun = {i for i, _ in todo}
-    # resume must REPLACE a retried entry's stale row, not append a duplicate (else done > total)
-    results = [r for r in results if r.index not in rerun]
+    # resume must REPLACE a retried entry's stale row, not append a duplicate (else done > total);
+    # also drop any prior row whose index is out of the current spec (queue.yaml shrank → no entry).
+    n = len(spec.entries)
+    results = [r for r in results if r.index not in rerun and r.index < n]
     pack_cache: dict[Path, str] = {}
     for i, entry in todo:
         rv = resolve_entry(entry, spec.defaults)
@@ -385,16 +386,13 @@ def run_queue(
             sleep(rv.cooldown_s)
         # 2. eval. NOTE: queue-spawned eval/judge run as plain CLI subprocesses and do NOT take the
         # GUI one-run sentinel lock (RunRegistry) — coexistence with a hand-triggered GUI run is a
-        # deferred v2 concern (see spec "Koexistenz mit der GUI-One-Run-Lock").
+        # deferred v2 concern (see spec "Koexistenz mit der GUI-One-Run-Lock"). A retried entry
+        # re-runs its eval from scratch (fresh --run-dir) — see build_eval_argv for why per-eval
+        # --resume is unsafe here (it would drop the model override).
         bundle = output_dir / run_dir_for(ts, entry.model.id, _pack_id(entry.pack, pack_cache), i)
-        # a prior partial bundle (timed-out/failed eval) -> --resume continues it instead of 0%
-        resuming_eval = (bundle / "responses.jsonl").exists()
         r = EntryResult(i, entry.model.id, str(entry.config), str(entry.pack), str(bundle))
         ev = run_step(
-            "eval",
-            build_eval_argv(entry, bundle, python=python, resume=resuming_eval),
-            rv.eval_timeout_s,
-            bundle,
+            "eval", build_eval_argv(entry, bundle, python=python), rv.eval_timeout_s, bundle
         )
         r.eval_status, r.eval_seconds = ev.status, ev.seconds
         # 3. judge (only if eval ok and a judge_config is set)

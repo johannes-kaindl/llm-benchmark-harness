@@ -73,8 +73,8 @@ entries:
   - config: config.m5-lmstudio.yaml
     pack:   packs/buero.yaml
     model:  { id: "google/gemma-4-12b" }          # genau EIN ModelSpec; String-Kurzform erlaubt
-    judge_config: judge.example.yaml   # die committe Beispiel-Datei (judge.yaml ist gitignored)                       # weglassen → nur eval, kein judge
-    judge_model:  "qwen/qwen3.6-27b"               # optional, überschreibt judge.yaml-Modell
+    judge_config: judge.example.yaml               # committe Beispieldatei (judge.yaml ist gitignored); weglassen → nur eval
+    judge_model:  "qwen/qwen3.6-27b"               # optional, überschreibt das judge-Modell
   - config: config.m5-lmstudio.yaml
     pack:   packs/buero.yaml
     model:  { id: "qwen/qwen3.6-27b", reasoning_headroom_tokens: 2000 }
