@@ -159,6 +159,19 @@ class Pack(BaseModel):
         variant_ids = [v.id for v in self.prompt_variants]
         if len(variant_ids) != len(set(variant_ids)):
             raise ValueError(f"duplicate prompt_variant ids: {variant_ids}")
+
+        if self.ko_rule.red_flag_scope == "curated":
+            # Under curated scope only red_flag_prompts knock out, so a safety_critical prompt
+            # outside that list would silently waive its empty-answer K.-o. — reject at load time.
+            uncovered = sorted(
+                {p.id for _, p in self.all_prompts() if p.safety_critical}
+                - set(self.ko_rule.red_flag_prompts)
+            )
+            if uncovered:
+                raise ValueError(
+                    "under red_flag_scope='curated' every safety_critical prompt must be in "
+                    f"ko_rule.red_flag_prompts (so its empty-answer K.-o. still fires); missing: {uncovered}"
+                )
         return self
 
     def all_prompts(self) -> list[tuple[Category, PackPrompt]]:

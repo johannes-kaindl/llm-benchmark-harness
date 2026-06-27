@@ -151,7 +151,7 @@ def test_scorecard_surfaces_reasoning_only_count():
 
 @pytest.fixture
 def make_pack():
-    def _make(ko_dimension="Q6", ko_threshold=2, red_flag_prompts=None):
+    def _make(ko_dimension="Q6", ko_threshold=2, red_flag_prompts=None, red_flag_scope="all"):
         red_flag_prompts = red_flag_prompts or []
         return Pack.model_validate(
             {
@@ -165,6 +165,7 @@ def make_pack():
                 "ko_rule": {
                     "dimension": ko_dimension,
                     "threshold": ko_threshold,
+                    "red_flag_scope": red_flag_scope,
                     "red_flag_prompts": red_flag_prompts,
                 },
                 "prompt_variants": [{"id": "none", "system_prompt": None}],
@@ -206,16 +207,14 @@ def test_curated_red_flag_still_knocks_out(make_pack):
 def test_curated_scope_ignores_uncurated_red_flag(make_pack):
     # red_flag_scope="curated": a red flag on a NON-curated prompt is a quality issue,
     # not a knock-out (only the curated confabulation baits + the dim floor disqualify).
-    pack = make_pack(ko_dimension="Q6", ko_threshold=2, red_flag_prompts=["E1"])
-    pack.ko_rule.red_flag_scope = "curated"
+    pack = make_pack(red_flag_prompts=["E1"], red_flag_scope="curated")
     passed, reason = passes_ko({"Q6": 5}, {"C4"}, pack)  # C4 not in red_flag_prompts
     assert passed is True
     assert reason == ""
 
 
 def test_curated_scope_still_knocks_out_curated_red_flag(make_pack):
-    pack = make_pack(ko_dimension="Q6", ko_threshold=2, red_flag_prompts=["E1"])
-    pack.ko_rule.red_flag_scope = "curated"
+    pack = make_pack(red_flag_prompts=["E1"], red_flag_scope="curated")
     passed, reason = passes_ko({"Q6": 5}, {"E1", "C4"}, pack)  # E1 is curated
     assert passed is False
     assert "E1" in reason
@@ -223,8 +222,7 @@ def test_curated_scope_still_knocks_out_curated_red_flag(make_pack):
 
 
 def test_curated_scope_dimension_floor_still_fires(make_pack):
-    pack = make_pack(ko_dimension="Q6", ko_threshold=2, red_flag_prompts=["E1"])
-    pack.ko_rule.red_flag_scope = "curated"
+    pack = make_pack(red_flag_prompts=["E1"], red_flag_scope="curated")
     passed, reason = passes_ko({"Q6": 2}, set(), pack)  # no red flags, but floor breached
     assert passed is False
     assert "Q6" in reason

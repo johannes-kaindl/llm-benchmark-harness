@@ -23,7 +23,7 @@
       </div>
       <div class="card ko-branch">
         <div class="card-title">Red-Flag-Prompt</div>
-        <p class="text-sm" style="margin:0">Eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.</p>
+        <p class="text-sm" style="margin:0">{% if pack.ko_rule.red_flag_scope == 'curated' %}Nur ein Red-Flag auf einem der kuratierten Red-Flag-Prompts disqualifiziert; Red-Flags auf anderen Aufgaben senken nur den Score.{% else %}Eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.{% endif %}</p>
       </div>
     </div>
     <p>

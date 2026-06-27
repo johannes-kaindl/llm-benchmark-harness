@@ -145,9 +145,16 @@ def section_methode(
     b.append(
         f"- *Dimensions-Floor* — eine Schlüssel-Dimension liegt ≤ Schwelle (hier: **{ko.dimension} ≤ {ko.threshold}**)."
     )
-    b.append(
-        "- *Red-Flag-Prompt* — eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.\n"
-    )
+    if ko.red_flag_scope == "curated":
+        b.append(
+            "- *Red-Flag-Prompt* — der Judge hat bei einem der **kuratierten** Red-Flag-Prompts "
+            "(unten) ein Red-Flag gesetzt; **nur** diese lösen den K.-o. aus. Red-Flags auf "
+            "anderen Aufgaben senken nur den Score, disqualifizieren aber nicht.\n"
+        )
+    else:
+        b.append(
+            "- *Red-Flag-Prompt* — eine sicherheitskritische Aufgabe wurde als Red-Flag markiert.\n"
+        )
     if ko.red_flag_prompts:
         links = ", ".join(
             _prompt_link(pid, title_by) for pid in ko.red_flag_prompts if pid in known_ids
