@@ -186,3 +186,32 @@ def test_classify_step():
     assert rq.classify_step(1, False, True) == "failed"
     assert rq.classify_step(0, False, False) == "failed"  # exit 0 but artifacts missing
     assert rq.classify_step(0, False, True) == "ok"
+
+
+# ----------------------------------------------------- Task 4: EntryResult + summary
+def test_summary_json_and_md():
+    res = [
+        rq.EntryResult(0, "a/b", "c.yaml", "p.yaml", "runs/x", "ok", "ok", 12.0, 34.0),
+        rq.EntryResult(
+            1,
+            "c/d",
+            "c.yaml",
+            "p.yaml",
+            "runs/y",
+            "timeout",
+            "skipped",
+            60.0,
+            0.0,
+            error="eval exceeded 14400s",
+        ),
+    ]
+    spec = rq.QueueSpec(entries=[])
+    obj = rq.summary_json_obj(spec, res, started_iso="2026-06-27T22:00:00")
+    assert obj["started"] == "2026-06-27T22:00:00"
+    assert obj["entries"][1]["eval_status"] == "timeout"
+    assert obj["entries"][1]["judge_status"] == "skipped"
+    md = rq.render_summary_md(spec, res, started_iso="2026-06-27T22:00:00")
+    assert "a/b" in md and "c/d" in md
+    assert "timeout" in md
+    assert "runs/x" in md
+    assert "eval exceeded 14400s" in md

@@ -182,3 +182,65 @@ def classify_step(returncode: int | None, timed_out: bool, artifacts_ok: bool) -
     if returncode != 0:
         return "failed"
     return "ok" if artifacts_ok else "failed"
+
+
+# ------------------------------------------------------- per-entry result + summary
+@dataclass
+class EntryResult:
+    index: int
+    model_id: str
+    config: str
+    pack: str
+    bundle_dir: str
+    eval_status: str = "pending"  # "ok" | "failed" | "timeout" | "pending"
+    judge_status: str = "pending"  # + "skipped"
+    eval_seconds: float = 0.0
+    judge_seconds: float = 0.0
+    error: str = ""
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "index": self.index,
+            "model_id": self.model_id,
+            "config": self.config,
+            "pack": self.pack,
+            "bundle_dir": self.bundle_dir,
+            "eval_status": self.eval_status,
+            "judge_status": self.judge_status,
+            "eval_seconds": round(self.eval_seconds, 1),
+            "judge_seconds": round(self.judge_seconds, 1),
+            "error": self.error,
+        }
+
+
+def summary_json_obj(
+    spec: QueueSpec, results: list[EntryResult], *, started_iso: str
+) -> dict[str, object]:
+    return {
+        "started": started_iso,
+        "total": len(spec.entries),
+        "done": len(results),
+        "entries": [r.as_dict() for r in results],
+    }
+
+
+def render_summary_md(spec: QueueSpec, results: list[EntryResult], *, started_iso: str) -> str:
+    lines = [
+        "# Nacht-Queue Summary",
+        "",
+        f"**Start:** {started_iso} · **Einträge:** {len(spec.entries)} · "
+        f"**Fertig:** {len(results)}",
+        "",
+        "| # | Modell | eval | judge | eval s | judge s | Bundle |",
+        "|---|--------|------|-------|--------|---------|--------|",
+    ]
+    for r in results:
+        lines.append(
+            f"| {r.index} | {r.model_id} | {r.eval_status} | {r.judge_status} | "
+            f"{r.eval_seconds:.0f} | {r.judge_seconds:.0f} | `{r.bundle_dir}` |"
+        )
+    errs = [r for r in results if r.error]
+    if errs:
+        lines += ["", "## Fehler", ""]
+        lines += [f"- **{r.model_id}** (#{r.index}): {r.error}" for r in errs]
+    return "\n".join(lines) + "\n"
