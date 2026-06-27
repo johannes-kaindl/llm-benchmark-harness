@@ -45,6 +45,8 @@ pack.py     a use-case "pack" (YAML) → validated Pack: prompts + green/red fla
 results.py  eval data contract: EvalResponse (one answer + perf) · Verdict · ModelReport
 qualrun.py  deterministic run: matrix (model × variant × prompt × repeat) → bundle
             (responses.jsonl + perf.csv), reusing stream_once + sampler + merge
+runqueue.py overnight daisy-chain: `queue` command drives many models sequentially as
+            isolated subprocesses (reset→settle→eval→[judge] per entry); pure logic + DI spawn
 judge.py    pluggable LLM-as-judge (JudgeBackend protocol): per-answer score vs. flags
             + holistic weighted master scorecard + safety K.-o.
 scorecard.py weighting/K.-o./category math (pure) + renders scorecard.md + scores.csv
@@ -97,6 +99,10 @@ uv run touchstone judge  --bundle runs/<ts>_eval_ndassist --judge-config judge.y
 
 uv sync --extra gui                            # install the optional web-UI deps (fastapi/uvicorn/jinja2)
 uv run touchstone gui                            # local web control-center: configure→start→watch→evaluate→compare→export
+
+uv run touchstone queue --queue queue.example.yaml          # Nacht-Queue: mehrere Modelle sequenziell eval→judge
+uv run touchstone queue --queue queue.example.yaml --check  # nur die LM-Studio-Modell-Wechsel-Kette verifizieren (kein Matrix-Lauf)
+uv run touchstone queue --queue queue.example.yaml --resume runs/<ts>_queue  # nach Abbruch weiter (fertige Einträge übersprungen)
 
 uv run pytest -q                               # tests (no server/sudo needed)
 uv run ruff check . && uv run ruff format .    # lint + format
@@ -256,6 +262,17 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   (`tests/test_report_md_golden.py`); `pool_rows` folgt **keinen** Symlinks → ein extern hineingelinktes
   Bundle erscheint nicht im `/compare`-Pool (Confinement sicher-by-construction, `is_relative_to`-Guard =
   Defense-in-Depth).
+- **Die Nacht-Queue (`touchstone queue`) erkennt Fertigstellung am Subprozess-Exit (+ Finalize-Artefakten),
+  nie an einem Fortschrittsbalken.** Ein eval/judge-Subprozess existiert erst *nach* `_finalize`, also gibt
+  es kein „100 % ≠ fertig"-Problem (die holistische Judge-Phase liefert ~0 Events, läuft aber weiter — genau
+  dieser Fall lähmte einen Live-Monitor). Hänger fängt der **per-Step-Watchdog** (`step_timeout_s`:
+  SIGTERM→SIGKILL). Zwischen Einträgen läuft `reset_command` (Default `lms unload --all`) + ein
+  konditionsbasiertes RAM-**Settle**, damit jedes Modell eine frische Baseline bekommt → sauberes
+  Modell-Delta (ein Modell pro Eintrag, [[multimodel-ram-confound]]). Der Reset ist ein **konfigurierbares
+  Shell-Kommando** (Daten, kein Engine-Branch); `--check` verifiziert die LM-Studio-JIT-Load+Eviction-Kette
+  vor dem ersten echten Lauf. `load_queue` lehnt doppelte `(config, pack, model)`-Einträge ab (sonst
+  stilles Bundle-Überschreiben). `runqueue.py` ist pure Logik + DI (Spawn/RAM/Clock) → ohne Server/sudo
+  getestet; der dünne `queue`-Command verdrahtet `subprocess`/`psutil`/`time`.
 
 ## Memory
 

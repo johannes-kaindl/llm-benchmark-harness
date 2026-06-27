@@ -934,12 +934,21 @@ def gui(
 @app.command(name="queue")
 def queue_cmd(
     queue_file: Path = typer.Option(..., "--queue", "-q", exists=True, help="queue.yaml"),
+    check: bool = typer.Option(
+        False,
+        "--check",
+        help="verify the model-switch chain only (reset+settle+1 request), no matrix",
+    ),
     resume: Path | None = typer.Option(
         None, "--resume", help="continue an existing runs/<ts>_queue dir (skip completed entries)"
     ),
 ) -> None:
     """Run several models overnight, sequentially: per entry reset→settle→eval→[judge]."""
     spec = rq.load_queue(queue_file)
+    if check:
+        console.print("[bold]touchstone queue --check[/] — Modell-Wechsel-Probe")
+        rq.run_check(spec, emit=console.print)
+        return
     output_dir = Path("./runs")
     if resume is not None:
         queue_dir = resume

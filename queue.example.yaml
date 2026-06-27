@@ -1,0 +1,29 @@
+# Beispiel-Nacht-Queue: mehrere Modelle sequenziell, je eval -> judge.
+#
+# Vor dem ersten echten Lauf die LM-Studio-Modell-Wechsel-Kette verifizieren:
+#   uv run touchstone queue --queue queue.example.yaml --check
+# Dann scharf:
+#   uv run touchstone queue --queue queue.example.yaml
+# Nach Abbruch fortsetzen (überspringt fertige Einträge):
+#   uv run touchstone queue --queue queue.example.yaml --resume runs/<ts>_queue
+#
+# Ein Modell pro Eintrag = frische RAM-Baseline. Zwischen Einträgen wird das vorige Modell
+# entladen (reset_command) und gewartet, bis der System-RAM wieder abgesunken ist (settle),
+# damit das peak-minus-baseline-Modell-Delta sauber bleibt.
+
+defaults:
+  reset_command: "lms unload --all" # zwischen Einträgen ausgeführt; "" = aus
+  settle: { timeout_s: 120, plateau_polls: 3, poll_interval_s: 2, epsilon_mb: 200 }
+  step_timeout_s: { eval: 14400, judge: 21600 } # Watchdog (judge ist langsam)
+  cooldown_s: 0 # optionale Extra-Pause nach settle, vor eval
+
+entries:
+  - config: config.m5-lmstudio.yaml
+    pack: packs/buero.yaml
+    model: { id: "google/gemma-4-12b" }
+    judge_config: judge.yaml
+
+  - config: config.m5-lmstudio.yaml
+    pack: packs/buero.yaml
+    model: { id: "qwen/qwen3.6-27b" }
+    judge_config: judge.yaml

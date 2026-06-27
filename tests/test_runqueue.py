@@ -503,3 +503,42 @@ def test_load_prior_results_roundtrip(tmp_path: Path):
 
 def test_load_prior_results_missing_is_empty(tmp_path: Path):
     assert rq.load_prior_results(tmp_path / "nope") == []
+
+
+# ----------------------------------------------- Task 8: --check verify mode
+def test_distinct_models_dedupe(tmp_path: Path):
+    cfg, pack = _cfg(tmp_path), _pack(tmp_path)
+
+    def mk(mid: str) -> rq.QueueEntry:
+        return rq.QueueEntry(config=cfg, pack=pack, model={"id": mid})
+
+    spec = rq.QueueSpec(entries=[mk("a"), mk("a"), mk("b")])
+    assert [m.id for m in rq.distinct_models(spec)] == ["a", "b"]
+
+
+def test_run_check_probes_each_distinct_model(tmp_path: Path):
+    spec = _spec_two(tmp_path, judge=False)  # models a/b, c/d
+    resets: list[str] = []
+    emitted: list[str] = []
+
+    def probe(entry, model):
+        return (True, "ok", 42)
+
+    rows = rq.run_check(
+        spec,
+        reset_run=lambda c: resets.append(c) or True,
+        ram_poll=lambda: 1000.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        probe=probe,
+        emit=emitted.append,
+    )
+    assert [r["model"] for r in rows] == ["a/b", "c/d"]
+    assert all(r["loaded"] for r in rows)
+    assert len(resets) == 2  # reset before probing each model
+    assert len(emitted) == 2
+
+
+def test_shipped_queue_example_validates():
+    spec = rq.load_queue("queue.example.yaml")
+    assert len(spec.entries) >= 1

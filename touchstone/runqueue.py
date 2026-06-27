@@ -451,6 +451,74 @@ def make_run_step(
     return run_step
 
 
+def distinct_models(spec: QueueSpec) -> list[ModelSpec]:
+    """The unique models across all entries, first-seen order (for ``--check``)."""
+    seen: set[str] = set()
+    out: list[ModelSpec] = []
+    for e in spec.entries:
+        if e.model.id not in seen:
+            seen.add(e.model.id)
+            out.append(e.model)
+    return out
+
+
+def _default_probe(entry: QueueEntry, model: ModelSpec) -> tuple[bool, str, int]:
+    """Send one tiny request to the entry's endpoint to force a JIT load; returns
+    (loaded, status, content_chars)."""
+    from .client import OpenAIStreamClient
+    from .config import load_config
+    from .preflight import preflight_models
+
+    cfg = load_config(entry.config)
+    client = OpenAIStreamClient(cfg.endpoint.base_url, cfg.endpoint.api_key)
+    res = preflight_models(client, [model], budget_for=lambda _m: 16)[0]
+    return res.status == "ok", res.status, res.text_chars
+
+
+def run_check(
+    spec: QueueSpec,
+    *,
+    reset_run: Callable[[str], bool] = run_reset,
+    ram_poll: Callable[[], float] = default_ram_poll,
+    sleep: Callable[[float], None] | None = None,
+    clock: Callable[[], float] | None = None,
+    probe: Callable[[QueueEntry, ModelSpec], tuple[bool, str, int]] | None = None,
+    emit: Callable[[str], None] = print,
+) -> list[dict[str, object]]:
+    """Verify the model-switch chain before a real overnight run: per distinct model, reset +
+    settle + one tiny request, recording load/evict + RAM before/after. No matrix, no judge."""
+    import time as _t
+
+    sleep = sleep or _t.sleep
+    clock = clock or _t.monotonic
+    probe = probe or _default_probe
+    rows: list[dict[str, object]] = []
+    for model in distinct_models(spec):
+        entry = next(e for e in spec.entries if e.model.id == model.id)
+        rv = resolve_entry(entry, spec.defaults)
+        reset_run(rv.reset_command)
+        before = ram_poll()
+        wait_until_settled(ram_poll, sleep, clock, settle=rv.settle)
+        loaded, status, content = probe(entry, model)
+        after = ram_poll()
+        rows.append(
+            {
+                "model": model.id,
+                "loaded": loaded,
+                "status": status,
+                "content_chars": content,
+                "ram_before_mb": round(before),
+                "ram_after_mb": round(after),
+                "ram_delta_mb": round(after - before),
+            }
+        )
+        mark = "✓" if loaded else "✗"
+        emit(
+            f"  {mark} {model.id}  status={status}  ΔRAM={after - before:+.0f} MB  content={content}"
+        )
+    return rows
+
+
 def load_prior_results(queue_dir: str | Path) -> list[EntryResult]:
     """Reconstruct EntryResults from a queue dir's ``summary.json`` (for ``--resume``).
     Missing/unreadable file → empty list."""
