@@ -281,3 +281,96 @@ def entries_to_run(spec: QueueSpec, prior: list[EntryResult]) -> list[tuple[int,
     judge ok/skipped); retry failed/timeout/partial ones."""
     done = {r.index for r in prior if _completed(r)}
     return [(i, e) for i, e in enumerate(spec.entries) if i not in done]
+
+
+# ----------------------------------------------------- orchestration loop (DI)
+@dataclass
+class StepOutcome:
+    status: str  # "ok" | "failed" | "timeout"
+    seconds: float
+
+
+RunStep = Callable[[str, list[str], float, Path], StepOutcome]
+
+
+def _pack_id(pack: Path, cache: dict[Path, str]) -> str:
+    if pack not in cache:
+        try:
+            data = yaml.safe_load(pack.read_text(encoding="utf-8")) or {}
+            cache[pack] = str(data.get("id") or pack.stem)
+        except Exception:
+            cache[pack] = pack.stem
+    return cache[pack]
+
+
+def _write_summary(
+    queue_dir: Path, spec: QueueSpec, results: list[EntryResult], started_iso: str
+) -> None:
+    queue_dir.mkdir(parents=True, exist_ok=True)
+    (queue_dir / "summary.json").write_text(
+        json.dumps(
+            summary_json_obj(spec, results, started_iso=started_iso), indent=2, ensure_ascii=False
+        ),
+        encoding="utf-8",
+    )
+    (queue_dir / "summary.md").write_text(
+        render_summary_md(spec, results, started_iso=started_iso), encoding="utf-8"
+    )
+
+
+def run_queue(
+    spec: QueueSpec,
+    *,
+    queue_dir: Path,
+    output_dir: Path,
+    python: str,
+    run_step: RunStep,
+    reset_run: Callable[[str], bool],
+    ram_poll: Callable[[], float],
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+    ts: str,
+    started_iso: str,
+    prior: list[EntryResult] | None = None,
+    log: Callable[[str], None] = lambda _m: None,
+) -> list[EntryResult]:
+    """Sequentially run each not-yet-completed entry: reset endpoint -> wait for RAM to settle
+    -> eval (subprocess via ``run_step``) -> optional judge -> record. Continue on any error;
+    write ``summary.json``/``summary.md`` after each entry. Returns prior + new results."""
+    results: list[EntryResult] = list(prior or [])
+    pack_cache: dict[Path, str] = {}
+    for i, entry in entries_to_run(spec, results):
+        rv = resolve_entry(entry, spec.defaults)
+        # 1. reset + settle -> clean RAM baseline before this entry's eval
+        if rv.reset_command and not reset_run(rv.reset_command):
+            log(f"⚠ reset failed (entry {i}: {rv.reset_command!r}); continuing")
+        wait_until_settled(ram_poll, sleep, clock, settle=rv.settle)
+        if rv.cooldown_s > 0:
+            sleep(rv.cooldown_s)
+        # 2. eval
+        bundle = output_dir / run_dir_for(ts, entry.model.id, _pack_id(entry.pack, pack_cache))
+        r = EntryResult(i, entry.model.id, str(entry.config), str(entry.pack), str(bundle))
+        ev = run_step(
+            "eval", build_eval_argv(entry, bundle, python=python), rv.eval_timeout_s, bundle
+        )
+        r.eval_status, r.eval_seconds = ev.status, ev.seconds
+        # 3. judge (only if eval ok and a judge_config is set)
+        if ev.status != "ok":
+            r.judge_status = "skipped"
+            r.error = (
+                f"eval timeout (>{rv.eval_timeout_s:.0f}s)"
+                if ev.status == "timeout"
+                else "eval failed"
+            )
+        elif entry.judge_config is None:
+            r.judge_status = "skipped"
+        else:
+            jv = run_step(
+                "judge", build_judge_argv(entry, bundle, python=python), rv.judge_timeout_s, bundle
+            )
+            r.judge_status, r.judge_seconds = jv.status, jv.seconds
+            if jv.status != "ok":
+                r.error = f"judge {jv.status}"
+        results.append(r)
+        _write_summary(queue_dir, spec, results, started_iso)
+    return results

@@ -254,3 +254,162 @@ def test_entries_to_run_retries_failed(tmp_path: Path):
     spec = rq.QueueSpec(entries=[_entry(tmp_path)])
     prior = [rq.EntryResult(0, "a/b", "c", "p", "runs/x", "failed", "skipped")]
     assert [i for i, _ in rq.entries_to_run(spec, prior)] == [0]
+
+
+# ------------------------------------------------ Task 6: run_queue orchestration
+def _spec_two(tmp_path: Path, judge: bool = True) -> rq.QueueSpec:
+    cfg, pack = _cfg(tmp_path), _pack(tmp_path)
+    jc = _write(tmp_path / "j.yaml", "model: jm\n") if judge else None
+
+    def mk(mid: str) -> rq.QueueEntry:
+        return rq.QueueEntry(
+            config=cfg, pack=pack, model={"id": mid}, judge_config=jc, judge_model=""
+        )
+
+    return rq.QueueSpec(entries=[mk("a/b"), mk("c/d")])
+
+
+def _const_time():
+    t = {"now": 0.0}
+    return (lambda: t["now"]), (lambda s: t.__setitem__("now", t["now"] + s)), t
+
+
+def test_run_queue_happy_path(tmp_path: Path):
+    spec = _spec_two(tmp_path)
+    calls: list[tuple[str, str]] = []
+    resets: list[str] = []
+    clock, sleep, _ = _const_time()
+    qd = tmp_path / "q"
+
+    def run_step(kind, argv, timeout, bundle):
+        calls.append((kind, str(bundle)))
+        return rq.StepOutcome("ok", 1.0)
+
+    res = rq.run_queue(
+        spec,
+        queue_dir=qd,
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=run_step,
+        reset_run=lambda c: resets.append(c) or True,
+        ram_poll=lambda: 1000.0,
+        sleep=sleep,
+        clock=clock,
+        ts="T",
+        started_iso="ISO",
+    )
+    assert [r.eval_status for r in res] == ["ok", "ok"]
+    assert [r.judge_status for r in res] == ["ok", "ok"]
+    assert [c[0] for c in calls] == ["eval", "judge", "eval", "judge"]
+    assert len(resets) == 2  # reset before each entry
+    assert (qd / "summary.json").exists() and (qd / "summary.md").exists()
+
+
+def test_run_queue_eval_fail_skips_judge(tmp_path: Path):
+    spec = _spec_two(tmp_path)
+    clock, sleep, _ = _const_time()
+
+    def run_step(kind, argv, timeout, bundle):
+        return rq.StepOutcome("failed" if kind == "eval" else "ok", 1.0)
+
+    res = rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=run_step,
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=sleep,
+        clock=clock,
+        ts="T",
+        started_iso="I",
+    )
+    assert all(r.eval_status == "failed" for r in res)
+    assert all(r.judge_status == "skipped" for r in res)
+
+
+def test_run_queue_timeout_continues(tmp_path: Path):
+    spec = _spec_two(tmp_path)
+    seen: list[str] = []
+    clock, sleep, _ = _const_time()
+
+    def run_step(kind, argv, timeout, bundle):
+        seen.append(kind)
+        return rq.StepOutcome("timeout" if kind == "eval" else "ok", float(timeout))
+
+    res = rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=run_step,
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=sleep,
+        clock=clock,
+        ts="T",
+        started_iso="I",
+    )
+    assert [r.eval_status for r in res] == ["timeout", "timeout"]
+    assert seen.count("eval") == 2  # second entry still attempted
+
+
+def test_run_queue_no_judge_when_no_judge_config(tmp_path: Path):
+    spec = _spec_two(tmp_path, judge=False)
+    res = rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=lambda *a: rq.StepOutcome("ok", 1.0),
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+    )
+    assert all(r.judge_status == "skipped" for r in res)
+
+
+def test_run_queue_reset_failure_continues(tmp_path: Path):
+    spec = _spec_two(tmp_path, judge=False)
+    warned: list[str] = []
+    res = rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=lambda *a: rq.StepOutcome("ok", 1.0),
+        reset_run=lambda c: False,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+        log=warned.append,
+    )
+    assert all(r.eval_status == "ok" for r in res)  # ran despite reset failing
+    assert any("reset" in w.lower() for w in warned)
+
+
+def test_run_queue_resumes_prior(tmp_path: Path):
+    spec = _spec_two(tmp_path)
+    prior = [rq.EntryResult(0, "a/b", "c", "p", "runs/x", "ok", "ok")]
+    seen: list[str] = []
+    rq.run_queue(
+        spec,
+        queue_dir=tmp_path / "q",
+        output_dir=tmp_path / "runs",
+        python="PY",
+        run_step=lambda kind, *a: seen.append(kind) or rq.StepOutcome("ok", 1.0),
+        reset_run=lambda c: True,
+        ram_poll=lambda: 1.0,
+        sleep=lambda s: None,
+        clock=lambda: 0.0,
+        ts="T",
+        started_iso="I",
+        prior=prior,
+    )
+    assert seen == ["eval", "judge"]  # only entry 1 ran
