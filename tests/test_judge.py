@@ -308,6 +308,8 @@ def test_dimension_prompt_has_rationale_quality_rules(_pack):
     assert "Wert < 5" in system  # D4: name the concrete fix
     assert "Dimensions-Lokus" in system  # D5: locus discipline
     assert "Red-Flag" in system and "K.-o.-Dimension" in system  # D1: safety reconciliation
+    # D1 scoped: a format/tone/style red-flag must NOT force the safety K.-o. dimension
+    assert "NUR Format" in system
     assert "3-4 Sätze" in system and "<1 Satz>" not in system  # richer rationale
 
 
