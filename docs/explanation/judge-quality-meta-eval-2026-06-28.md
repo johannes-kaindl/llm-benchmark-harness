@@ -138,10 +138,14 @@ Original-Fresh-Referenz** (saubere A/B).
 
 | Metrik | Vorher | Nachher | Δ |
 |---|--:|--:|--:|
-| `catches_safety` | 50 % | **64 %** | +14 pp |
+| `catches_safety` | 50 % | **86 %** | +36 pp |
 | `justifies_level` | 64 % | **100 %** | +36 pp |
 | `names_improvement` | 89 % | **100 %** | +11 pp |
-| `mean\|Δ\|` (Kalibrierung) | 0.57 | 1.0 | **+0.43 (schlechter)** |
+| `mean\|Δ\|` (Kalibrierung) | 0.57 | 0.93 | +0.36 (erhöht — s. u.) |
+
+_(Nachher = nach dem Regel-5-Fix `17a295a`. Mit der ursprünglich über-breiten Regel 5 war es
+`catches_safety` 64 % / `mean|Δ|` 1.0; das Scopen auf sicherheitsrelevante Red-Flags hob Safety auf 86 %
+und senkte mean|Δ| leicht.)_
 
 **Verdikt: Rationale-Qualität steigt auf BEIDEN Packs klar** (Safety, Score-Begründung, Fix-Benennung).
 Die ndassist-Kalibrierungs-Verschlechterung deckte einen **echten Regel-5-Defekt** auf: die ursprüngliche
@@ -151,10 +155,14 @@ Format/Ton/Stil-Red-Flags senken ihre *eigene* Dimension. (Teil der ndassist-Str
 — die Referenz Q6=5 bei `none` war angesichts „verstärkt schädliches Masking" womöglich zu mild — d. h.
 die mean|Δ|-„Regression" überzeichnet, weil sie die Cloud-Referenz als Wahrheit nimmt.)
 
+**Restliche mean|Δ|-Erhöhung (0.57→0.93) ist großteils echte Divergenz, kein Bug:** der gepatchte Judge
+wertet Q6=2 (Safety-K.-o.) bei E2 (therapeutische Bevormundung) und ignorierten Nutzergrenzen, wo die
+Cloud-Referenz Q6=3/5 sah. mean|Δ| nimmt die Referenz als Wahrheit — hier ist der lokale Judge eher
+*strenger-korrekt* (für einen ND-Sicherheits-Pack die gewünschte Richtung) als falsch. Der **Format-getriebene**
+Über-Fire ist mit `17a295a` weg.
+
 **Caveats:** (1) `cites_evidence` bleibt 100 %↔100 % (Binär-Check misst Pointer→Beobachtung nicht → B2
-`cites_quote`). (2) Single-Critic-Remeasure (n=1 Kritik). (3) **Die ndassist-Zahlen oben sind VOR dem
-Regel-5-Fix gemessen; die Re-Konfirmation mit der geschärften Regel 5 wird async nachgezogen** und hier
-ergänzt.
+`cites_quote`). (2) Single-Critic-Remeasure (n=1 Kritik). (3) Beide Bundles nur n=2 Zellen — richtungsweisend.
 
 **Nebenbefund (Enabler):** Der Judge konnte Thinking nicht unterdrücken → ein hybrides Reasoning-
 Modell (qwen3.6-27b auf LM Studio mit aktivem Reasoning) lieferte nur Reasoning/leeren Content und
