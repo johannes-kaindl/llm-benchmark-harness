@@ -173,14 +173,16 @@ def _build_dimension_prompt(pack: Pack, verdicts: list[Verdict]) -> tuple[str, s
         )
         for d in pack.dimensions
     )
+
+    def _ev_line(v: Verdict) -> str:
+        # collapse whitespace + cap: the per-answer rationale is raw judge text and may contain
+        # newlines/markdown — keep exactly one line per verdict so the evidence block stays parseable.
+        rat = " ".join((v.rationale or "").split())[:300]
+        flag = " · RED FLAG" if v.red_flag else ""
+        return f"  [{v.category}] {v.prompt_id}: score {v.score}{flag} — {rat}"
+
     evidence = (
-        "\n".join(
-            f"  [{v.category}] {v.prompt_id}: score {v.score}"
-            f"{' · RED FLAG' if v.red_flag else ''} — {v.rationale}"
-            for v in verdicts
-            if not v.unscored
-        )
-        or "  (keine Einzelbewertungen)"
+        "\n".join(_ev_line(v) for v in verdicts if not v.unscored) or "  (keine Einzelbewertungen)"
     )
     keys = ", ".join(
         f'"{d.id}": {{"score": <1-5>, "rationale": "<3-4 Sätze>"}}' for d in pack.dimensions

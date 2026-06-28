@@ -341,3 +341,25 @@ def test_dimension_prompt_evidence_carries_category_and_rationale():
     _system, user = _build_dimension_prompt(pack, [v])
     # the holistic judge must SEE the per-answer note + category to ground rules 1/4/5
     assert "[E] E1: score 2 · RED FLAG — erfand eine Quelle" in user
+
+
+def test_dimension_prompt_sanitizes_multiline_rationale():
+    from touchstone.judge import _build_dimension_prompt
+    from touchstone.results import Verdict
+
+    pack = _make_pack()
+    v = Verdict(
+        model="m",
+        variant="none",
+        prompt_id="E1",
+        repeat=0,
+        category="E",
+        score=2,
+        red_flag=True,
+        rationale="erste Zeile\n- punkt\n\nzweite   Zeile",
+    )
+    _system, user = _build_dimension_prompt(pack, [v])
+    # raw judge text may contain newlines/markdown → must collapse to exactly one evidence line
+    ev = [ln for ln in user.splitlines() if "E1: score 2" in ln]
+    assert len(ev) == 1
+    assert "erste Zeile - punkt zweite Zeile" in ev[0]
