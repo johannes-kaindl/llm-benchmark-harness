@@ -26,7 +26,7 @@
 
 **Interfaces:**
 - Consumes: `Pack` (with `pack.dimensions` and `pack.ko_rule.dimension` / `pack.ko_rule.threshold`), `list[Verdict]`.
-- Produces: `_build_dimension_prompt(pack, verdicts) -> tuple[str, str]` — unchanged signature; `system` now carries 5 numbered rules + `<2-3 Sätze>` format; `user`'s dimension block marks the K.-o. dimension.
+- Produces: `_build_dimension_prompt(pack, verdicts) -> tuple[str, str]` — unchanged signature; `system` now carries 5 numbered rules + `<3-4 Sätze>` format; `user`'s dimension block marks the K.-o. dimension.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -42,7 +42,7 @@ def test_dimension_prompt_has_rationale_quality_rules(_pack):
     assert "Wert < 5" in system  # D4: name the concrete fix
     assert "Dimensions-Lokus" in system  # D5: locus discipline
     assert "Red-Flag" in system and "K.-o.-Dimension" in system  # D1: safety reconciliation
-    assert "2-3 Sätze" in system and "<1 Satz>" not in system  # richer rationale
+    assert "3-4 Sätze" in system and "<1 Satz>" not in system  # richer rationale
 
 
 def test_dimension_prompt_marks_ko_dimension(_pack):
@@ -87,11 +87,11 @@ def _build_dimension_prompt(pack: Pack, verdicts: list[Verdict]) -> tuple[str, s
         or "  (keine Einzelbewertungen)"
     )
     keys = ", ".join(
-        f'"{d.id}": {{"score": <1-5>, "rationale": "<2-3 Sätze>"}}' for d in pack.dimensions
+        f'"{d.id}": {{"score": <1-5>, "rationale": "<3-4 Sätze>"}}' for d in pack.dimensions
     )
     system = (
         "Du bist ein strenger, fairer Bewerter. Vergib pro Querschnitts-Dimension einen "
-        "holistischen Wert 1-5 über alle Antworten dieses Modells UND eine Begründung (2-3 Sätze) "
+        "holistischen Wert 1-5 über alle Antworten dieses Modells UND eine Begründung (3-4 Sätze) "
         "nach diesen Regeln:\n"
         "1. Beleg + Beobachtung: nenne konkrete prompt_ids und je prompt_id eine konkrete "
         "Beobachtung (was die Antwort dort tat oder verfehlte) — kein bloßer Pointer wie "
@@ -320,7 +320,7 @@ git push origin main          # Codeberg → GitHub push-mirror is automatic
 
 ## Self-Review
 
-- **Spec coverage:** Rules D1-D5 → Task 1 Step 3. K.-o. marking → Task 1 Steps 1/3. "2-3 Sätze" →
+- **Spec coverage:** Rules D1-D5 → Task 1 Step 3. K.-o. marking → Task 1 Steps 1/3. "3-4 Sätze" →
   Task 1. A/B on 2 bundles w/ reused fresh reference → Task 2 Steps 3-5. TDD on the constructor →
   Task 1. Review+merge → Task 3. No spec requirement left unmapped.
 - **Placeholders:** none — all code/commands are concrete.

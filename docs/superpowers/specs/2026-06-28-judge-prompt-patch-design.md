@@ -109,13 +109,13 @@ Server. `parse_dimension_report` und der JSON-Kontrakt bleiben unberührt, daher
   Fix-bei-<5 · Dimensions-Lokus · Safety-Reconciliation).
 - Der Dimensions-Block **markiert die K.-o.-Dimension** mit `pack.ko_rule.dimension` + `threshold`
   (synthetischer Pack → erwartete Markierung auf der richtigen Zeile).
-- Rationale-Format `2-3 Sätze` (nicht mehr `1 Satz`).
+- Rationale-Format `3-4 Sätze` (nicht mehr `1 Satz`).
 - **Regression:** der Output bleibt JSON-parsebar — `parse_dimension_report` über ein Beispiel-JSON
   unverändert grün; alle bestehenden judge-Tests grün.
 
 ## Implementierungs-Reihenfolge (Plan)
 
-1. RED: Tests für die fünf Klauseln + K.-o.-Markierung + `2-3 Sätze`.
+1. RED: Tests für die fünf Klauseln + K.-o.-Markierung + `3-4 Sätze`.
 2. GREEN: `_build_dimension_prompt` patchen.
 3. Volle Suite + `mypy touchstone/` + `ruff check/format`.
 4. **Messschleife** (braucht LM Studio + `qwen3.6-27b`): 2 Bundles kopieren → re-judgen → judge-meta
