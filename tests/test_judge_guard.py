@@ -214,7 +214,8 @@ def test_judge_bundle_threads_threshold():
 def test_judge_example_documents_guard_fields():
     import yaml
 
-    raw = yaml.safe_load(open("judge.example.yaml", encoding="utf-8"))
+    with open("judge.example.yaml", encoding="utf-8") as f:
+        raw = yaml.safe_load(f)
     assert "call_timeout_s" in raw
     assert "max_consecutive_failures" in raw
     assert "max_tokens" in raw

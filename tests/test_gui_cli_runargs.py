@@ -19,6 +19,9 @@ def _judge_mocks(monkeypatch):
             endpoint=types.SimpleNamespace(base_url="x", api_key="y"),
             model="m",
             temperature=0.0,
+            call_timeout_s=120,
+            max_consecutive_failures=3,
+            max_tokens=None,
         ),
     )
 
@@ -222,6 +225,9 @@ def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
             endpoint=types.SimpleNamespace(base_url="x", api_key="y"),
             model="m",
             temperature=0.0,
+            call_timeout_s=120,
+            max_consecutive_failures=3,
+            max_tokens=None,
         ),
     )
     res = runner.invoke(
