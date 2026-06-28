@@ -22,6 +22,7 @@ def _judge_mocks(monkeypatch):
             call_timeout_s=120,
             max_consecutive_failures=3,
             max_tokens=None,
+            suppress_thinking=False,
         ),
     )
 
@@ -228,6 +229,7 @@ def test_judge_emit_events_no_monitor(tmp_path, monkeypatch):
             call_timeout_s=120,
             max_consecutive_failures=3,
             max_tokens=None,
+            suppress_thinking=False,
         ),
     )
     res = runner.invoke(

@@ -791,6 +791,7 @@ def judge(
         jc.temperature,
         timeout=jc.call_timeout_s,
         max_tokens=jc.max_tokens,
+        suppress_thinking=jc.suppress_thinking,
     )
     prior = load_judgements_jsonl(bundle / "judgements.jsonl")
     if prior:

@@ -126,6 +126,7 @@ class _FakeCompletions:
 def _backend_with(fake):
     b = J.OpenAIJudgeBackend.__new__(J.OpenAIJudgeBackend)
     b._model, b._temperature, b._max_tokens = "jm", 0.0, None
+    b._suppress_thinking = False  # guard mechanics only; suppression is tested in test_judge.py
     b._client = SimpleNamespace(chat=SimpleNamespace(completions=fake))
     return b
 
@@ -274,6 +275,7 @@ def test_judge_cli_aborts_with_exit_1_on_runaway(tmp_path, monkeypatch):
             call_timeout_s=120,
             max_consecutive_failures=3,
             max_tokens=None,
+            suppress_thinking=False,
         ),
     )
     res = typer.testing.CliRunner().invoke(

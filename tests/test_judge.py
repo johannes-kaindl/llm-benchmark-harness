@@ -297,3 +297,116 @@ def test_score_response_truly_empty_still_scores_one(_pack):
     v = score_response(_NoBackend(), r, prompt, _pack)
     assert v.unscored is False
     assert v.score == 1
+
+
+def test_dimension_prompt_has_rationale_quality_rules(_pack):
+    from touchstone.judge import _build_dimension_prompt
+
+    system, _user = _build_dimension_prompt(_pack, [])
+    assert "Beobachtung" in system  # D3: concrete observation, not a bare pointer
+    assert "nicht eins höher" in system and "nicht eins tiefer" in system  # D2: level justification
+    assert "Wert < 5" in system  # D4: name the concrete fix
+    assert "Dimensions-Lokus" in system  # D5: locus discipline
+    assert "Red-Flag" in system and "K.-o.-Dimension" in system  # D1: safety reconciliation
+    # D1 scoped: a format/tone/style red-flag must NOT force the safety K.-o. dimension
+    assert "NUR Format" in system
+    assert "3-4 Sätze" in system and "<1 Satz>" not in system  # richer rationale
+
+
+def test_dimension_prompt_marks_ko_dimension(_pack):
+    from touchstone.judge import _build_dimension_prompt
+
+    _system, user = _build_dimension_prompt(_pack, [])
+    # _make_pack ko_rule: dimension Q6, threshold 2
+    q6 = [ln for ln in user.splitlines() if ln.strip().startswith("Q6 =")]
+    q1 = [ln for ln in user.splitlines() if ln.strip().startswith("Q1 =")]
+    # pin the disqualification OPERATOR (≤), not just the floor value — engine: score <= threshold
+    assert q6 and "K.-o.-Dimension" in q6[0] and "Boden 2" in q6[0] and "≤ 2" in q6[0]
+    assert q1 and "K.-o.-Dimension" not in q1[0]  # non-KO dimension is not marked
+
+
+def test_dimension_prompt_evidence_carries_category_and_rationale():
+    from touchstone.judge import _build_dimension_prompt
+    from touchstone.results import Verdict
+
+    pack = _make_pack()
+    v = Verdict(
+        model="m",
+        variant="none",
+        prompt_id="E1",
+        repeat=0,
+        category="E",
+        score=2,
+        red_flag=True,
+        rationale="erfand eine Quelle",
+    )
+    _system, user = _build_dimension_prompt(pack, [v])
+    # the holistic judge must SEE the per-answer note + category to ground rules 1/4/5
+    assert "[E] E1: score 2 · RED FLAG — erfand eine Quelle" in user
+
+
+def test_dimension_prompt_sanitizes_multiline_rationale():
+    from touchstone.judge import _build_dimension_prompt
+    from touchstone.results import Verdict
+
+    pack = _make_pack()
+    v = Verdict(
+        model="m",
+        variant="none",
+        prompt_id="E1",
+        repeat=0,
+        category="E",
+        score=2,
+        red_flag=True,
+        rationale="erste Zeile\n- punkt\n\nzweite   Zeile",
+    )
+    _system, user = _build_dimension_prompt(pack, [v])
+    # raw judge text may contain newlines/markdown → must collapse to exactly one evidence line
+    ev = [ln for ln in user.splitlines() if "E1: score 2" in ln]
+    assert len(ev) == 1
+    assert "erste Zeile - punkt zweite Zeile" in ev[0]
+
+
+def _fake_create_capturing(captured):
+    from types import SimpleNamespace
+
+    def _create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"score": 3}'))]
+        )
+
+    return _create
+
+
+def test_judge_backend_suppresses_thinking_by_default():
+    from touchstone.judge import SUPPRESS_THINKING_BODY, OpenAIJudgeBackend
+
+    b = OpenAIJudgeBackend("http://localhost:1234/v1", "k", "m")
+    captured: dict = {}
+    b._client.chat.completions.create = _fake_create_capturing(captured)  # type: ignore[method-assign]
+    b.judge(system="s", user="u")
+    eb = captured.get("extra_body") or {}
+    assert eb.get("reasoning_effort") == "none"
+    assert eb.get("chat_template_kwargs") == {"enable_thinking": False}
+    assert eb.get("reasoning_budget") == 0
+    assert eb == SUPPRESS_THINKING_BODY
+
+
+def test_judge_backend_keeps_thinking_when_disabled():
+    from touchstone.judge import OpenAIJudgeBackend
+
+    b = OpenAIJudgeBackend("http://localhost:1234/v1", "k", "m", suppress_thinking=False)
+    captured: dict = {}
+    b._client.chat.completions.create = _fake_create_capturing(captured)  # type: ignore[method-assign]
+    b.judge(system="s", user="u")
+    assert "extra_body" not in captured  # cloud judge that rejects the hints stays clean
+
+
+def test_judge_config_suppresses_thinking_by_default():
+    from touchstone.judge import JudgeConfig
+
+    jc = JudgeConfig.model_validate(
+        {"endpoint": {"base_url": "http://localhost:1234/v1"}, "model": "m"}
+    )
+    assert jc.suppress_thinking is True
