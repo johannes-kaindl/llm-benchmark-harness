@@ -130,9 +130,18 @@ def _backend_with(fake):
     return b
 
 
-def test_judge_wraps_exception_as_judgecallerror():
-    b = _backend_with(_FakeCompletions(exc=RuntimeError("boom")))
+def test_judge_wraps_openai_error_as_judgecallerror():
+    from openai import OpenAIError
+
+    b = _backend_with(_FakeCompletions(exc=OpenAIError("boom")))
     with pytest.raises(J.JudgeCallError):
+        b.judge(system="s", user="u")
+
+
+def test_judge_does_not_mask_non_openai_errors():
+    # a programmer/client bug must surface as itself, not be swallowed as a judge failure
+    b = _backend_with(_FakeCompletions(exc=RuntimeError("bug")))
+    with pytest.raises(RuntimeError):
         b.judge(system="s", user="u")
 
 
@@ -219,3 +228,58 @@ def test_judge_example_documents_guard_fields():
     assert "call_timeout_s" in raw
     assert "max_consecutive_failures" in raw
     assert "max_tokens" in raw
+
+
+# ----------------------------- review fixes: persist-filter + CLI abort (pinned)
+def test_judge_and_persist_filters_error_cells_from_disk(tmp_path):
+    # the load-bearing invariant: a judge_error cell never lands in judgements.jsonl (so a resume
+    # with a good model re-judges it). Exercises the clean-rewrite filter, not just on_verdict.
+    from touchstone import cli
+    from touchstone.judge import load_judgements_jsonl
+
+    jpath = tmp_path / "judgements.jsonl"
+    cli._judge_and_persist(
+        _ThrowBackend(), [_mk_resp()], _make_pack(), [], jpath, max_consecutive_failures=0
+    )
+    assert jpath.read_text(encoding="utf-8").strip() == ""  # nothing persisted
+    assert load_judgements_jsonl(jpath) == []  # resume sees no done cell → re-judges it
+
+
+def test_judge_cli_aborts_with_exit_1_on_runaway(tmp_path, monkeypatch):
+    # the CLI must catch JudgeAborted → clean Exit(1) + message (no traceback, no zombie card).
+    import types
+
+    import typer.testing
+
+    from touchstone.cli import app
+
+    class _AlwaysThrow:
+        def judge(self, *, system, user):
+            raise J.JudgeCallError("timeout")
+
+    b = tmp_path / "bundle"
+    b.mkdir()
+    (b / "bundle.json").write_text('{"pack_path":"x","host":{}}', encoding="utf-8")
+    monkeypatch.setattr("touchstone.cli.load_pack", lambda p: _make_pack())
+    monkeypatch.setattr(
+        "touchstone.cli.load_responses_jsonl", lambda p: [_mk_resp(repeat=i) for i in range(3)]
+    )
+    monkeypatch.setattr("touchstone.cli.OpenAIJudgeBackend", lambda *a, **k: _AlwaysThrow())
+    monkeypatch.setattr(
+        "touchstone.cli.load_judge_config",
+        lambda p: types.SimpleNamespace(
+            endpoint=types.SimpleNamespace(base_url="x", api_key="y"),
+            model="m",
+            temperature=0.0,
+            call_timeout_s=120,
+            max_consecutive_failures=3,
+            max_tokens=None,
+        ),
+    )
+    res = typer.testing.CliRunner().invoke(
+        app, ["judge", "--bundle", str(b), "--judge-config", "judge.yaml"]
+    )
+    assert res.exit_code == 1, res.output
+    assert "abgebrochen" in res.output
+    jpath = b / "judgements.jsonl"  # no error cell persisted on the abort path either
+    assert (not jpath.exists()) or jpath.read_text(encoding="utf-8").strip() == ""

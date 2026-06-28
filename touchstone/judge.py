@@ -463,5 +463,9 @@ class OpenAIJudgeBackend:
         try:
             resp = self._client.chat.completions.create(**call)  # type: ignore[call-overload]
         except Exception as e:  # APITimeoutError / APIError / connection — fail fast, never hang
+            from openai import OpenAIError
+
+            if not isinstance(e, OpenAIError):
+                raise  # a programmer/client bug — surface it, don't mask it as a judge failure
             raise JudgeCallError(f"{type(e).__name__}: {e}") from e
         return resp.choices[0].message.content or ""
