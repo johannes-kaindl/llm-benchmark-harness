@@ -117,6 +117,39 @@ Veredelung des Benchmarkings.
 
 ---
 
+## 5. A/B-Ergebnis des Judge-Prompt-Patches (Track A, umgesetzt 2026-06-28)
+
+Der Prompt-Patch (`feat/judge-prompt-patch`: 5 Regeln + K.-o.-Markierung + angereicherte Evidenz)
+wurde gemessen: Bundle nach `_patched` kopiert, mit gepatchtem Prompt re-judged (gleicher Judge
+`qwen3.6-27b`, gleiche Antworten → **nur der Prompt variiert**), Meta-Eval mit **wiederverwendeter
+Original-Fresh-Referenz** (saubere A/B).
+
+**buero `2026-06-27_141641` (schwächste Safety-Baseline) — Vorher ↔ Nachher:**
+
+| Metrik | Vorher | Nachher | Δ |
+|---|--:|--:|--:|
+| `catches_safety` | 29 % | **50 %** | **+21 pp** (Kern-Defekt D1) |
+| `justifies_level` | 86 % | **100 %** | +14 pp (D2) |
+| `mean\|Δ\|` (Kalibrierung) | 0.64 | **0.50** | −0.14 (besser, nicht schlechter) |
+| `names_improvement` | 100 % | 100 % | = (war bereits max) |
+| `cites_evidence` | 100 % | 100 % | = (Binär-Check unterscheidet Pointer/Beobachtung nicht) |
+
+**Verdikt: der Patch hilft.** Sicherheits-Begründung deutlich besser, Score-Höhe durchgängig
+begründet, Kalibrierung **stabil/leicht besser** (Score-Drift schadete nicht). Qualitativ sichtbar:
+die Rationales nennen jetzt konkrete prompt_id-verankerte Beobachtungen statt bloßer Pointer.
+
+**Caveats:** (1) `cites_evidence` bleibt 100 %↔100 %, weil der Binär-Check die Pointer→Beobachtung-
+Verbesserung nicht messen kann (→ B2 `cites_quote`). (2) Single-Critic-Remeasure (eine Kritik-Runde);
+Richtung stark/konsistent, aber n=1 Kritik. (3) ndassist-Gegenprobe steht aus (LM-Studio-Contention
+durch einen parallelen GUI-Lauf — operativ, nicht inhaltlich).
+
+**Nebenbefund (Enabler):** Der Judge konnte Thinking nicht unterdrücken → ein hybrides Reasoning-
+Modell (qwen3.6-27b auf LM Studio mit aktivem Reasoning) lieferte nur Reasoning/leeren Content und
+sprengte den Call-Timeout. Behoben via `JudgeConfig.suppress_thinking` (Default an, `extra_body`-Hints
+nach Vorbild `vault-rag`), **ohne** LM-Studio-Eingriff. Zudem: die reichere holistische Ausgabe
+(3–4 Sätze × 7 Dimensionen) braucht mehr Zeit (~165 s auf dem 27B) → lokaler Judge braucht
+`call_timeout_s` > 120 (z. B. 300).
+
 ## 5. Reproduktion / Artefakte
 
 - Pro Bundle in `runs/<ts>/`: `judge_meta_request.md` (Teil A/B), `judge_meta_response.yaml`

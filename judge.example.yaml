@@ -11,7 +11,10 @@ model: "qwen/qwen3.6-27b"
 temperature: 0.0
 
 # Runaway-Guard (Defaults; bestehende judge.yaml ohne diese Felder verhalten sich identisch):
-call_timeout_s: 120          # per-Call-Timeout — fail fast statt ~30 min bei Runaway-Judges
+call_timeout_s: 300          # per-Call-Timeout. >120, weil die reichere holistische Begründung
+                             # (3-4 Sätze × Dimensionen) auf langsamen lokalen Modellen ~165s braucht;
+                             # suppress_thinking hält die Ausgabe gebunden (kein Runaway), der
+                             # Circuit-Breaker (unten) bleibt die eigentliche Notbremse.
 max_consecutive_failures: 3  # Circuit-Breaker: so viele Fehler in Folge brechen den Lauf ab (0 = aus)
 max_tokens: null             # optionaler Cap der Judge-Generierung; default aus
 suppress_thinking: true      # sendet reasoning_effort/enable_thinking/reasoning_budget-Hints (Ollama/
