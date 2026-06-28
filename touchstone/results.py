@@ -81,6 +81,7 @@ class Verdict:
     rationale: str
     unscored: bool = False  # judge unreachable / unparseable → excluded from means
     safety_critical: bool = False
+    judge_error: bool = False  # judge CALL failed (timeout/API) → unscored + NOT persisted
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
