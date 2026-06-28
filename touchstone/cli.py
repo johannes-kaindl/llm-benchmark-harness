@@ -31,6 +31,7 @@ from touchstone.client import OpenAIStreamClient
 from touchstone.config import Config, apply_models_override, load_config
 from touchstone.embed import render_embed_md, run_embed
 from touchstone.judge import (
+    JudgeAborted,
     JudgeBackend,
     JudgeConfig,
     OpenAIJudgeBackend,
@@ -655,10 +656,12 @@ def _judge_and_persist(
     prior: list[Verdict],
     jpath: Path,
     *,
+    max_consecutive_failures: int,
     on_verdict: Callable[[Verdict], None] | None = None,
 ) -> tuple[list[Verdict], list[ModelReport]]:
     """Judge fresh responses, persist judgements.jsonl (append-stream then clean rewrite),
-    return (verdicts, reports). ``on_verdict`` (web) is called in addition to the append."""
+    return (verdicts, reports). ``on_verdict`` (web) is called in addition to the append.
+    ``judge_error`` cells are never persisted (a resume re-judges them)."""
     with jpath.open("a", encoding="utf-8") as jh:
 
         def _append(v: Verdict) -> None:
@@ -668,10 +671,17 @@ def _judge_and_persist(
                 on_verdict(v)
 
         verdicts, reports = judge_bundle(
-            backend, responses, pk, prior_verdicts=prior, on_verdict=_append
+            backend,
+            responses,
+            pk,
+            prior_verdicts=prior,
+            on_verdict=_append,
+            max_consecutive_failures=max_consecutive_failures,
         )
     with jpath.open("w", encoding="utf-8") as jh:  # clean rewrite: prior + new, deduped
         for v in verdicts:
+            if v.judge_error:  # never persist error cells → a resume re-judges them
+                continue
             jh.write(json.dumps(v.as_dict(), ensure_ascii=False) + "\n")
     return verdicts, reports
 
@@ -775,7 +785,12 @@ def judge(
     if judge_model.strip():
         jc = jc.model_copy(update={"model": judge_model.strip()})
     backend = OpenAIJudgeBackend(
-        jc.endpoint.base_url, jc.endpoint.api_key, jc.model, jc.temperature
+        jc.endpoint.base_url,
+        jc.endpoint.api_key,
+        jc.model,
+        jc.temperature,
+        timeout=jc.call_timeout_s,
+        max_tokens=jc.max_tokens,
     )
     prior = load_judgements_jsonl(bundle / "judgements.jsonl")
     if prior:
@@ -797,7 +812,14 @@ def judge(
     try:
         emit = web or emit_events
         if not emit:
-            verdicts, reports = _judge_and_persist(backend, responses, pk, prior, jpath)
+            verdicts, reports = _judge_and_persist(
+                backend,
+                responses,
+                pk,
+                prior,
+                jpath,
+                max_consecutive_failures=jc.max_consecutive_failures,
+            )
             _render_judge_scorecard(bundle, pk, responses, verdicts, reports, host)
             _write_result_json_after_judge(bundle, pk, responses, verdicts, reports, host, jc)
             scored = sum(1 for v in verdicts if not v.unscored)
@@ -820,7 +842,13 @@ def judge(
                 try:
                     on_judge_start(len(responses), prior)
                     emit_verdicts, emit_reports = _judge_and_persist(
-                        backend, responses, pk, prior, jpath, on_verdict=on_verdict
+                        backend,
+                        responses,
+                        pk,
+                        prior,
+                        jpath,
+                        on_verdict=on_verdict,
+                        max_consecutive_failures=jc.max_consecutive_failures,
                     )
                     write_masters(_master_rows(pk, responses, emit_verdicts, emit_reports))
                 finally:
@@ -836,6 +864,10 @@ def judge(
                 )
                 if web and monitor is not None:
                     _hold_monitor(monitor, url)
+    except JudgeAborted as e:
+        _finalize_run_sentinel(bundle, ok=False)
+        console.print(f"[red]Judge abgebrochen:[/] {e}")
+        raise typer.Exit(code=1) from None
     except BaseException:
         _finalize_run_sentinel(bundle, ok=False)
         raise

@@ -54,7 +54,12 @@ def test_judge_writes_reports_jsonl(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "touchstone.cli.load_judge_config",
         lambda p: types.SimpleNamespace(
-            endpoint=types.SimpleNamespace(base_url="x", api_key="y"), model="m", temperature=0.0
+            endpoint=types.SimpleNamespace(base_url="x", api_key="y"),
+            model="m",
+            temperature=0.0,
+            call_timeout_s=120,
+            max_consecutive_failures=3,
+            max_tokens=None,
         ),
     )
     res = runner.invoke(app, ["judge", "--bundle", str(b), "--judge-config", "judge.yaml"])

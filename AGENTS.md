@@ -170,6 +170,20 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   `EvalResponse.reasoning_text` is persisted **only when `content_empty`** (keeps `responses.jsonl` slim)
   so the thinking stays inspectable, and `scorecard.reasoning_only_counts` surfaces the per-(model,variant)
   count in the tech-specs table.
+- **Judge-Runaway-Guard.** Der Judge-Call ist gebunden — `OpenAIJudgeBackend` nimmt `timeout`
+  (`JudgeConfig.call_timeout_s`, Default 120 s) + `max_retries=0` + optionalen `max_tokens` und wirft
+  `JudgeCallError` statt ~30 min zu hängen. `judge_responses` degradiert eine gescheiterte Zelle zu
+  einem `unscored`+`judge_error`-Verdict (⚠-Begründung) — **nicht** an `on_verdict` gestreamt und im
+  Clean-Rewrite **nicht** persistiert, damit ein Resume sie neu bewertet — und bricht nach
+  `max_consecutive_failures` (Default 3) mit `JudgeAborted` ab (der CLI fängt das → rote Meldung +
+  Exit 1, Sentinel `failed`). Grund: **Thinking-Modelle als Judge drehen durch** (kein Cap, Thinking
+  nie aus) → nimm ein dense Modell wie `qwen3.6-27b` ([[judge-thinking-model-runaway]]). `score_dimensions`
+  fängt den Fehler ebenfalls (degradierter Report). CLI **und** GUI erben den Guard (die GUI spawnt den
+  CLI-Subprozess); die einzige Backend-Konstruktion ist `cli.py`. Der Backend-`except` reicht
+  Nicht-`OpenAIError` (Programmierfehler) durch, statt sie als Judge-Fehler zu maskieren. **Bekannte
+  Grenze (selten):** schlägt *nur* der holistische Master-Call fehl (Per-Antwort-Pass war ok), wird ein
+  degradierter `_error`-Report mit `dim_scores={}` geschrieben und der Lauf endet sauber (Exit 0) — die
+  Nacht-Queue sieht `reports.jsonl` und re-judged ihn nicht automatisch; ein manuelles `judge` heilt ihn.
 - **Pre-flight smoke runs before the matrix.** `preflight.preflight_models` sends one small request per
   model with that model's *effective* budget (`max(pack prompt max_tokens) + ModelSpec.reasoning_headroom_tokens`)
   after `iter_eval_cells` but **before** `sampler.start()` (never inside the measured window) and classifies

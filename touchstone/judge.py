@@ -34,6 +34,15 @@ REASONING_ONLY_RATIONALE = (
 EMPTY_RATIONALE = (
     "Leere Modell-Ausgabe (weder Content noch Reasoning). Als Assistenz-Antwort unbrauchbar."
 )
+JUDGE_ERROR_RATIONALE = "⚠ Judge-Fehler (nicht bewertbar): {err}"
+
+
+class JudgeCallError(Exception):
+    """A single judge LLM call failed (timeout / API / connection)."""
+
+
+class JudgeAborted(Exception):
+    """Too many judge calls failed in a row — the judge model is unusable; abort the run."""
 
 
 class JudgeBackend(Protocol):
@@ -244,18 +253,44 @@ def judge_responses(
     *,
     skip_keys: frozenset[VerdictKey] | set[VerdictKey] = frozenset(),
     on_verdict: Callable[[Verdict], None] | None = None,
+    max_consecutive_failures: int = 0,
 ) -> list[Verdict]:
-    """Score each response. ``skip_keys`` (already-judged cells) are skipped; each
-    fresh verdict is passed to ``on_verdict`` (e.g. to append it to disk for resume)."""
+    """Score each response. ``skip_keys`` (already-judged cells) are skipped; each fresh
+    *successful* verdict is passed to ``on_verdict`` (e.g. appended to disk for resume). A
+    ``JudgeCallError`` (timeout/API) degrades that cell to an unscored ``judge_error`` verdict —
+    NOT streamed to ``on_verdict`` (so a resume re-judges it). ``max_consecutive_failures`` (>0)
+    consecutive failures raise ``JudgeAborted`` (the judge model is unusable)."""
     index = {p.id: p for _, p in pack.all_prompts()}
     verdicts: list[Verdict] = []
+    consecutive = 0
     for resp in responses:
         if (resp.model, resp.variant, resp.prompt_id, resp.repeat) in skip_keys:
             continue
         prompt = index.get(resp.prompt_id)
         if prompt is None:
             continue
-        verdict = score_response(backend, resp, prompt, pack)
+        try:
+            verdict = score_response(backend, resp, prompt, pack)
+        except JudgeCallError as e:
+            verdicts.append(
+                _verdict(
+                    resp,
+                    prompt,
+                    score=0,
+                    red_flag=False,
+                    rationale=JUDGE_ERROR_RATIONALE.format(err=e),
+                    unscored=True,
+                    judge_error=True,
+                )
+            )
+            consecutive += 1
+            if max_consecutive_failures and consecutive >= max_consecutive_failures:
+                raise JudgeAborted(
+                    f"{consecutive} Judge-Calls in Folge gescheitert — Judge-Modell unbrauchbar "
+                    f"(nimm ein nicht-Thinking-Modell wie qwen3.6-27b). Letzter Fehler: {e}"
+                ) from e
+            continue
+        consecutive = 0
         if on_verdict is not None:
             on_verdict(verdict)
         verdicts.append(verdict)
@@ -266,7 +301,16 @@ def score_dimensions(
     backend: JudgeBackend, pack: Pack, *, model: str, variant: str, verdicts: list[Verdict]
 ) -> ModelReport:
     system, user = _build_dimension_prompt(pack, verdicts)
-    scores, rationales = parse_dimension_report(backend.judge(system=system, user=user), pack)
+    try:
+        raw = backend.judge(system=system, user=user)
+    except JudgeCallError as e:
+        return ModelReport(
+            model=model,
+            variant=variant,
+            dim_scores={},
+            dim_rationales={"_error": JUDGE_ERROR_RATIONALE.format(err=e)},
+        )
+    scores, rationales = parse_dimension_report(raw, pack)
     return ModelReport(model=model, variant=variant, dim_scores=scores, dim_rationales=rationales)
 
 
@@ -277,14 +321,23 @@ def judge_bundle(
     *,
     prior_verdicts: list[Verdict] | None = None,
     on_verdict: Callable[[Verdict], None] | None = None,
+    max_consecutive_failures: int = 0,
 ) -> tuple[list[Verdict], list[ModelReport]]:
     """Full judging pass: per-response verdicts + per-(model,variant) master reports.
 
     ``prior_verdicts`` (from an interrupted run's judgements.jsonl) are kept and their
-    cells skipped — only the rest are freshly judged (and streamed to ``on_verdict``)."""
+    cells skipped — only the rest are freshly judged (and streamed to ``on_verdict``).
+    ``max_consecutive_failures`` is forwarded to ``judge_responses`` (circuit-breaker)."""
     prior = list(prior_verdicts or [])
     skip = {_verdict_key(v) for v in prior}
-    fresh = judge_responses(backend, responses, pack, skip_keys=skip, on_verdict=on_verdict)
+    fresh = judge_responses(
+        backend,
+        responses,
+        pack,
+        skip_keys=skip,
+        on_verdict=on_verdict,
+        max_consecutive_failures=max_consecutive_failures,
+    )
     verdicts = prior + fresh
     groups: list[tuple[str, str]] = []
     for r in responses:
@@ -356,6 +409,9 @@ class JudgeConfig(BaseModel):
     endpoint: JudgeEndpoint
     model: str
     temperature: float = 0.0
+    call_timeout_s: float = 120  # per-call timeout — fail fast instead of ~30 min
+    max_consecutive_failures: int = 3  # circuit-breaker; 0 = disabled
+    max_tokens: int | None = None  # optional cap; default off (no truncation risk)
 
 
 def load_judge_config(path: str | Path) -> JudgeConfig:
@@ -368,20 +424,48 @@ def load_judge_config(path: str | Path) -> JudgeConfig:
 class OpenAIJudgeBackend:
     """JudgeBackend over an OpenAI-compatible endpoint (cloud or local)."""
 
-    def __init__(self, base_url: str, api_key: str, model: str, temperature: float = 0.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        temperature: float = 0.0,
+        *,
+        timeout: float | None = None,
+        max_retries: int = 0,
+        max_tokens: int | None = None,
+    ) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(base_url=base_url, api_key=api_key)
+        kwargs: dict[str, object] = {
+            "base_url": base_url,
+            "api_key": api_key,
+            "max_retries": max_retries,
+        }
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        self._client = OpenAI(**kwargs)  # type: ignore[arg-type]
         self._model = model
         self._temperature = temperature
+        self._max_tokens = max_tokens
 
     def judge(self, *, system: str, user: str) -> str:
-        resp = self._client.chat.completions.create(
-            model=self._model,
-            messages=[
+        call: dict[str, object] = {
+            "model": self._model,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=self._temperature,
-        )
+            "temperature": self._temperature,
+        }
+        if self._max_tokens is not None:
+            call["max_tokens"] = self._max_tokens
+        try:
+            resp = self._client.chat.completions.create(**call)  # type: ignore[call-overload]
+        except Exception as e:  # APITimeoutError / APIError / connection — fail fast, never hang
+            from openai import OpenAIError
+
+            if not isinstance(e, OpenAIError):
+                raise  # a programmer/client bug — surface it, don't mask it as a judge failure
+            raise JudgeCallError(f"{type(e).__name__}: {e}") from e
         return resp.choices[0].message.content or ""
