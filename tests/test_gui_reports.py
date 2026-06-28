@@ -60,6 +60,7 @@ def test_judge_writes_reports_jsonl(tmp_path, monkeypatch):
             call_timeout_s=120,
             max_consecutive_failures=3,
             max_tokens=None,
+            suppress_thinking=False,
         ),
     )
     res = runner.invoke(app, ["judge", "--bundle", str(b), "--judge-config", "judge.yaml"])

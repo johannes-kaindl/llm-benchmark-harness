@@ -1,8 +1,9 @@
 # Judge-Endpoint für `touchstone judge`. Pluggable: lokal (offline, kostenlos) oder
 # Cloud (beste Score-Qualität). Kopiere nach judge.yaml und passe an.
 #
-# Lokaler Judge (LM Studio, offline) — ein starkes DENSE Modell. KEINE Thinking-Modelle als
-# Judge (sie drehen ohne Token-Cap auf einem Call durch → Crash); qwen3.6-27b ist verlässlich.
+# Lokaler Judge (LM Studio, offline) — ein starkes DENSE/hybrides Modell. qwen3.6-27b ist verlässlich.
+# Thinking wird per Default unterdrückt (suppress_thinking unten) → auch ein hybrides Reasoning-Modell
+# liefert ein parsebares Verdict statt eines Runaway-Reasoning-Stroms; KEINE LM-Studio-Einstellung nötig.
 endpoint:
   base_url: "http://localhost:1234/v1"
   api_key: "not-needed"
@@ -13,6 +14,9 @@ temperature: 0.0
 call_timeout_s: 120          # per-Call-Timeout — fail fast statt ~30 min bei Runaway-Judges
 max_consecutive_failures: 3  # Circuit-Breaker: so viele Fehler in Folge brechen den Lauf ab (0 = aus)
 max_tokens: null             # optionaler Cap der Judge-Generierung; default aus
+suppress_thinking: true      # sendet reasoning_effort/enable_thinking/reasoning_budget-Hints (Ollama/
+                             # vLLM/llama.cpp/MLX/LM Studio/Qwen3). Auf false NUR bei einem Cloud-Judge,
+                             # der die Hints ablehnt (echtes OpenAI kennt reasoning_effort "none" nicht).
 
 # Cloud-Judge (beste Qualität) — z. B. ein OpenAI-kompatibler Anbieter:
 # endpoint:

@@ -437,6 +437,18 @@ class JudgeEndpoint(BaseModel):
     api_key: str = "not-needed"
 
 
+# Belt-and-suspenders body hints to disable a local model's "thinking" across servers, so a hybrid
+# reasoning model (e.g. Qwen3) emits a parseable verdict instead of a runaway reasoning stream that
+# blows the call timeout. reasoning_effort:"none" → Ollama/vLLM/OpenAI-compat; chat_template_kwargs →
+# llama.cpp/MLX/LM Studio (passthrough)/Qwen3; reasoning_budget:0 → llama.cpp. (Mirrors vault-rag's
+# suppressParams; sent verbatim via extra_body so the SDK doesn't reject the non-standard keys.)
+SUPPRESS_THINKING_BODY: dict[str, object] = {
+    "reasoning_effort": "none",
+    "chat_template_kwargs": {"enable_thinking": False},
+    "reasoning_budget": 0,
+}
+
+
 class JudgeConfig(BaseModel):
     endpoint: JudgeEndpoint
     model: str
@@ -444,6 +456,10 @@ class JudgeConfig(BaseModel):
     call_timeout_s: float = 120  # per-call timeout — fail fast instead of ~30 min
     max_consecutive_failures: int = 3  # circuit-breaker; 0 = disabled
     max_tokens: int | None = None  # optional cap; default off (no truncation risk)
+    # Suppress thinking by default: the recommended judge is a local DENSE/hybrid model and a
+    # runaway reasoning stream makes it unusable ([[judge-thinking-model-runaway]]). Set false only
+    # for a cloud judge that rejects these hints (e.g. real OpenAI: reasoning_effort has no "none").
+    suppress_thinking: bool = True
 
 
 def load_judge_config(path: str | Path) -> JudgeConfig:
@@ -466,6 +482,7 @@ class OpenAIJudgeBackend:
         timeout: float | None = None,
         max_retries: int = 0,
         max_tokens: int | None = None,
+        suppress_thinking: bool = True,
     ) -> None:
         from openai import OpenAI
 
@@ -480,6 +497,7 @@ class OpenAIJudgeBackend:
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
+        self._suppress_thinking = suppress_thinking
 
     def judge(self, *, system: str, user: str) -> str:
         call: dict[str, object] = {
@@ -492,6 +510,8 @@ class OpenAIJudgeBackend:
         }
         if self._max_tokens is not None:
             call["max_tokens"] = self._max_tokens
+        if self._suppress_thinking:
+            call["extra_body"] = SUPPRESS_THINKING_BODY
         try:
             resp = self._client.chat.completions.create(**call)  # type: ignore[call-overload]
         except Exception as e:  # APITimeoutError / APIError / connection — fail fast, never hang

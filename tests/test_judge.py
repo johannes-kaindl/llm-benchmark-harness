@@ -363,3 +363,48 @@ def test_dimension_prompt_sanitizes_multiline_rationale():
     ev = [ln for ln in user.splitlines() if "E1: score 2" in ln]
     assert len(ev) == 1
     assert "erste Zeile - punkt zweite Zeile" in ev[0]
+
+
+def _fake_create_capturing(captured):
+    from types import SimpleNamespace
+
+    def _create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"score": 3}'))]
+        )
+
+    return _create
+
+
+def test_judge_backend_suppresses_thinking_by_default():
+    from touchstone.judge import SUPPRESS_THINKING_BODY, OpenAIJudgeBackend
+
+    b = OpenAIJudgeBackend("http://localhost:1234/v1", "k", "m")
+    captured: dict = {}
+    b._client.chat.completions.create = _fake_create_capturing(captured)  # type: ignore[method-assign]
+    b.judge(system="s", user="u")
+    eb = captured.get("extra_body") or {}
+    assert eb.get("reasoning_effort") == "none"
+    assert eb.get("chat_template_kwargs") == {"enable_thinking": False}
+    assert eb.get("reasoning_budget") == 0
+    assert eb == SUPPRESS_THINKING_BODY
+
+
+def test_judge_backend_keeps_thinking_when_disabled():
+    from touchstone.judge import OpenAIJudgeBackend
+
+    b = OpenAIJudgeBackend("http://localhost:1234/v1", "k", "m", suppress_thinking=False)
+    captured: dict = {}
+    b._client.chat.completions.create = _fake_create_capturing(captured)  # type: ignore[method-assign]
+    b.judge(system="s", user="u")
+    assert "extra_body" not in captured  # cloud judge that rejects the hints stays clean
+
+
+def test_judge_config_suppresses_thinking_by_default():
+    from touchstone.judge import JudgeConfig
+
+    jc = JudgeConfig.model_validate(
+        {"endpoint": {"base_url": "http://localhost:1234/v1"}, "model": "m"}
+    )
+    assert jc.suppress_thinking is True
