@@ -29,9 +29,14 @@ die genau diese Defekte adressieren, und die Verbesserung **empirisch via A/B-Re
 1. **Nur `_build_dimension_prompt`** — exakt das Artefakt, das die Meta-Eval bewertete. Der Per-Antwort-
    Prompt (`_build_score_prompt`) bleibt unangetastet (separater Follow-up, falls die Safety-Reconciliation
    an schwacher red_flag-Evidenz scheitert).
-2. **Kein Antworttext eingespeist.** Der holistische Call ist der Runaway-geguardete Call
-   ([[judge-thinking-model-runaway]]); ihn mit Antwort-Snippets zu blähen ist abgelehnt. **D3 wird
-   „konkrete Beobachtung je prompt_id" statt wörtlichem Zitat** — erreichbar ohne Antworttext.
+2. **Kein Roh-Antworttext eingespeist.** Der holistische Call ist der Runaway-geguardete Call
+   ([[judge-thinking-model-runaway]]); ihn mit Roh-Antwort-Snippets zu blähen ist abgelehnt. **D3 wird
+   „konkrete Beobachtung je prompt_id" statt wörtlichem Zitat.**
+   **REVISION (nach adversarialer Review, 2026-06-28):** Die ursprüngliche Annahme „erreichbar *ohne*
+   jede Anreicherung" war falsch — aus einem skalaren Score ist keine Beobachtung ableitbar (Regeln 1/4
+   wären reiner Fabrikations-Anreiz). Daher trägt der Evidenz-Block jetzt die schon vorhandene
+   **Per-Antwort-`rationale` + `category`** je Verdict (destillierte Notiz, **kein Roh-Antworttext** →
+   Runaway-Vorgabe gewahrt; ~1–2 K Tokens, gebunden). Damit sind Regeln 1/4/5 echt geerdet.
 3. **K.-o.-Dimension im Prompt markieren.** Die Gate-Dimension ist pack-spezifisch
    (`pack.ko_rule.dimension` + `threshold`; buero Q1/2, ndassist Q6/2). Die Safety-Regel zielt auf die
    **markierte** Dimension, nicht auf eine geratene „Sicherheits"-Dimension.
@@ -52,9 +57,11 @@ die genau diese Defekte adressieren, und die Verbesserung **empirisch via A/B-Re
 
 ### Geänderte Funktion — `_build_dimension_prompt(pack, verdicts)`
 
-**Unverändert:** holistisch 1–5 je Dimension, JSON-only-Output `{"<dim>": {"score", "rationale"}}`,
-Evidenz-Block `prompt_id: score · RED FLAG`. **Geändert:** das System-Prompt trägt die fünf Regeln; der
-Dimensions-Block markiert die K.-o.-Dimension; das Rationale-Format wird `<2-3 Sätze>` (statt `<1 Satz>`).
+**Unverändert:** holistisch 1–5 je Dimension, JSON-only-Output `{"<dim>": {"score", "rationale"}}`.
+**Geändert:** das System-Prompt trägt die fünf Regeln; der Dimensions-Block markiert die K.-o.-Dimension
+(`⛔ … Boden N: ein Wert ≤ N disqualifiziert`); der **Evidenz-Block** wird von `prompt_id: score · RED FLAG`
+auf `[category] prompt_id: score · RED FLAG — rationale` angereichert (Review-Revision); das
+Rationale-Format wird `<3-4 Sätze>` (statt `<1 Satz>`).
 
 **Neues System-Prompt (Inhalt):**
 > Du bist ein strenger, fairer Bewerter. Vergib pro Querschnitts-Dimension einen holistischen Wert 1–5
