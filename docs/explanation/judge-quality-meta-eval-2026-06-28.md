@@ -134,14 +134,27 @@ Original-Fresh-Referenz** (saubere A/B).
 | `names_improvement` | 100 % | 100 % | = (war bereits max) |
 | `cites_evidence` | 100 % | 100 % | = (Binär-Check unterscheidet Pointer/Beobachtung nicht) |
 
-**Verdikt: der Patch hilft.** Sicherheits-Begründung deutlich besser, Score-Höhe durchgängig
-begründet, Kalibrierung **stabil/leicht besser** (Score-Drift schadete nicht). Qualitativ sichtbar:
-die Rationales nennen jetzt konkrete prompt_id-verankerte Beobachtungen statt bloßer Pointer.
+**ndassist `2026-06-24_191558` — Cross-Pack-Gegenprobe:**
 
-**Caveats:** (1) `cites_evidence` bleibt 100 %↔100 %, weil der Binär-Check die Pointer→Beobachtung-
-Verbesserung nicht messen kann (→ B2 `cites_quote`). (2) Single-Critic-Remeasure (eine Kritik-Runde);
-Richtung stark/konsistent, aber n=1 Kritik. (3) ndassist-Gegenprobe steht aus (LM-Studio-Contention
-durch einen parallelen GUI-Lauf — operativ, nicht inhaltlich).
+| Metrik | Vorher | Nachher | Δ |
+|---|--:|--:|--:|
+| `catches_safety` | 50 % | **64 %** | +14 pp |
+| `justifies_level` | 64 % | **100 %** | +36 pp |
+| `names_improvement` | 89 % | **100 %** | +11 pp |
+| `mean\|Δ\|` (Kalibrierung) | 0.57 | 1.0 | **+0.43 (schlechter)** |
+
+**Verdikt: Rationale-Qualität steigt auf BEIDEN Packs klar** (Safety, Score-Begründung, Fix-Benennung).
+Die ndassist-Kalibrierungs-Verschlechterung deckte einen **echten Regel-5-Defekt** auf: die ursprüngliche
+Fassung koppelte JEDE Red-Flag an den Safety-K.-o. → eine **Format**-Red-Flag (ndassist E4) erzwang
+fälschlich Q6≤2. **Behoben** (`17a295a`): Regel 5 gilt nur noch für **sicherheitsrelevante** Red-Flags;
+Format/Ton/Stil-Red-Flags senken ihre *eigene* Dimension. (Teil der ndassist-Strenge war zudem berechtigt
+— die Referenz Q6=5 bei `none` war angesichts „verstärkt schädliches Masking" womöglich zu mild — d. h.
+die mean|Δ|-„Regression" überzeichnet, weil sie die Cloud-Referenz als Wahrheit nimmt.)
+
+**Caveats:** (1) `cites_evidence` bleibt 100 %↔100 % (Binär-Check misst Pointer→Beobachtung nicht → B2
+`cites_quote`). (2) Single-Critic-Remeasure (n=1 Kritik). (3) **Die ndassist-Zahlen oben sind VOR dem
+Regel-5-Fix gemessen; die Re-Konfirmation mit der geschärften Regel 5 wird async nachgezogen** und hier
+ergänzt.
 
 **Nebenbefund (Enabler):** Der Judge konnte Thinking nicht unterdrücken → ein hybrides Reasoning-
 Modell (qwen3.6-27b auf LM Studio mit aktivem Reasoning) lieferte nur Reasoning/leeren Content und
@@ -150,7 +163,7 @@ nach Vorbild `vault-rag`), **ohne** LM-Studio-Eingriff. Zudem: die reichere holi
 (3–4 Sätze × 7 Dimensionen) braucht mehr Zeit (~165 s auf dem 27B) → lokaler Judge braucht
 `call_timeout_s` > 120 (z. B. 300).
 
-## 5. Reproduktion / Artefakte
+## 6. Reproduktion / Artefakte
 
 - Pro Bundle in `runs/<ts>/`: `judge_meta_request.md` (Teil A/B), `judge_meta_response.yaml`
   (gefüllte Cloud-Antwort = Referenz-Median + Kritik), `judge_quality.md` (der Report),
