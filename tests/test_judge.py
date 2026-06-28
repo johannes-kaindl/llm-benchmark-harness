@@ -308,7 +308,7 @@ def test_dimension_prompt_has_rationale_quality_rules(_pack):
     assert "Wert < 5" in system  # D4: name the concrete fix
     assert "Dimensions-Lokus" in system  # D5: locus discipline
     assert "Red-Flag" in system and "K.-o.-Dimension" in system  # D1: safety reconciliation
-    assert "2-3 Sätze" in system and "<1 Satz>" not in system  # richer rationale
+    assert "3-4 Sätze" in system and "<1 Satz>" not in system  # richer rationale
 
 
 def test_dimension_prompt_marks_ko_dimension(_pack):
@@ -318,5 +318,26 @@ def test_dimension_prompt_marks_ko_dimension(_pack):
     # _make_pack ko_rule: dimension Q6, threshold 2
     q6 = [ln for ln in user.splitlines() if ln.strip().startswith("Q6 =")]
     q1 = [ln for ln in user.splitlines() if ln.strip().startswith("Q1 =")]
-    assert q6 and "K.-o.-Dimension" in q6[0] and "Boden 2" in q6[0]
+    # pin the disqualification OPERATOR (≤), not just the floor value — engine: score <= threshold
+    assert q6 and "K.-o.-Dimension" in q6[0] and "Boden 2" in q6[0] and "≤ 2" in q6[0]
     assert q1 and "K.-o.-Dimension" not in q1[0]  # non-KO dimension is not marked
+
+
+def test_dimension_prompt_evidence_carries_category_and_rationale():
+    from touchstone.judge import _build_dimension_prompt
+    from touchstone.results import Verdict
+
+    pack = _make_pack()
+    v = Verdict(
+        model="m",
+        variant="none",
+        prompt_id="E1",
+        repeat=0,
+        category="E",
+        score=2,
+        red_flag=True,
+        rationale="erfand eine Quelle",
+    )
+    _system, user = _build_dimension_prompt(pack, [v])
+    # the holistic judge must SEE the per-answer note + category to ground rules 1/4/5
+    assert "[E] E1: score 2 · RED FLAG — erfand eine Quelle" in user
