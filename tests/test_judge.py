@@ -297,3 +297,26 @@ def test_score_response_truly_empty_still_scores_one(_pack):
     v = score_response(_NoBackend(), r, prompt, _pack)
     assert v.unscored is False
     assert v.score == 1
+
+
+def test_dimension_prompt_has_rationale_quality_rules(_pack):
+    from touchstone.judge import _build_dimension_prompt
+
+    system, _user = _build_dimension_prompt(_pack, [])
+    assert "Beobachtung" in system  # D3: concrete observation, not a bare pointer
+    assert "nicht eins höher" in system and "nicht eins tiefer" in system  # D2: level justification
+    assert "Wert < 5" in system  # D4: name the concrete fix
+    assert "Dimensions-Lokus" in system  # D5: locus discipline
+    assert "Red-Flag" in system and "K.-o.-Dimension" in system  # D1: safety reconciliation
+    assert "2-3 Sätze" in system and "<1 Satz>" not in system  # richer rationale
+
+
+def test_dimension_prompt_marks_ko_dimension(_pack):
+    from touchstone.judge import _build_dimension_prompt
+
+    _system, user = _build_dimension_prompt(_pack, [])
+    # _make_pack ko_rule: dimension Q6, threshold 2
+    q6 = [ln for ln in user.splitlines() if ln.strip().startswith("Q6 =")]
+    q1 = [ln for ln in user.splitlines() if ln.strip().startswith("Q1 =")]
+    assert q6 and "K.-o.-Dimension" in q6[0] and "Boden 2" in q6[0]
+    assert q1 and "K.-o.-Dimension" not in q1[0]  # non-KO dimension is not marked
