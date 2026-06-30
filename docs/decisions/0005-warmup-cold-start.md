@@ -19,5 +19,5 @@ Pro Zelle wird genau **ein** Warmup-Lauf durchgeführt und aus der Auswertung ve
 - Trade-off / Restgrenze: Pro Zelle geht ein Lauf (das Warmup) für die Auswertung verloren; er kostet Laufzeit, wird bewusst verworfen und nur roh/markiert behalten.
 
 ## Belege & Links
-- Spec: `docs/superpowers/specs/2026-06-19-ndeval-harness-design.md` · Code: `touchstone/runner.py` · Essay: `docs/explanation/design-decisions.md` („Warum Warmup verwerfen und Cold-Start separat")
+- Spec: `docs/superpowers/specs/2026-06-19-ndeval-harness-design.md` · Code: `touchstone/runner.py` · Essay: `docs/explanation/design-decisions.md`
 - Verwandt: —

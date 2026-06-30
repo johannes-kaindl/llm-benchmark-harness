@@ -7,7 +7,7 @@
 
 `touchstone` war ein reines CLI-Werkzeug; die GUI-Steuerzentrale (`touchstone gui`) soll Konfigurieren, Starten/Stoppen und Live-Zusehen aus dem Browser ermöglichen, also Läufe selbst auslösen statt nur anzuzeigen (Spec §1). Damit entsteht die Frage, **wo** die Messung läuft, sobald ein langlebiger Webserver mit im Spiel ist.
 
-Die Kernkraft ist die Mess-Sauberkeit: Der Harness ist darauf gebaut, Latenz und Speicher unverfälscht zu messen — Speicher/Throttling aus dem Request-Thread zu schätzen ist verfälscht, weil derselbe Thread, der auf die Antwort wartet, den Host-Zustand nicht neutral messen kann (Design-Essay „Warum zwei entkoppelte Prozesse"). Liefe die persistente Steuerzentrale im selben Prozess wie die Messung, teilte der Mess-Thread Event-Loop, Garbage-Collection und die schweren Web-Deps (FastAPI etc.) mit dem Server, und die Latenz wäre nicht mehr sauber messbar (Essay „Warum die GUI ein out-of-process Control-Plane ist"; Spec G3).
+Die Kernkraft ist die Mess-Sauberkeit: Der Harness ist darauf gebaut, Latenz und Speicher unverfälscht zu messen — Speicher/Throttling aus dem Request-Thread zu schätzen ist verfälscht, weil derselbe Thread, der auf die Antwort wartet, den Host-Zustand nicht neutral messen kann (siehe `design-decisions.md`). Liefe die persistente Steuerzentrale im selben Prozess wie die Messung, teilte der Mess-Thread Event-Loop, Garbage-Collection und die schweren Web-Deps (FastAPI etc.) mit dem Server, und die Latenz wäre nicht mehr sauber messbar (`design-decisions.md`; Spec G3).
 
 Zweite Kraft: Was darf die GUI persistieren? Die Repo-Verfassung lautet „persistierter Output = nur MD/CSV"; ein transientes File darf nicht zur „Wahrheit" promotet werden (Spec G4/G10).
 
@@ -21,7 +21,7 @@ Der Launcher wählt das run_dir host-seitig (`RunRegistry._new_run_dir` → `{ts
 
 ## Erwogene Alternativen
 
-- **In-process Control-Plane (GUI ruft `run_eval` direkt)** — verworfen, weil der Mess-Thread dann Event-Loop, GC und GUI-Deps mit dem Webserver teilte und genau die saubere Latenz-/Speichermessung bräche, für die der Harness gebaut ist (Spec G3; Essay „Warum die GUI ein out-of-process Control-Plane ist").
+- **In-process Control-Plane (GUI ruft `run_eval` direkt)** — verworfen, weil der Mess-Thread dann Event-Loop, GC und GUI-Deps mit dem Webserver teilte und genau die saubere Latenz-/Speichermessung bräche, für die der Harness gebaut ist (Spec G3; `design-decisions.md`).
 - **Mess-Wahrheit/Steuer-Zustand in der GUI persistieren statt `runs/` als SSOT** — verworfen, weil das „persistierter Output = nur MD/CSV" verletzte und ein transientes File zur „Wahrheit" promotete (Spec G4/G10).
 - **Reiner in-memory Lauf-Guard (ohne On-Disk-Sentinel) für „nur ein Lauf"** — verworfen, weil er bei GUI-Neustart bräche (verwaister Subprozess + leere Registry → zweiter Lauf); der Sentinel-Lock auf Platte überlebt den Neustart (Spec G8/§9; `control.py` `_active_run_dir` scannt On-Disk-Sentinels).
 - **Subprozess mit `--web` starten (zweiter HTTP-Server als Live-Quelle)** — verworfen; stattdessen tailt der GUI-Server selbst `events.jsonl` (Spec §3: „kein webmon-Spawn", „kein zweiter HTTP-Server").
@@ -39,5 +39,5 @@ Der Launcher wählt das run_dir host-seitig (`RunRegistry._new_run_dir` → `{ts
 
 ## Belege & Links
 
-- Spec: `docs/superpowers/specs/2026-06-21-gui-steuerzentrale-design.md` (G3, G4, G8, G9, G10, §3, §6, §9) · Code: `touchstone/gui/control.py`, `touchstone/gui/app.py` · Essay: `docs/explanation/design-decisions.md` („Warum die GUI ein out-of-process Control-Plane ist")
+- Spec: `docs/superpowers/specs/2026-06-21-gui-steuerzentrale-design.md` (G3, G4, G8, G9, G10, §3, §6, §9) · Code: `touchstone/gui/control.py`, `touchstone/gui/app.py` · Essay: `docs/explanation/design-decisions.md`
 - Tests: `tests/` (laut Spec §10/§12: `control.py`-Registry/G8-via-Sentinel, run_dir/Sentinel-vor-Spawn, FastAPI-`TestClient`-Routen; Kern ohne `[gui]`)

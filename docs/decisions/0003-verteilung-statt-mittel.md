@@ -30,5 +30,5 @@ Implementiert in den reinen, abhängigkeitsfreien Funktionen `percentile`, `medi
 
 ## Belege & Links
 
-- Spec: `docs/superpowers/specs/2026-06-19-ndeval-harness-design.md` · Code: `touchstone/stats.py`, `touchstone/report.py` · Erläuterung: `docs/explanation/design-decisions.md` („Warum Verteilung statt Mittelwert")
+- Spec: `docs/superpowers/specs/2026-06-19-ndeval-harness-design.md` · Code: `touchstone/stats.py`, `touchstone/report.py` · Erläuterung: `docs/explanation/design-decisions.md`
 - Tests: `tests/test_stats.py` (Unit-Tests für `percentile`, `median`, `cv_percent`).

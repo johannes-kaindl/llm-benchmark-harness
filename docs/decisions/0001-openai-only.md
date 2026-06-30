@@ -5,7 +5,7 @@
 
 ## Kontext
 
-Der Harness soll *denselben Code* unverändert auf verschiedenen Maschinen fahren; nur die Config wechselt (Spec §1). Konkret laufen die Zielmaschinen auf unterschiedlichen Engines: LM Studio auf M1 und mlx_lm/mlx-openai-server auf M5 (design-decisions.md, „Warum OpenAI-kompatibel als einzige Schnittstelle"). Diese Engines sprechen alle das OpenAI-Chat-Protokoll. Die Kraft im Hintergrund ist die Messung selbst: Würde der Hot-Path je Engine verzweigen, hinge die gemessene Latenz vom Code-Zweig statt von der Hardware ab, und ein Maschinenwechsel wäre ein Code-Eingriff statt eines Config-Tauschs. Außerdem gilt als feste Harness-Regel, dass es keinen engine-spezifischen Code außerhalb von `client.py` geben darf (Spec §3, Non-goals).
+Der Harness soll *denselben Code* unverändert auf verschiedenen Maschinen fahren; nur die Config wechselt (Spec §1). Konkret laufen die Zielmaschinen auf unterschiedlichen Engines: LM Studio auf M1 und mlx_lm/mlx-openai-server auf M5 (design-decisions.md). Diese Engines sprechen alle das OpenAI-Chat-Protokoll. Die Kraft im Hintergrund ist die Messung selbst: Würde der Hot-Path je Engine verzweigen, hinge die gemessene Latenz vom Code-Zweig statt von der Hardware ab, und ein Maschinenwechsel wäre ein Code-Eingriff statt eines Config-Tauschs. Außerdem gilt als feste Harness-Regel, dass es keinen engine-spezifischen Code außerhalb von `client.py` geben darf (Spec §3, Non-goals).
 
 ## Entscheidung
 

@@ -31,5 +31,5 @@ Mess- und Ressourcen-Erfassung werden in **zwei entkoppelte Producer** getrennt,
 - Trade-off / Restgrenze: Throttling per `powermetrics` erfordert `sudo`; ist es nicht verfügbar, bleibt der Throttle-Flag auf `False` statt fehlzuschlagen.
 
 ## Belege & Links
-- Spec: `docs/superpowers/specs/2026-06-19-ndeval-harness-design.md` (§6: „Host sampling: the decoupled `HostSampler` … joined by time window (`merge`)") · Code: `touchstone/sampler.py`, `touchstone/merge.py` · Erklärung: `docs/explanation/design-decisions.md` („Warum zwei entkoppelte Prozesse")
+- Spec: `docs/superpowers/specs/2026-06-19-ndeval-harness-design.md` (§6: „Host sampling: the decoupled `HostSampler` … joined by time window (`merge`)") · Code: `touchstone/sampler.py`, `touchstone/merge.py` · Erklärung: `docs/explanation/design-decisions.md`
 - Verwandt: ADR-0001 (OpenAI-kompatibel als einzige Schnittstelle, sofern vorhanden)
