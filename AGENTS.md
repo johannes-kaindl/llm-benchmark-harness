@@ -236,7 +236,8 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
   dimensions are scored **holistically** (one judge call over all answers) — so traceability runs
   through the judge's rationale **citing prompt_ids** (clickable in the result view), not through a
   dimension→prompt structure (none exists). The evaluation method is explained in
-  `docs/explanation/design-decisions.md` and surfaced UI-retrievably via `templates/_method_explainer.html`.
+  `docs/explanation/design-decisions.md` (+ ADR `docs/decisions/0007-holistische-dimensionen.md`) and
+  surfaced UI-retrievably via `templates/_method_explainer.html`.
 - **`resources.jsonl` ticks carry `cpu_pct`** (system CPU %, `None` for pre-cpu ticks) — additive,
   does not touch `RAW_CSV_COLUMNS`. The result view plots RAM + CPU over the run.
 - **GUI-Modell-Override (ephemer):** Die „Konfig + Start"-Seite zeigt die `models:` der gewählten
@@ -304,5 +305,7 @@ Projekt-Memory under `~/.claude/projects/-Users-Shared-code-llm-benchmark-harnes
 
 ## Abweichungen von der Leitkonvention
 
-- **CORE-META-03/04** — Hero-Bild + volle Diátaxis-Doku noch nicht erstellt (Reife: Alpha;
-  `docs/reference/` + `docs/explanation/` als Start vorhanden).
+- **CORE-META-03/04** — Doku-Einstieg `docs/README.md` (Hero/Landing + Diátaxis-Karte) und die
+  Entscheidungs-Ebene `docs/decisions/` (ADRs + Index, je Kontext/Alternativen/Auswirkungen) sind erstellt;
+  `docs/reference/` + `docs/explanation/` (Narrativ, verlinkt die ADRs) ebenfalls. **Noch offen:**
+  Hero-*Bild* + Tutorials/How-to-Guides.

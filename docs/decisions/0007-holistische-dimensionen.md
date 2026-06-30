@@ -1,0 +1,26 @@
+# ADR-0007: Master-Dimensionen holistisch + Nachvollziehbarkeit
+
+- **Status:** akzeptiert · 2026-06-28
+- **Bereich:** Judge
+
+## Kontext
+Die Master-Dimensionen (Q1–Q7: Korrektheit, Ton, Sicherheit, …) sind querschnittliche Qualitäts-Achsen über das gesamte Verhalten eines Modells, keine Eigenschaften einer Einzelantwort (`design-decisions.md`). Damit stellt sich die Frage, wie der Judge sie bewertet: pro Prompt eine Dimension messen und zu einer Matrix verrechnen — oder ein Urteil pro Dimension über alle Antworten? Die Kräfte: eine schwache Antwort drückt oft mehrere Dimensionen zugleich, eine feste „Dimension X wird von Prompt Y geprüft"-Zuordnung würde diese holistische Natur verfälschen. Gegenkraft ist die Nachvollziehbarkeit: ein einzelner aggregierter Wert („Q6 = 2") darf kein Black-Box-Schlagwort sein, sondern muss bis zur einzelnen Antwort rückverfolgbar bleiben — inklusive des Sicherheits-K.-o., dessen „Nein" erklärbar machen muss, **welcher** Mechanismus feuerte.
+
+## Entscheidung
+Der Judge bewertet jede Master-Dimension **holistisch**: ein Score 1–5 **plus** Begründung (3–4 Sätze) pro Dimension über *alle* Antworten eines Modells, erzeugt je `(model, variant)` als ein `ModelReport` (`judge.py` `score_dimensions`/`_build_dimension_prompt`, Prompt verlangt „holistischen Wert 1-5 über alle Antworten dieses Modells"). Eine fest verdrahtete Dimension-pro-Prompt-Zuordnung gibt es bewusst nicht. Die Nachvollziehbarkeit trägt die **Begründung**: der Judge muss jede Dimensions-Bewertung mit konkreten `prompt_id`s und je `prompt_id` einer konkreten Beobachtung belegen (Regel 1 im System-Prompt: „Beleg + Beobachtung … kein bloßer Pointer wie 'schwach bei E1'"; gespeist aus der Per-Antwort-Evidenz, `_build_dimension_prompt`). Der Master-Score ist gewichtet, Σ `score × weight` / `max_weighted` (`scorecard.py` `weighted_total`); fehlende Dimensionen zählen 0. Die **K.-o.-Regel** (Sicherheits-Gate) läuft unabhängig vom Score über zwei Zweige (`scorecard.py` `passes_ko`): (a) ein red-geflaggter Prompt im fatalen Scope → Begründung dieses Prompts; (b) die K.-o.-Dimension `ko_rule.dimension` fällt auf/unter `ko_rule.threshold` → die holistische Dimensions-Begründung. Damit bleibt die Kette *Urteil → K.-o./gewichtete Master-Scorecard → belegte Begründung → einzelne Antwort* durchgängig.
+
+## Erwogene Alternativen
+- **Dimension-pro-Prompt-Matrix (feste „Dimension X ↔ Prompt Y"-Zuordnung)** — verworfen, weil sie die holistische Natur der Querschnitts-Dimensionen verfälscht: eine schwache Antwort drückt oft mehrere Dimensionen zugleich, eine 1:1-Verdrahtung könnte das nicht abbilden (`design-decisions.md`).
+- **Erfundene/strukturelle Nachvollziehbarkeit statt belegter Begründung** — verworfen, weil die Begründung selbst die Evidenz-Brücke trägt: der Judge zitiert konkrete `prompt_id`s („Q6 = 2, weil bei E1 und C3 …"), die im UI klickbar zur jeweiligen Antwort führen; eine künstliche Struktur wäre nur eine Fassade (`design-decisions.md`; `judge.py` System-Prompt-Regel 1).
+- **Sicherheit durch hohen Gesamt-Score ausgleichbar machen** — verworfen, weil das K.-o.-Gate unabhängig vom gewichteten Total läuft und nicht „outweighbar" ist; ein Sicherheitsmangel disqualifiziert trotz hoher Summe (`scorecard.py` `passes_ko`-Docstring: „Safety is not outweighable by a high total").
+
+## Auswirkungen
+- Positiv: Ein Urteil je Dimension über das Gesamtverhalten bildet die querschnittliche Qualität sauberer ab als eine Prompt-Matrix und bleibt trotzdem lückenlos rückverfolgbar, weil jede Bewertung mit `prompt_id`-Belegen unterlegt ist (`design-decisions.md`; `judge.py`).
+- Positiv: Ein K.-o.-„Nein" zeigt seinen Auslöser — entweder die konkrete red-geflaggte per-Antwort-Begründung oder die holistische Dimensions-Begründung —, sodass die Quelle im UI direkt verlinkbar ist (`design-decisions.md`; `scorecard.py` `passes_ko` liefert die `reason`).
+- Positiv: Die Erklärung der Bewertungs-Mechanik ist im Werkzeug selbst abrufbar (Kriterien-/Ergebnis-Ansicht), damit die Zahlen keine bloßen Schlagwörter bleiben (`design-decisions.md`).
+- Trade-off / Restgrenze: Die Belegtreue hängt an der Compliance des Judge-Modells — die `prompt_id`-Zitate werden per System-Prompt-Regeln eingefordert, nicht strukturell erzwungen; das Parsing ist deshalb bewusst tolerant gegenüber Judge-Drift (ein bloßer Score ohne Rationale, verschachteltes oder bare-int-Format werden aufgefangen, fehlende Scores zählen 0) (`judge.py` `parse_dimension_report`; `scorecard.py` `weighted_total`).
+- Trade-off / Restgrenze: Es gibt keine maschinell geprüfte Dimension↔Prompt-Konsistenz; der „Dimensions-Lokus" (Belege müssen zur Dimension passen) ist eine Prompt-Regel (Regel 4), keine Code-Invariante (`judge.py` `_build_dimension_prompt`).
+
+## Belege & Links
+- Rationale: `docs/explanation/design-decisions.md` · Spec: `docs/superpowers/specs/2026-06-21-gui-nachvollziehbarkeit-design.md`, `docs/superpowers/specs/2026-06-27-ko-red-flag-scope-design.md` · Code: `touchstone/judge.py` (`score_dimensions`, `_build_dimension_prompt`, `parse_dimension_report`, `judge_bundle`), `touchstone/scorecard.py` (`weighted_total`, `passes_ko`, `render_scorecard_md`, `master_rows`) · Tests: `tests/test_judge.py`, `tests/test_scorecard.py`, `tests/test_scorecard_render.py`
+- Verwandt: ADR-0004
