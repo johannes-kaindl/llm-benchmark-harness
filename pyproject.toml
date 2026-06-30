@@ -1,6 +1,6 @@
 [project]
 name = "llm-touchstone"
-version = "0.1.0"
+version = "0.2.0"
 description = "Thin benchmark harness for local LLM endpoints: correlates TTFT/prefill/decode latency with macOS memory pressure and thermal throttling."
 readme = "README.md"
 requires-python = ">=3.12"

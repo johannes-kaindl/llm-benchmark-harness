@@ -6,4 +6,4 @@ the only thing that changes between an M1 (LM Studio) and an M5 (mlx-lm) run is
 the config file.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
