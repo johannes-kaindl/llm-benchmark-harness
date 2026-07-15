@@ -39,3 +39,10 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]   # only on push; not on every commit
+      - id: readme-lint
+        name: README-Lint (readme_lint.py, zentral in _docs)
+        entry: python3 /Users/Shared/code/_docs/readme/readme_lint.py .
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [manual]   # C entfernt dies, sobald das README grün lintet → dann live-blockend
