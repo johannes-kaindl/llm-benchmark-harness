@@ -45,4 +45,5 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [manual]   # C entfernt dies, sobald das README grün lintet → dann live-blockend
+        # Seit 2026-07-28 live-blockend (kein `stages: [manual]` mehr): das README erfüllt den
+        # Tier `python-cli` (readme_lint.py --strict grün), also darf der Hook Drift aufhalten.
