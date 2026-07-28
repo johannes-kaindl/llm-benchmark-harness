@@ -8,10 +8,17 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # Byte-genaue Artefakte NICHT anfassen (sonst schreibt der Hook Erwartungswerte um):
+      #   tests/fixtures|golden — Golden-Files spiegeln die Ausgabe von report.py 1:1; deren
+      #     trailing spaces sind Markdown-Zeilenumbrüche in den Ausfüll-Zeilen, kein Dreck.
+      #     Ohne dieses Exclude bricht der Hook test_report_md_golden.py (verifiziert).
+      #   LICENSE* — Lizenztexte werden wörtlich weitergegeben, nicht normalisiert.
+      #   docs/superpowers/ — historische SDD-Artefakte; sie werden nicht rückwirkend umgeschrieben
+      #     (dieselbe Begründung, aus der tests/test_doc_links.py sie ausklammert).
       - id: trailing-whitespace
-        exclude: ^tests/fixtures/
+        exclude: ^(tests/(fixtures|golden)/|LICENSE|docs/superpowers/)
       - id: end-of-file-fixer
-        exclude: ^tests/fixtures/
+        exclude: ^(tests/(fixtures|golden)/|LICENSE|docs/superpowers/)
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
