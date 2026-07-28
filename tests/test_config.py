@@ -62,14 +62,23 @@ def test_max_tokens_resolution_order():
     assert cfg.max_tokens_for("unlisted", model) == 555
 
 
-def test_example_configs_parse():
-    # The shipped configs must validate.
+def test_shipped_configs_parse():
+    # EVERY shipped config must validate — globbed, not enumerated. A hand-kept list silently
+    # exempts each newly added config: config.embed/gemma-thinking/m5-lmstudio/m5.vlm/ndeval
+    # were all outside the old three-name list.
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    for name in ["config.example.yaml", "config.m1.yaml", "config.m5.yaml"]:
-        cfg = load_config(root / name)
-        assert cfg.machine
+    shipped = sorted(root.glob("config*.yaml"))
+    # A glob that matches nothing is green and blind — pin a floor, and keep naming the configs
+    # that must always exist, so a rename can't hollow the test out unnoticed.
+    assert len(shipped) >= 3, f"no shipped configs globbed: {shipped}"
+    names = {p.name for p in shipped}
+    assert {"config.example.yaml", "config.m1.yaml", "config.m5.yaml"} <= names, names
+
+    for path in shipped:
+        cfg = load_config(path)
+        assert cfg.machine, f"{path.name} has no machine label"
 
 
 def test_modelspec_thinking_defaults_are_neutral():
