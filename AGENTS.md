@@ -307,8 +307,15 @@ Projekt-Memory under `~/.claude/projects/-Users-Shared-code-llm-benchmark-harnes
 
   ```bash
   git push origin main && git push github main
-  git rev-parse --short main origin/main github/main   # drei identische Hashes = fertig
+  # Die Forges selbst messen, nicht die lokalen Tracking-Refs (die koennen stale sein):
+  git rev-parse main
+  git ls-remote --heads origin main
+  git ls-remote --heads github main      # drei identische Hashes = fertig
   ```
+
+  (`git rev-parse --short a b c` bricht mit „Needed a single revision" ab — `--short` nimmt nur
+  **eine** Revision. Ohne `--short` funktioniert die Mehrfach-Form, misst aber eben nur die
+  lokalen Kopien.)
 
   Die Zusage bleibt hier als Warnung stehen, statt gelöscht zu werden: sie hat elf Commits lang
   verdeckt, dass die öffentliche Seite veraltet war. Wird der Mirror je repariert, gehört das
