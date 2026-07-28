@@ -305,7 +305,9 @@ Projekt-Memory under `~/.claude/projects/-Users-Shared-code-llm-benchmark-harnes
 
 ## Abweichungen von der Leitkonvention
 
-- **CORE-META-03/04** — Doku-Einstieg `docs/README.md` (Hero/Landing + Diátaxis-Karte) und die
-  Entscheidungs-Ebene `docs/decisions/` (ADRs + Index, je Kontext/Alternativen/Auswirkungen) sind erstellt;
-  `docs/reference/` + `docs/explanation/` (Narrativ, verlinkt die ADRs) ebenfalls. **Noch offen:**
-  Hero-*Bild* + Tutorials/How-to-Guides.
+- **CORE-META-03/04** — Doku-Einstieg `docs/README.md` (Hero/Landing + Diátaxis-Karte), die
+  Entscheidungs-Ebene `docs/decisions/` (ADRs + Index, je Kontext/Alternativen/Auswirkungen),
+  `docs/reference/` + `docs/explanation/` (Narrativ, verlinkt die ADRs) sowie seit **2026-07-28**
+  `docs/tutorial.md` + `docs/how-to/` (4 Guides + Index) sind erstellt. Die READMEs (de/en)
+  erfüllen den `readme-spec.json`-Tier `python-cli` — `readme_lint.py --strict` ist grün.
+  **Noch offen:** Hero-*Bild*.

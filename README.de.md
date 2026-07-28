@@ -14,6 +14,54 @@ nur die Config wird getauscht.
 [![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](LICENSE-DOCS)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 
+## Features
+
+- **Verteilung statt Mittelwert** — TTFT als P50/P95, Decode/Prefill als Median, Konsistenz als
+  CV%. Auf Apple Silicon springt die Latenz an der Speicher-Schwelle; ein Mittelwert verwischt
+  genau das.
+- **Entkoppelter Host-Sampler** — Speicherdruck, Swap, Power-Source und Throttling schreibt ein
+  *eigener Prozess* mit, nachträglich per Zeitstempel gemergt. Nie aus dem Request-Thread
+  geschätzt.
+- **Antwort-Qualität, nicht nur Tempo** — ein Use-Case-**Pack** (`packs/*.yaml`: Prompts,
+  Green-/Red-Flags, gewichtete Dimensionen, Sicherheits-K.-o.) läuft deterministisch; ein
+  austauschbarer LLM-as-judge macht daraus eine gewichtete Scorecard. Ein neuer Einsatzzweck ist
+  ein neues YAML, kein neuer Code.
+- **System-Prompts als gemessene Achse** — jeder Prompt läuft einmal pro System-Prompt-Variante.
+  Derselbe Lauf zeigt damit, ob dein Prompt überhaupt etwas bringt.
+- **Engine-agnostisch by construction** — die einzige engine-bewusste Datei ist `client.py`.
+  LM Studio, mlx-lm, Ollama und llama.cpp sind ein Config-Tausch, nie ein Code-Zweig.
+- **Überall fortsetzbar** — `eval`, `judge` und die Nacht-`queue` machen nach einem Abbruch dort
+  weiter, wo sie standen.
+- **Vergleich über Maschinen** — `aggregate` rollt viele Bundles in eine
+  Hardware×Qualität-Tabelle und berichtet das Modell-Delta (Peak minus Baseline), das als
+  einziges über Maschinen hinweg trägt.
+- **Nacht-Queue** — mehrere Modelle sequenziell, jedes mit frischer RAM-Baseline
+  (entladen → settle → eval → judge), mit Watchdog pro Schritt.
+- **Optionale Web-Steuerzentrale** — konfigurieren, starten/stoppen, live zusehen, vergleichen und
+  exportieren im Browser, als out-of-process Control-Plane, die nie im eigenen Prozess misst.
+
+## Voraussetzungen
+
+- **macOS.** Der Mess-Kern ist portabel, der Host-Sampler liest aber `memory_pressure`, `pmset`
+  und `powermetrics`.
+- **Python 3.12+** über [`uv`](https://docs.astral.sh/uv/) (`brew install uv`).
+- **Ein lokaler OpenAI-kompatibler Endpoint** — LM Studio, `mlx_lm.server`, `mlx-openai-server`,
+  Ollama oder llama.cpp. Noch keiner da? Siehe
+  [uplink.jkaindl.de/llm-setup](https://uplink.jkaindl.de/llm-setup).
+- **Optional — passwortloses sudo für `powermetrics`.** Ohne bleibt der Throttle-Flag aus und
+  throttled Läufe werden *nicht* ausgeschlossen (siehe
+  [How-to: neue Maschine einrichten](docs/how-to/neue-maschine-einrichten.md)).
+- **Optional — das `[gui]`-Extra** (FastAPI/uvicorn/Jinja) für die Web-Steuerzentrale.
+
+## Installation
+
+```bash
+git clone https://codeberg.org/jkaindl/llm-benchmark-harness
+cd llm-benchmark-harness
+uv sync
+uv sync --extra gui     # optional: Web-Steuerzentrale
+```
+
 ## Schnellstart
 
 ```bash
@@ -71,8 +119,16 @@ CLI, sodass der Mess-Loop entkoppelt bleibt und `runs/` die Single Source of Tru
 
 ## Dokumentation
 
-- [Reference](docs/reference/) — Metrik-Definitionen, CSV-Schema, Config-Schlüssel
-- [Explanation](docs/explanation/) — warum Verteilung statt Mittelwert, der Zwei-Prozess-Split, warum die GUI out-of-process ist
+Einstieg: [`docs/README.md`](docs/README.md).
+
+- [Tutorial](docs/tutorial.md) — einmal komplett: installieren → messen → bewerten → Scorecard lesen
+- [How-to-Guides](docs/how-to/) — [eigenen Pack bauen](docs/how-to/eigenen-pack-bauen.md) ·
+  [neue Maschine einrichten](docs/how-to/neue-maschine-einrichten.md) ·
+  [Nacht-Queue fahren](docs/how-to/nacht-queue-fahren.md) ·
+  [Web-Steuerzentrale nutzen](docs/how-to/gui-nutzen.md)
+- [Reference](docs/reference/metrics-and-schema.md) — Metrik-Definitionen, CSV-Schema, Config-Schlüssel
+- [Explanation](docs/explanation/design-decisions.md) — warum Verteilung statt Mittelwert, der Zwei-Prozess-Split, warum die GUI out-of-process ist
+- [Decisions](docs/decisions/README.md) — 15 ADRs: Kontext, Alternativen, Auswirkungen
 
 ## Lizenz
 

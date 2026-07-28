@@ -16,13 +16,20 @@ Output: `report.md` + `raw.csv` (Perf) bzw. ein Bundle aus `responses.jsonl`/`sc
 
 | Quadrant | Frage | Hier |
 |---|---|---|
+| **Tutorial** | „Ich will es einmal komplett durchspielen." | [`tutorial.md`](tutorial.md) |
+| **How-to** | „Wie erledige ich Aufgabe X?" | [`how-to/`](how-to/README.md) |
 | **Reference** | „Welche Metrik/Spalte bedeutet was?" | [`reference/metrics-and-schema.md`](reference/metrics-and-schema.md) |
 | **Explanation** | „Warum ist es so gebaut?" (Narrativ) | [`explanation/design-decisions.md`](explanation/design-decisions.md) |
 | **Decisions** | „Welche Entscheidung, welche Alternativen, welche Folgen?" | [`decisions/README.md`](decisions/README.md) |
 | **Historie (SDD)** | „Wie wurde Feature X entworfen/geplant?" | [`superpowers/specs/`](superpowers/specs) · [`superpowers/plans/`](superpowers/plans) |
 | **Konventionen / Gotchas** | „Wie arbeite ich hier?" | `../AGENTS.md` |
 
-> _Noch offen (Folge-Projekte): Tutorials, How-to-Guides, Hero-Bild (AGENTS.md „CORE-META-03/04")._
+**Die vier How-to-Guides:** [eigenen Pack bauen](how-to/eigenen-pack-bauen.md) ·
+[neue Maschine einrichten](how-to/neue-maschine-einrichten.md) ·
+[Nacht-Queue fahren](how-to/nacht-queue-fahren.md) ·
+[Web-Steuerzentrale nutzen](how-to/gui-nutzen.md)
+
+> _Noch offen: Hero-Bild (AGENTS.md „CORE-META-03/04")._
 
 ## Architektur in einem Blick
 

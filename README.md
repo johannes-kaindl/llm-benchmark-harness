@@ -14,6 +14,51 @@ the config.
 [![Docs: CC BY-SA 4.0](https://img.shields.io/badge/docs-CC%20BY--SA%204.0-lightgrey.svg)](LICENSE-DOCS)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
 
+## Features
+
+- **Distribution, not the mean** — TTFT as P50/P95, decode/prefill as median, consistency as
+  CV%. On Apple Silicon latency jumps at the memory threshold; an average hides exactly that.
+- **Decoupled host sampler** — memory pressure, swap, power source and thermal throttling are
+  recorded by a *separate process* and joined by timestamp, never estimated from the request
+  thread.
+- **Answer quality, not just speed** — a use-case **pack** (`packs/*.yaml`: prompts, green/red
+  flags, weighted dimensions, a safety knock-out) runs deterministically; a pluggable
+  LLM-as-judge turns it into a weighted scorecard. A new use case is a new YAML, not new code.
+- **System prompts as a measured axis** — every prompt runs once per system-prompt variant, so
+  the same run tells you whether your prompt actually helps.
+- **Engine-agnostic by construction** — the only engine-aware file is `client.py`. LM Studio,
+  mlx-lm, Ollama and llama.cpp are a config swap, never a code branch.
+- **Resumable everywhere** — `eval`, `judge` and the overnight `queue` all continue where they
+  stopped; nothing is lost to an interrupted run.
+- **Cross-machine comparison** — `aggregate` rolls many bundles into one Hardware×Quality table,
+  reporting the model delta (peak minus baseline) that actually compares across machines.
+- **Overnight queue** — several models sequentially, each with a fresh RAM baseline
+  (unload → settle → eval → judge), with per-step watchdogs.
+- **Optional web control-center** — configure, start/stop, watch live, compare and export in the
+  browser, as an out-of-process control-plane that never measures in its own process.
+
+## Requirements
+
+- **macOS.** The measurement core is portable, but the host sampler reads `memory_pressure`,
+  `pmset` and `powermetrics`.
+- **Python 3.12+** via [`uv`](https://docs.astral.sh/uv/) (`brew install uv`).
+- **A local OpenAI-compatible endpoint** — LM Studio, `mlx_lm.server`, `mlx-openai-server`,
+  Ollama or llama.cpp. If you don't have one yet, see
+  [uplink.jkaindl.de/llm-setup](https://uplink.jkaindl.de/llm-setup).
+- **Optional — passwordless sudo for `powermetrics`.** Without it the throttle flag stays off
+  and throttled runs are *not* excluded (see
+  [How-to: set up a new machine](docs/how-to/neue-maschine-einrichten.md)).
+- **Optional — the `[gui]` extra** (FastAPI/uvicorn/Jinja) for the web control-center.
+
+## Install
+
+```bash
+git clone https://codeberg.org/jkaindl/llm-benchmark-harness
+cd llm-benchmark-harness
+uv sync
+uv sync --extra gui     # optional: web control-center
+```
+
 ## Quick Start
 
 ```bash
@@ -71,8 +116,16 @@ measurement loop stays decoupled and `runs/` remains the single source of truth.
 
 ## Documentation
 
-- [Reference](docs/reference/) — metric definitions, CSV schema, config keys
-- [Explanation](docs/explanation/) — why distribution over mean, the two-process split, why the GUI is out-of-process
+Docs are in German; the entry point is [`docs/README.md`](docs/README.md).
+
+- [Tutorial](docs/tutorial.md) — one full pass: install → measure → evaluate → read the scorecard
+- [How-to Guides](docs/how-to/) — [build your own pack](docs/how-to/eigenen-pack-bauen.md) ·
+  [set up a new machine](docs/how-to/neue-maschine-einrichten.md) ·
+  [run the overnight queue](docs/how-to/nacht-queue-fahren.md) ·
+  [use the web control-center](docs/how-to/gui-nutzen.md)
+- [Reference](docs/reference/metrics-and-schema.md) — metric definitions, CSV schema, config keys
+- [Explanation](docs/explanation/design-decisions.md) — why distribution over mean, the two-process split, why the GUI is out-of-process
+- [Decisions](docs/decisions/README.md) — 15 ADRs: context, alternatives, consequences
 
 ## License
 
