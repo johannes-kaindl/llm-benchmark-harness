@@ -12,7 +12,7 @@
 
 ## Pre-flight
 
-- **Working dir:** `/Users/Shared/code/llm-benchmark-harness`; Tests via `uv run pytest` aus dem Repo-Root.
+- **Working dir:** das Repo-Root; Tests via `uv run pytest` aus dem Repo-Root.
 - **Gates je Task:** jeweilige Testdatei; am Ende (Task 5): `uv run pytest -q`, `uv run mypy touchstone`, `uv run ruff check touchstone tests`, `uv run ruff format --check touchstone tests`.
 - **Trailer:** `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. **Branch:** `feat/modell-dropdown-discovery`. Kein Push (Controller am Ende).
 - **JS-Bug-Lehre:** TestClient prüft nur Markup, nicht laufendes JS — die echte JS-Verifikation ist der headless-Chrome-Smoke in Task 5. `model_picker.js` bleibt **nicht-deferred** geladen (sonst registriert sich `modelPicker` zu spät, der Picker ist tot).

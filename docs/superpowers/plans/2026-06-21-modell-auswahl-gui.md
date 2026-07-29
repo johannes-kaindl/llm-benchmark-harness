@@ -12,7 +12,7 @@
 
 ## Pre-flight (für den ausführenden Worker)
 
-- **Working dir:** `/Users/Shared/code/llm-benchmark-harness`; Tests via `uv run pytest` aus dem Repo-Root (cwd hat die echten `config*.yaml`, die die `/config`-Route globt).
+- **Working dir:** das Repo-Root; Tests via `uv run pytest` aus dem Repo-Root (cwd hat die echten `config*.yaml`, die die `/config`-Route globt).
 - **Gates nach jeder Task:** die jeweilige Testdatei; am Ende (Task 7): `uv run pytest -q`, `uv run mypy touchstone`, `uv run ruff check touchstone tests`, `uv run ruff format --check touchstone tests`.
 - **Commit-Trailer:** `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`. **Branch:** `feat/modell-auswahl-gui` ist ausgecheckt. Kein Push (macht der Controller am Ende).
 

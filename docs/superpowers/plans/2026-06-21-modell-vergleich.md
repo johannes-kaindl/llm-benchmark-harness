@@ -12,7 +12,7 @@
 
 ## Pre-flight (für den ausführenden Worker)
 
-- **Working dir:** `/Users/Shared/code/llm-benchmark-harness`. Tests laufen mit `uv run pytest` aus dem Repo-Root (cwd-relative `packs/ndassist.yaml` muss auflösen — das tut es vom Root).
+- **Working dir:** das Repo-Root. Tests laufen mit `uv run pytest` aus dem Repo-Root (cwd-relative `packs/ndassist.yaml` muss auflösen — das tut es vom Root).
 - **Gates nach jeder Task:** `uv run pytest <neue testdatei> -q`, am Ende Task 10: `uv run pytest -q` (alle), `uv run mypy touchstone`, `uv run ruff check touchstone tests`, `uv run ruff format --check touchstone tests`.
 - **Commit-Trailer:** `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - **Branch:** `feat/modell-vergleich` ist bereits ausgecheckt.

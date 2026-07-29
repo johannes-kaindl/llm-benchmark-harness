@@ -149,7 +149,7 @@ present, else `judge.example.yaml` (both point to `qwen/qwen3.6-27b`). Bundles:
 - [ ] **Step 1: Copy both bundles to `_patched` and strip the old judgement**
 
 ```bash
-cd /Users/Shared/code/llm-benchmark-harness
+cd <repo-root>   # ins Repo-Root wechseln
 JCFG=judge.yaml; [ -f "$JCFG" ] || JCFG=judge.example.yaml
 for o in runs/2026-06-27_141641_eval_buero runs/2026-06-24_191558_eval_ndassist; do
   p="${o}_patched"

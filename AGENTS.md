@@ -112,7 +112,11 @@ uv run --extra tokenizer python -c "..."       # exact per-model tokenizer (tran
 
 ## Conventions
 
-Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv**). Project-specific:
+> **Workspace standards (maintainer-local):** The binding Leitkonvention lives in `_docs/CONVENTIONS.md`
+> (profile **python-uv**) in the maintainer's multi-project workspace, `../_docs` relative to this repo —
+> not part of this repository, ignore if absent in your clone. Model: comply-or-explain.
+
+Project-specific:
 - Python 3.12, `uv` only (committed `uv.lock`). Ruff (line-length 100) + mypy strict.
 - German is fine in prompts, report output and commit descriptions; code/identifiers English.
 - `runs/` is gitignored — `report.md` is pasted by hand into the SSOT test note.
@@ -293,7 +297,16 @@ Workspace-wide standards live in `../_docs/CONVENTIONS.md` (profile **python-uv*
 
 Projekt-Memory under `~/.claude/projects/-Users-Shared-code-llm-benchmark-harness/memory/`
 (index: `MEMORY.md`). Session-Handoff under `.remember/` (gitignored). Vault cockpit:
-`10_Pallas/25_Coding/llm-benchmark-harness/` (status/tasks/decisions).
+`$VAULT/25_Coding/llm-benchmark-harness/` (status/tasks/decisions; `$VAULT` = etablierter
+CORE-META-14-Platzhalter für den Obsidian-Vault des Maintainers).
+
+- **SDD-Artefakte (seit 2026-07-16): Cockpit, nicht Repo** — Specs/Plans/Task-Reports leben im
+  Coding-Cockpit des Maintainers (`$VAULT/25_Coding/llm-benchmark-harness/_SDD/`, CORE-META-14,
+  maintainer-lokal). Sie tragen Arbeitskontext (Vault-Pfade, Schwester-Repo-Interna), der in einem
+  public Repo niemandem nützt. Das Repo behält die Design-Essenz in dieser Datei + `CHANGELOG.md`.
+- **Alt-Bestand:** `docs/superpowers/{specs,plans}/` ist eingefroren — nichts Neues dort ablegen.
+- **Nie im Repo:** absolute Pfade außerhalb des Repos (`/Users/…`, Vault-Pfade) — Platzhalter nutzen
+  (`$VAULT/…`, `~/…`, repo-relativ). Herkunftsnachweise als Repo-Name + `Datei:Zeile` sind dagegen erwünscht.
 
 ## Hosting
 
