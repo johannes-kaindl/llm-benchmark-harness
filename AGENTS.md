@@ -310,10 +310,10 @@ CORE-META-14-Platzhalter für den Obsidian-Vault des Maintainers).
 
 ## Hosting
 
-- **`origin`** = Codeberg (primär): <https://codeberg.org/jkaindl/llm-benchmark-harness>
+- **`origin`** = git.jkaindl.de (primär): <https://git.jkaindl.de/jkaindl/llm-benchmark-harness>
 - **`github`** = GitHub (Mirror): <https://github.com/johannes-kaindl/llm-benchmark-harness>
 - ⚠️ **Beide Remotes explizit pushen — der Mirror trägt nicht.** Bis 2026-07-28 stand hier, ein
-  Codeberg→GitHub-Push-Mirror (`sync_on_commit`) ziehe GitHub automatisch nach. Gemessen war das
+  Forgejo→GitHub-Push-Mirror (`sync_on_commit`) ziehe GitHub automatisch nach. Gemessen war das
   falsch: GitHub hing **11 Commits** zurück (die gesamte `docs/decisions/`-Ebene *und* Release
   `0.2.0`), und ein `origin`-Push zog auch danach nicht nach (zweimal geprüft, sofort und nach
   20 s). Also immer:
@@ -333,7 +333,7 @@ CORE-META-14-Platzhalter für den Obsidian-Vault des Maintainers).
   Die Zusage bleibt hier als Warnung stehen, statt gelöscht zu werden: sie hat elf Commits lang
   verdeckt, dass die öffentliche Seite veraltet war. Wird der Mirror je repariert, gehört das
   **an den Remotes gemessen**, nicht in dieser Datei behauptet.
-- Auth: Codeberg-Token `~/.codeberg-token`, GitHub-Token `~/.github-token` (HTTPS, nicht in `.git/config`).
+- Auth: Forgejo-Token `~/.forgejo-token`, GitHub-Token `~/.github-token` (HTTPS, nicht in `.git/config`).
 
 ## Abweichungen von der Leitkonvention
 

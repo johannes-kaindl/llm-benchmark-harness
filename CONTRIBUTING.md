@@ -15,7 +15,7 @@ Danke fürs Mitwirken! Dieses Repo folgt der Workspace-Leitkonvention
 
 ## Tags & Remotes (CORE-GIT-01/03)
 - SemVer **ohne** v-Präfix (`1.2.3`).
-- Primär-Remote ist Codeberg (`origin`); GitHub nur Mirror.
+- Primär-Remote ist git.jkaindl.de (`origin`); GitHub nur Mirror.
 
 ## Qualität vor dem Commit
 - Tests grün, Linter/Typecheck sauber (siehe Profil-Regeln der Leitkonvention).

@@ -43,9 +43,9 @@ gui = [
 touchstone = "touchstone.cli:app"
 
 [project.urls]
-Homepage = "https://codeberg.org/jkaindl/llm-benchmark-harness"
-Repository = "https://codeberg.org/jkaindl/llm-benchmark-harness"
-Issues = "https://codeberg.org/jkaindl/llm-benchmark-harness/issues"
+Homepage = "https://git.jkaindl.de/jkaindl/llm-benchmark-harness"
+Repository = "https://git.jkaindl.de/jkaindl/llm-benchmark-harness"
+Issues = "https://git.jkaindl.de/jkaindl/llm-benchmark-harness/issues"
 
 [build-system]
 requires = ["hatchling"]

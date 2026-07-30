@@ -8,7 +8,7 @@ kein engine-spezifischer Code im Hot-Path ([ADR 0001](../decisions/0001-openai-o
 ## 1. Installieren und Endpoint feststellen
 
 ```bash
-git clone https://codeberg.org/jkaindl/llm-benchmark-harness
+git clone https://git.jkaindl.de/jkaindl/llm-benchmark-harness
 cd llm-benchmark-harness
 uv sync
 curl -s http://localhost:1234/v1/models | python3 -m json.tool   # Port an deinen Server anpassen

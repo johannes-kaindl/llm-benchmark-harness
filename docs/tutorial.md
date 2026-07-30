@@ -34,7 +34,7 @@ Beide sind so formatiert, dass ihre Spalten direkt in eine Vergleichstabelle pas
 ## Schritt 1 — Installieren
 
 ```bash
-git clone https://codeberg.org/jkaindl/llm-benchmark-harness
+git clone https://git.jkaindl.de/jkaindl/llm-benchmark-harness
 cd llm-benchmark-harness
 uv sync
 uv run touchstone --help

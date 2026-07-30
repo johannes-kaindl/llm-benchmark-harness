@@ -56,7 +56,7 @@ nur die Config wird getauscht.
 ## Installation
 
 ```bash
-git clone https://codeberg.org/jkaindl/llm-benchmark-harness
+git clone https://git.jkaindl.de/jkaindl/llm-benchmark-harness
 cd llm-benchmark-harness
 uv sync
 uv sync --extra gui     # optional: Web-Steuerzentrale
