@@ -36,6 +36,8 @@ sampler.py  decoupled host sampler (psutil + powermetrics + memory_pressure + pm
 merge.py    latency log × resource log, joined by [t_start,t_end] window per run
 stats.py    P50/P95 · median · CV%   (pure, no numpy)
 report.py   raw.csv (every request) + report.md (SSOT columns, aggregates exclude noise)
+hostinfo.py host metadata for the report header (macOS version, chip, RAM) — degrades
+            to "unknown" off-mac so reports still render elsewhere
 embed.py    embedding throughput sub-run
 cli.py      typer app: run [--web] · embed · report · aggregate · eval [--web] · judge
 
@@ -50,6 +52,8 @@ runqueue.py overnight daisy-chain: `queue` command drives many models sequential
 judge.py    pluggable LLM-as-judge (JudgeBackend protocol): per-answer score vs. flags
             + holistic weighted master scorecard + safety K.-o.
 scorecard.py weighting/K.-o./category math (pure) + renders scorecard.md + scores.csv
+result_schema.py canonical per-(model×variant) result.json (ResultDoc, pure) — SSOT for
+            the report renderer, GUI compare view, and cross-machine aggregator
 aggregate.py cross-run/machine: many scores.csv → one Hardware×Quality table (md + scores_all.csv)
 
 # live monitoring (Ink. 3/5 — opt-in `eval --web` / `judge --web`, a separate viewing process):
