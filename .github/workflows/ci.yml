@@ -1,5 +1,5 @@
 # GitHub Actions CI (läuft auf dem GitHub-Mirror — keine Freischaltung nötig).
-# Spiegelt die .woodpecker.yml: dieselben Qualitäts-Gates bei jedem Push/PR.
+# Einzige CI (Entscheidung 2026-08-01: kein Instanz-Runner): Qualitäts-Gates bei jedem Push/PR.
 # uv installiert Python 3.12 selbst (managed), `--frozen` nutzt das committete uv.lock.
 name: CI
 
