@@ -315,7 +315,12 @@ CORE-META-14-Platzhalter für den Obsidian-Vault des Maintainers).
 ## Hosting
 
 - **`origin`** = git.jkaindl.de (primär): <https://git.jkaindl.de/jkaindl/llm-benchmark-harness>
-- **`github`** = GitHub (Mirror): <https://github.com/johannes-kaindl/llm-benchmark-harness>
+- **Kein GitHub-Mirror mehr (2026-09-05).** Der `github`-Remote ist entfernt. GitHub war als
+  Backup-Gegenstelle gedacht; diese Rolle trägt seit 2026-07 `git.jkaindl.de`, und seit dem
+  2026-08-30 ist das Konto ohnehin geflaggt (anonym 404, Actions kontoweit aus). Bleiben soll
+  GitHub nur, wo es funktional erzwungen ist — die Obsidian-Store-Kette; dieses Repo ist kein
+  Plugin. Der Absatz darunter bleibt als **Begründung** stehen, warum ein Mirror, solange es
+  ihn gab, von Hand gepusht werden musste.
 - ⚠️ **Beide Remotes explizit pushen — der Mirror trägt nicht.** Bis 2026-07-28 stand hier, ein
   Forgejo→GitHub-Push-Mirror (`sync_on_commit`) ziehe GitHub automatisch nach. Gemessen war das
   falsch: GitHub hing **11 Commits** zurück (die gesamte `docs/decisions/`-Ebene *und* Release
