@@ -16,12 +16,15 @@ there. The only engine-aware code stays in ``client.py`` (``stream_tools``).
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import html.parser
 import json
 import math
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -172,6 +175,23 @@ def load_tools_pack(path: str | Path) -> ToolsPack:
     return pack
 
 
+def pack_fingerprint(path: str | Path, pack: ToolsPack) -> str:
+    """sha256 over the pack YAML and every long-context file it pulls in — resume refuses a
+    bundle whose pack changed in between (a mixed run would not be comparable)."""
+    import hashlib
+
+    h = hashlib.sha256(Path(path).read_bytes())
+    for it in pack.items:
+        for vpath, text in sorted(it.context_fixtures.items()):
+            h.update(vpath.encode())
+            h.update(text.encode("utf-8"))
+    return h.hexdigest()
+
+
+def needs_node(pack: ToolsPack) -> bool:
+    return any(c.type in ("write_js_syntax", "write_node") for it in pack.items for c in it.checks)
+
+
 # --------------------------------------------------------------------------- messages
 
 
@@ -230,6 +250,7 @@ class ToolStreamEvent:
 
     content: str | None = None
     reasoning: str | None = None
+    is_tool: bool = False  # a tool-call fragment (tc_index may still be None on some servers)
     tc_index: int | None = None
     tc_id: str | None = None
     tc_name: str | None = None
@@ -263,29 +284,40 @@ class ToolTurn:
 
 def collect_turn(events: Iterable[ToolStreamEvent], clock: Callable[[], float]) -> ToolTurn:
     """Fold streamed fragments into one turn. Tool-call fragments are keyed by ``index``
-    (OpenAI streaming contract); name/id arrive once, arguments are concatenated."""
+    (OpenAI streaming contract); without an index a new ``id`` starts a new call. The name is
+    taken once (like the AI SDK opencode uses — a server repeating it must not yield
+    "readread"); arguments are concatenated."""
     t0 = clock()
     turn = ToolTurn()
     calls: dict[int, ToolCall] = {}
+    current: int | None = None
     content: list[str] = []
     reasoning: list[str] = []
     try:
         for ev in events:
             now = clock() - t0
-            if (ev.content or ev.reasoning or ev.tc_index is not None) and turn.ttft_s is None:
+            tool = ev.is_tool or ev.tc_index is not None
+            if (ev.content or ev.reasoning or tool) and turn.ttft_s is None:
                 turn.ttft_s = now
             if ev.content:
                 content.append(ev.content)
             if ev.reasoning:
                 reasoning.append(ev.reasoning)
-            if ev.tc_index is not None:
+            if tool:
                 if turn.t_first_tool_s is None:
                     turn.t_first_tool_s = now
-                tc = calls.setdefault(ev.tc_index, ToolCall(ev.tc_index, "", "", ""))
-                if ev.tc_id:
+                if ev.tc_index is not None:
+                    key = ev.tc_index
+                elif current is None or (ev.tc_id and calls[current].id not in ("", ev.tc_id)):
+                    key = max(calls, default=-1) + 1  # index-less server: new id → new call
+                else:
+                    key = current
+                current = key
+                tc = calls.setdefault(key, ToolCall(key, "", "", ""))
+                if ev.tc_id and not tc.id:
                     tc.id = ev.tc_id
-                if ev.tc_name:
-                    tc.name += ev.tc_name
+                if ev.tc_name and not tc.name:
+                    tc.name = ev.tc_name
                 if ev.tc_args:
                     tc.arguments += ev.tc_args
             if ev.finish_reason:
@@ -315,9 +347,17 @@ _JSON_TYPES: dict[str, tuple[type, ...]] = {
 }
 
 
+def unknown_keys(args: Any, schema: dict[str, Any]) -> list[str]:
+    """Argument keys the schema doesn't declare. Reported separately, not a schema failure:
+    opencode's schema decoding most likely ignores extra keys (not proven)."""
+    if not isinstance(args, dict):
+        return []
+    return [k for k in args if k not in schema.get("properties", {})]
+
+
 def validate_args(args: Any, schema: dict[str, Any]) -> list[str]:
     """Minimal JSON-schema check for flat tool parameters: object, required keys, types,
-    enums, unknown keys. Returns a list of problems (empty = valid)."""
+    enums. Unknown keys are skipped here (see ``unknown_keys``). Empty list = valid."""
     if not isinstance(args, dict):
         return [f"arguments not an object ({type(args).__name__})"]
     problems: list[str] = []
@@ -327,7 +367,6 @@ def validate_args(args: Any, schema: dict[str, Any]) -> list[str]:
             problems.append(f"missing required {req!r}")
     for k, v in args.items():
         if k not in props:
-            problems.append(f"unknown key {k!r}")
             continue
         spec = props[k]
         t = spec.get("type")
@@ -356,57 +395,78 @@ def parse_args(call: ToolCall) -> tuple[Any, str]:
 # --------------------------------------------------------------------------- code execution
 
 
-def run_python(code: str, timeout_s: float = 20.0) -> tuple[bool, str]:
-    """Execute model-written code + asserts in an isolated interpreter (``-I``, temp cwd)."""
-    with tempfile.TemporaryDirectory(prefix="touchstone-tools-") as d:
-        script = Path(d) / "check.py"
-        script.write_text(code, encoding="utf-8")
-        try:
-            p = subprocess.run(
-                [sys.executable, "-I", str(script)],
-                cwd=d,
-                capture_output=True,
-                text=True,
-                timeout=timeout_s,
-            )
-        except subprocess.TimeoutExpired:
-            return False, f"timeout after {timeout_s:.0f}s"
-    if p.returncode == 0:
+def _sandbox_profile(workdir: str) -> str:
+    # macOS seatbelt: no network, writes only inside the per-check temp dir (realpath — /var is
+    # /private/var). Reads stay allowed (interpreter + stdlib).
+    return (
+        "(version 1)(allow default)(deny network*)(deny file-write*)"
+        f'(allow file-write* (subpath "{workdir}"))'
+    )
+
+
+def _exec_untrusted(argv: list[str], workdir: str, timeout_s: float) -> tuple[bool, str]:
+    """Run model-written code unattended without letting it hurt the host: sandboxed where
+    ``sandbox-exec`` exists, minimal env, no stdin, own process group killed on timeout."""
+    real = str(Path(workdir).resolve())
+    bin_dirs = sorted({str(Path(argv[0]).parent), "/usr/bin", "/bin"})
+    env = {"HOME": real, "PATH": ":".join(bin_dirs), "LANG": "en_US.UTF-8", "TMPDIR": real}
+    sbx = shutil.which("sandbox-exec")
+    cmd = [sbx, "-p", _sandbox_profile(real), *argv] if sbx else argv
+    proc = subprocess.Popen(
+        cmd, cwd=real, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, errors="replace", start_new_session=True,
+    )  # fmt: skip
+    try:
+        out, err = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate()
+        return False, f"timeout after {timeout_s:.0f}s"
+    if proc.returncode == 0:
         return True, ""
-    tail = (p.stderr or p.stdout).strip().splitlines()[-3:]
+    tail = (err or out).strip().splitlines()[-3:]
     return False, " | ".join(tail)[:400]
 
 
-def js_syntax_ok(code: str) -> tuple[bool | None, str]:
-    node = shutil.which("node")
+def _write(path: Path, text: str) -> None:
+    # errors="replace": a lone surrogate from a broken \\ud800 escape must not crash the run
+    path.write_text(text, encoding="utf-8", errors="replace")
+
+
+def run_python(module_code: str, test: str, timeout_s: float = 20.0) -> tuple[bool, str]:
+    """Load model code as a module NOT named __main__ (a demo ``if __name__ == "__main__"``
+    block must not run), then run the asserts against its namespace."""
+    with tempfile.TemporaryDirectory(prefix="touchstone-tools-") as d:
+        _write(Path(d) / "candidate.py", module_code)
+        _write(
+            Path(d) / "check.py",
+            "import runpy\n"
+            'globals().update(runpy.run_path("candidate.py", run_name="candidate"))\n\n' + test,
+        )
+        return _exec_untrusted([sys.executable, "-I", "-B", "check.py"], d, timeout_s)
+
+
+def node_path() -> str | None:
+    return shutil.which("node")
+
+
+def js_syntax_ok(code: str, timeout_s: float = 20.0) -> tuple[bool | None, str]:
+    node = node_path()
     if node is None:
         return None, "node not found — not measured"
     with tempfile.TemporaryDirectory(prefix="touchstone-tools-") as d:
-        f = Path(d) / "main.js"
-        f.write_text(code, encoding="utf-8")
-        p = subprocess.run([node, "--check", str(f)], capture_output=True, text=True, timeout=20)
-    if p.returncode == 0:
-        return True, ""
-    return False, (p.stderr.strip().splitlines() or ["syntax error"])[-1][:300]
+        _write(Path(d) / "main.js", code)
+        return _exec_untrusted([node, "--check", "main.js"], d, timeout_s)
 
 
 def run_node(code: str, timeout_s: float = 20.0) -> tuple[bool | None, str]:
-    node = shutil.which("node")
+    node = node_path()
     if node is None:
         return None, "node not found — not measured"
     with tempfile.TemporaryDirectory(prefix="touchstone-tools-") as d:
-        f = Path(d) / "check.js"
-        f.write_text(code, encoding="utf-8")
-        try:
-            p = subprocess.run(
-                [node, str(f)], cwd=d, capture_output=True, text=True, timeout=timeout_s
-            )
-        except subprocess.TimeoutExpired:
-            return False, f"timeout after {timeout_s:.0f}s"
-    if p.returncode == 0:
-        return True, ""
-    tail = (p.stderr or p.stdout).strip().splitlines()[-3:]
-    return False, " | ".join(tail)[:400]
+        _write(Path(d) / "check.js", code)
+        return _exec_untrusted([node, "check.js"], d, timeout_s)
 
 
 class _TagCounter(html.parser.HTMLParser):
@@ -454,6 +514,14 @@ def _writes(turn: ToolTurn) -> dict[str, str]:
     return out
 
 
+def _trimmed_match(text: str, old: str) -> bool:
+    """Would a line-trimmed comparison (one of opencode's fallback strategies) find oldString?"""
+    want = [ln.strip() for ln in old.strip("\n").split("\n")]
+    have = [ln.strip() for ln in text.split("\n")]
+    n = len(want)
+    return n > 0 and any(have[i : i + n] == want for i in range(len(have) - n + 1))
+
+
 def apply_edits(turn: ToolTurn, path: str, original: str) -> tuple[str | None, str]:
     """Apply every edit call on ``path`` in order, with opencode's semantics: oldString must
     occur; more than once is an error unless replaceAll. Returns (new_text | None, problem)."""
@@ -477,7 +545,10 @@ def apply_edits(turn: ToolTurn, path: str, original: str) -> tuple[str | None, s
             return None, f"edit {n}: empty oldString"
         k = text.count(old)
         if k == 0:
-            return None, f"edit {n}: oldString not found"
+            hint = " (whitespace-tolerant match exists — opencode would likely accept)"
+            return None, f"edit {n}: oldString not found" + (
+                hint if _trimmed_match(text, old) else ""
+            )
         if k > 1 and a.get("replaceAll") is not True:
             return None, f"edit {n}: oldString ambiguous ({k} matches) without replaceAll"
         text = text.replace(old, new) if a.get("replaceAll") is True else text.replace(old, new, 1)
@@ -563,11 +634,11 @@ def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, A
                 parsed = json.loads(body)
             except json.JSONDecodeError as e:
                 return CheckResult(name, False, f"file is not JSON: {e}")
-            return CheckResult(
-                name, parsed == check.value, "" if parsed == check.value else "differs"
-            )
+            # Typed comparison: Python's == would accept 0 for false and 8080.0 for 8080.
+            same = json.dumps(parsed, sort_keys=True) == json.dumps(check.value, sort_keys=True)
+            return CheckResult(name, same, "" if same else "differs")
         if t == "write_python":
-            ok, det = run_python(body + "\n\n" + (check.test or ""))
+            ok, det = run_python(body, check.test or "")
             return CheckResult(name, ok, det)
         if t == "write_html":
             counts = html_tag_counts(body)
@@ -579,7 +650,7 @@ def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, A
             ok_js, det = js_syntax_ok(body)
             return CheckResult(name, ok_js, det)
         if t == "write_check":
-            ok, det = run_python(f"CONTENT = {body!r}\n\n" + (check.test or ""))
+            ok, det = run_python(f"CONTENT = {body!r}\n", check.test or "")
             return CheckResult(name, ok, det)
         if t == "write_node":
             ok_n, det = run_node(body + "\n\n" + (check.test or ""))
@@ -592,7 +663,7 @@ def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, A
         if t == "edit_applies":
             return CheckResult(name, True, "")
         if t == "edited_python":
-            ok, det = run_python(new + "\n\n" + (check.test or ""))
+            ok, det = run_python(new, check.test or "")
             return CheckResult(name, ok, det)
         ok = bool(re.search(check.pattern or "", new, re.S | re.M))
         return CheckResult(name, ok != check.absent, "")
@@ -600,7 +671,15 @@ def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, A
 
 
 def run_checks(item: ToolItem, turn: ToolTurn, schemas: dict[str, Any]) -> list[CheckResult]:
-    return [run_check(c, turn, item, schemas) for c in item.checks]
+    out = []
+    for c in item.checks:
+        try:
+            out.append(run_check(c, turn, item, schemas))
+        except Exception as e:  # odd model output must never crash an unattended run
+            out.append(
+                CheckResult(c.name(), False, f"check crashed: {type(e).__name__}: {e}"[:300])
+            )
+    return out
 
 
 # --------------------------------------------------------------------------- result row
@@ -634,6 +713,7 @@ class ToolResponse:
     error: str
     t_start: float
     reasoning_text: str = ""  # persisted only when there is no tool call and no content
+    unknown_keys: list[str] = field(default_factory=list)  # "tool.key" not in the schema (info)
 
 
 def make_response(
@@ -645,7 +725,12 @@ def make_response(
     turn: ToolTurn,
     results: list[CheckResult],
     t_start: float,
+    schemas: dict[str, Any] | None = None,
 ) -> ToolResponse:
+    extra: list[str] = []
+    for c in turn.tool_calls:
+        a, _ = parse_args(c)
+        extra += [f"{c.name}.{k}" for k in unknown_keys(a, (schemas or {}).get(c.name, {}))]
     measured = [r for r in results if r.ok is not None]
     ok = sum(1 for r in measured if r.ok)
     bare = not turn.tool_calls and not turn.content.strip()
@@ -676,28 +761,36 @@ def make_response(
         error=turn.error,
         t_start=t_start,
         reasoning_text=turn.reasoning if bare else "",
+        unknown_keys=extra,
     )
 
 
 def load_tool_responses(path: str | Path) -> list[ToolResponse]:
-    """Tolerates a half-written final line (interrupted run)."""
-    out: list[ToolResponse] = []
+    """Tolerates a half-written final line (interrupted run). A cell re-run on resume appends
+    a new line — the LAST line per (model, item, repeat) wins."""
+    latest: dict[tuple[str, str, int], ToolResponse] = {}
     p = Path(path)
     if not p.exists():
-        return out
+        return []
     for line in p.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         try:
-            out.append(ToolResponse(**json.loads(line)))
+            r = ToolResponse(**json.loads(line))
         except (json.JSONDecodeError, TypeError):
             continue
-    return out
+        latest[(r.model, r.item_id, r.repeat)] = r
+    return list(latest.values())
 
 
 # --------------------------------------------------------------------------- orchestration
 
 StreamFn = Callable[..., Iterator[ToolStreamEvent]]
+
+
+class ToolsAborted(RuntimeError):
+    """Too many consecutive transport errors — the server is gone; stop instead of recording
+    the rest of the matrix as instant failures (resume redoes the error cells)."""
 
 
 def run_tools(
@@ -707,55 +800,60 @@ def run_tools(
     out_dir: Path,
     *,
     resume: bool = False,
+    max_consecutive_errors: int = 3,
     clock: Callable[[], float] = time.perf_counter,
     wall: Callable[[], float] = time.time,
     log: Callable[[str], None] = print,
 ) -> list[ToolResponse]:
-    """Drive model × item × repeat; append each response as it finishes; resume skips done
-    cells (a transport error is recorded, not retried — delete its line to redo it)."""
+    """Drive model × item × repeat; append each response as it finishes. Resume skips cells
+    that got an answer; cells that ended in a transport error are re-run (a dead or evicted
+    server is not a model result). ``max_consecutive_errors`` (0 = off) aborts a run whose
+    server stopped answering."""
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "responses.jsonl"
     prior = load_tool_responses(path) if resume else []
     if not resume and path.exists():
         path.unlink()
-    done = {(r.model, r.item_id, r.repeat) for r in prior}
+    kept = {(r.model, r.item_id, r.repeat): r for r in prior if not r.error}
     schemas = pack.tool_schemas()
-    results = list(prior)
-    total = sum(it.repeats for it in pack.items) * len(models)
-    i = len(done)
-    for model, quant, extra_body in models:
-        for item in pack.items:
-            for rep in range(item.repeats):
-                if (model, item.id, rep) in done:
-                    continue
-                i += 1
-                t_start = wall()
-                cap = item.max_tokens if item.max_tokens is not None else pack.max_tokens
-                try:
-                    events = stream_fn(
-                        model=model,
-                        messages=build_messages(pack, item),
-                        tools=pack.tools,
-                        max_tokens=cap,
-                        temperature=pack.sampling.temperature,
-                        seed=pack.sampling.seed,
-                        extra_body=extra_body or None,
-                    )
-                    turn = collect_turn(events, clock)
-                except Exception as e:  # request rejected before streaming began
-                    turn = ToolTurn(error=f"{type(e).__name__}: {e}")
-                res = run_checks(item, turn, schemas)
-                resp = make_response(pack, item, model, quant, rep, turn, res, t_start)
-                with path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(asdict(resp), ensure_ascii=False) + "\n")
-                results.append(resp)
-                mark = "✓" if resp.passed else ("✗ ERR" if resp.error else "✗")
-                log(
-                    f"[{i}/{total}] {model} {item.id}#{rep} {mark} "
-                    f"{resp.checks_ok}/{resp.checks_measured} calls={resp.n_calls} "
-                    f"finish={resp.finish_reason} tok={resp.completion_tokens} "
-                    f"{resp.e2e_s:.0f}s"
-                )
+    cells = [(m, it, rep) for m in models for it in pack.items for rep in range(it.repeats)]
+    todo = [c for c in cells if (c[0][0], c[1].id, c[2]) not in kept]
+    results = list(kept.values())
+    streak = 0
+    for n, ((model, quant, extra_body), item, rep) in enumerate(todo, 1):
+        t_start = wall()
+        cap = item.max_tokens if item.max_tokens is not None else pack.max_tokens
+        try:
+            events = stream_fn(
+                model=model,
+                messages=build_messages(pack, item),
+                tools=pack.tools,
+                max_tokens=cap,
+                temperature=pack.sampling.temperature,
+                seed=pack.sampling.seed,
+                extra_body=extra_body or None,
+            )
+            turn = collect_turn(events, clock)
+        except Exception as e:  # request rejected before streaming began
+            turn = ToolTurn(error=f"{type(e).__name__}: {e}")
+        res = run_checks(item, turn, schemas)
+        resp = make_response(pack, item, model, quant, rep, turn, res, t_start, schemas)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(asdict(resp), ensure_ascii=True) + "\n")
+        results.append(resp)
+        mark = "✓" if resp.passed else ("✗ ERR" if resp.error else "✗")
+        log(
+            f"[{len(cells) - len(todo) + n}/{len(cells)}] {model} {item.id}#{rep} {mark} "
+            f"{resp.checks_ok}/{resp.checks_measured} calls={resp.n_calls} "
+            f"finish={resp.finish_reason} tok={resp.completion_tokens} {resp.e2e_s:.0f}s"
+            + (f" — {resp.error[:120]}" if resp.error else "")
+        )
+        streak = streak + 1 if resp.error else 0
+        if max_consecutive_errors and streak >= max_consecutive_errors:
+            raise ToolsAborted(
+                f"{streak} consecutive transport errors (last: {resp.error[:200]}) — aborted; "
+                "resume re-runs the error cells"
+            )
     return results
 
 
@@ -791,6 +889,7 @@ def _summary(rows: list[ToolResponse]) -> dict[str, Any]:
         "empty_args_calls": sum(r.n_empty_args for r in rows),
         "calls": sum(r.n_calls for r in rows),
         "errors": sum(1 for r in rows if r.error),
+        "unknown_keys": sum(len(r.unknown_keys) for r in rows),
         "completion_tokens": sum(r.completion_tokens or 0 for r in rows),
         "e2e_s": sum(r.e2e_s for r in rows),
     }
@@ -806,15 +905,16 @@ def render_report_md(pack: ToolsPack, rows: list[ToolResponse], meta: dict[str, 
         by_model.setdefault(r.model, []).append(r)
     lines += [
         "| Modell | Quant | Items bestanden | Checks ok | nicht gemessen | length-Abbrüche "
-        "| leere arguments | Fehler | Tokens | Laufzeit |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| leere arguments | Transportfehler | unbek. Keys | Tokens | Laufzeit |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for m, rs in by_model.items():
         s = _summary(rs)
         lines.append(
             f"| {m} | {rs[0].quant} | {s['passed']}/{s['items']} | "
             f"{s['checks_ok']}/{s['checks_measured']} | {s['not_measured']} | {s['truncated']} | "
-            f"{s['empty_args_calls']}/{s['calls']} | {s['errors']} | {s['completion_tokens']} | "
+            f"{s['empty_args_calls']}/{s['calls']} | {s['errors']} | {s['unknown_keys']} | "
+            f"{s['completion_tokens']} | "
             f"{s['e2e_s'] / 60:.0f} min |"
         )
     lines += ["", "## Je Item", "", "| Modell | Item | Kat. | ✓ | Checks | finish | Calls | "
@@ -853,13 +953,28 @@ class PairedComparison:
     checks_a: tuple[int, int]
     checks_b: tuple[int, int]
     per_item: list[tuple[str, bool, bool]]
+    dropped_errors: list[str] = field(default_factory=list)  # pairs with a transport error
 
 
 def compare_bundles(a: list[ToolResponse], b: list[ToolResponse]) -> PairedComparison:
-    """Pair by (item_id, repeat). Item pass is binary → discordant pairs + exact McNemar."""
+    """Pair by (item_id, repeat). Item pass is binary → discordant pairs + exact McNemar.
+
+    Each side must hold exactly one model (else pairs would silently mix). Pairs where either
+    side hit a transport error are dropped and listed — a dead server is not a model result."""
+    for side, rows in (("A", a), ("B", b)):
+        models = {r.model for r in rows}
+        if len(models) != 1:
+            raise ValueError(f"bundle {side} must hold exactly one model, has {sorted(models)}")
+        packs = {(r.pack_id, r.pack_version) for r in rows}
+        if len(packs) != 1:
+            raise ValueError(f"bundle {side} mixes pack versions: {sorted(packs)}")
+    if {(r.pack_id, r.pack_version) for r in a} != {(r.pack_id, r.pack_version) for r in b}:
+        raise ValueError("bundles were run with different packs/versions")
     ka = {(r.item_id, r.repeat): r for r in a}
     kb = {(r.item_id, r.repeat): r for r in b}
-    keys = sorted(set(ka) & set(kb))
+    both = sorted(set(ka) & set(kb))
+    dropped = [f"{k[0]}#{k[1]}" for k in both if ka[k].error or kb[k].error]
+    keys = [k for k in both if not (ka[k].error or kb[k].error)]
     per = [(f"{k[0]}#{k[1]}", ka[k].passed, kb[k].passed) for k in keys]
     only_a = sum(1 for _, x, y in per if x and not y)
     only_b = sum(1 for _, x, y in per if y and not x)
@@ -877,6 +992,7 @@ def compare_bundles(a: list[ToolResponse], b: list[ToolResponse]) -> PairedCompa
         checks_a=ca,
         checks_b=cb,
         per_item=per,
+        dropped_errors=dropped,
     )
 
 
@@ -892,6 +1008,7 @@ def render_compare_md(cmp: PairedComparison) -> str:
         f"Paare: p = {cmp.p_mcnemar:.3f}",
         f"- Einzel-Checks: {a} {cmp.checks_a[0]}/{cmp.checks_a[1]} · "
         f"{b} {cmp.checks_b[0]}/{cmp.checks_b[1]}",
+        f"- wegen Transportfehler nicht gewertet: {', '.join(cmp.dropped_errors) or 'keine'}",
         "",
         f"| Item | {a} | {b} |",
         "|---|---|---|",

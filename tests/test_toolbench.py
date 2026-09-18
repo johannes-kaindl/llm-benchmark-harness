@@ -298,10 +298,19 @@ BROKEN: list[tuple[str, tb.ToolTurn, str]] = [
     ),
     (
         "S2",
-        turn(call("bash", {"command": "pytest -x tests/test_api.py", "description": "run"})),
+        turn(call("bash", {"cmd": "pytest -x tests/test_api.py"})),  # required key missing
         "schema_valid",
     ),
-    ("S2", turn(call("bash", {"command": "pytest tests/test_api.py"})), "arg_regex:bash:command"),
+    (
+        "S2",
+        turn(call("bash", {"command": "pytest tests/test_api.py"})),
+        "bricht beim ersten Fehler ab (-x/-xq/--exitfirst/--maxfail 1)",
+    ),
+    (
+        "S2",
+        turn(call("bash", {"command": "pytest tests/test_api.py -v"})),
+        "bricht beim ersten Fehler ab (-x/-xq/--exitfirst/--maxfail 1)",
+    ),
     (
         "S3",
         turn(call("bash", {"command": "npm run build", "timeout": 120})),
@@ -489,7 +498,8 @@ def test_validate_args() -> None:
     assert tb.validate_args({"a": 1.0}, schema) == []  # integral float is a JSON integer
     assert tb.validate_args({"a": True}, schema)  # bool is not an integer in JSON
     assert tb.validate_args({"b": "true"}, schema)  # missing a + wrong type
-    assert tb.validate_args({"a": 1, "zz": 1}, schema) == ["unknown key 'zz'"]
+    assert tb.validate_args({"a": 1, "zz": 1}, schema) == []  # extra keys: info, not failure
+    assert tb.unknown_keys({"a": 1, "zz": 1}, schema) == ["zz"]
     assert tb.validate_args({"a": 1, "c": "y"}, schema) == ["'c': 'y' not in enum"]
     assert tb.validate_args([1], schema)
 
@@ -667,3 +677,175 @@ def test_client_stream_tools_over_real_sdk_sse() -> None:
     assert got["body"]["tools"] == tools and got["body"]["max_tokens"] == 32000
     assert [c.arguments for c in t.tool_calls] == ['{"filePath": "/a", "content": "x"}', ""]
     assert t.finish_reason == "length" and t.completion_tokens == 7 and t.reasoning == "hmm"
+
+
+# --------------------------------------------------------------------------- review fixes
+# Each test below reproduces a defect found in the adversarial review of feat/tools-pack.
+
+
+def _item(pack: tb.ToolsPack, item_id: str) -> tb.ToolItem:
+    return next(i for i in pack.items if i.id == item_id)
+
+
+@pytest.mark.parametrize(
+    ("item_id", "good"),
+    [
+        ("S2", turn(call("bash", {"command": "pytest -xq tests/test_api.py"}))),
+        ("S2", turn(call("bash", {"command": "cd /work/proj && pytest tests/test_api.py -xvs"}))),
+        ("S2", turn(call("bash", {"command": "pytest --maxfail=1 tests/test_api.py"}))),
+        (
+            "S5",
+            writes(
+                (
+                    "/work/proj/Makefile",
+                    ".PHONY: test lint\ntest:\n\t@uv run pytest -q\n"
+                    "lint:\n\t@uv run ruff check .\n",
+                )
+            ),
+        ),
+        (
+            "M3",
+            writes(
+                (
+                    "/work/proj/src/textutil.py",
+                    GOLDEN["M3"].tool_calls[0]
+                    and json.loads(GOLDEN["M3"].tool_calls[0].arguments)["content"]
+                    + '\n\nif __name__ == "__main__":\n    import sys\n    print(slugify(sys.argv[1]))\n',
+                ),
+                (
+                    "/work/proj/tests/test_textutil.py",
+                    "class TestSlugify:\n    def test_basic(self):\n        assert True\n",
+                ),
+            ),
+        ),
+        (
+            "M4",
+            writes(
+                *[
+                    (
+                        a["filePath"],
+                        a["content"]
+                        .replace('"style.css"', '"./style.css"')
+                        .replace('"main.js"', '"./main.js"'),
+                    )
+                    for a in (json.loads(c.arguments) for c in GOLDEN["M4"].tool_calls)
+                ]
+            ),
+        ),
+        (
+            "E4",
+            turn(
+                edit(
+                    "/work/video/frames/01-titel.html",
+                    "font-size: 120px;\n      color: #333;",
+                    "font-size: 120px;\n      color: #E4572E;",
+                )
+            ),
+        ),
+        ("S2", turn(call("bash", {"command": "pytest -x tests/test_api.py", "description": "x"}))),
+    ],
+)
+def test_correct_variants_are_not_failed(
+    pack: tb.ToolsPack, item_id: str, good: tb.ToolTurn
+) -> None:
+    res = tb.run_checks(_item(pack, item_id), good, pack.tool_schemas())
+    assert all(r.ok for r in res), [(r.name, r.detail) for r in res if not r.ok]
+
+
+def test_json_compare_is_type_strict(pack: tb.ToolsPack) -> None:
+    body = json.loads(GOLDEN["S4"].tool_calls[0].arguments)["content"].replace("false", "0")
+    res = tb.run_checks(_item(pack, "S4"), writes(("/work/proj/config.json", body)), {})
+    assert next(r for r in res if r.name.startswith("write_json_equals")).ok is False
+
+
+def test_unknown_keys_recorded_not_failing(pack: tb.ToolsPack) -> None:
+    t = turn(call("bash", {"command": "pytest -x tests/test_api.py", "description": "x"}))
+    item = _item(pack, "S2")
+    res = tb.run_checks(item, t, pack.tool_schemas())
+    resp = tb.make_response(pack, item, "m", "q", 0, t, res, 0.0, pack.tool_schemas())
+    assert resp.passed and resp.unknown_keys == ["bash.description"]
+
+
+def test_check_crash_is_a_failed_check_not_a_crash(pack: tb.ToolsPack) -> None:
+    lone = '{"filePath": "/work/proj/src/duration.py", "content": "x = \\ud800"}'
+    res = tb.run_checks(_item(pack, "C1"), turn(call("write", lone)), pack.tool_schemas())
+    assert all(isinstance(r.ok, bool) or r.ok is None for r in res)
+    rs = tb.make_response(pack, _item(pack, "C1"), "m", "q", 0, turn(call("write", lone)), res, 0)
+    json.dumps(tb.asdict(rs), ensure_ascii=True)  # the response line must be writable
+
+
+def test_edit_whitespace_near_miss_is_hinted(pack: tb.ToolsPack) -> None:
+    t = turn(edit("/work/proj/src/settings.py", "MAX_RETRIES = 3 ", "MAX_RETRIES = 5"))
+    res = {r.name: r for r in tb.run_checks(_item(pack, "E1"), t, pack.tool_schemas())}
+    r = res["edit_applies:/work/proj/src/settings.py"]
+    assert r.ok is False and "opencode would likely accept" in r.detail
+
+
+def test_collect_turn_index_less_and_repeated_name() -> None:
+    evs = [
+        tb.ToolStreamEvent(is_tool=True, tc_id="a", tc_name="write", tc_args='{"x": '),
+        tb.ToolStreamEvent(is_tool=True, tc_name="write", tc_args="1}"),  # repeated name
+        tb.ToolStreamEvent(is_tool=True, tc_id="b", tc_name="write", tc_args='{"y": 2}'),
+    ]
+    t = tb.collect_turn(evs, clock=lambda: 0.0)
+    assert [(c.name, c.arguments) for c in t.tool_calls] == [
+        ("write", '{"x": 1}'),
+        ("write", '{"y": 2}'),
+    ]
+
+
+def test_sandbox_blocks_writes_outside_and_kills_on_timeout(tmp_path: Path) -> None:
+    target = tmp_path / "escaped.txt"
+    ok, _ = tb.run_python(f"open({str(target)!r}, 'w').write('x')", "")
+    if tb.shutil.which("sandbox-exec"):
+        assert ok is False and not target.exists()
+    ok, det = tb.run_python("while True: pass", "", timeout_s=1.0)
+    assert ok is False and "timeout" in det
+    ok, _ = tb.run_python("x = input()", "")  # no inherited stdin: EOF, not a hang
+    assert ok is False
+
+
+def test_resume_reruns_transport_errors_and_aborts_on_streak(
+    pack: tb.ToolsPack, tmp_path: Path
+) -> None:
+    sub = tb.ToolsPack.model_validate(
+        {**pack.model_dump(), "items": [i.model_dump() for i in pack.items if i.id in ("S1", "S6")]}
+    )
+    calls: list[str] = []
+
+    def down(**kw: Any) -> Iterator[tb.ToolStreamEvent]:
+        calls.append("down")
+        raise ConnectionError("Model unloaded.")
+
+    with pytest.raises(tb.ToolsAborted):
+        tb.run_tools(sub, [("m", "q", {})], down, tmp_path, max_consecutive_errors=2,
+                     log=lambda _: None)  # fmt: skip
+    assert len(calls) == 2
+
+    def up(**kw: Any) -> Iterator[tb.ToolStreamEvent]:
+        yield tb.ToolStreamEvent(content="ok")
+        yield tb.ToolStreamEvent(finish_reason="stop")
+
+    rows = tb.run_tools(sub, [("m", "q", {})], up, tmp_path, resume=True, log=lambda _: None)
+    assert sorted(r.item_id for r in rows) == ["S1", "S6"] and not any(r.error for r in rows)
+    on_disk = tb.load_tool_responses(tmp_path / "responses.jsonl")
+    assert len(on_disk) == 2 and not any(r.error for r in on_disk)  # last line per cell wins
+
+
+def test_compare_refuses_mixed_bundle_and_drops_error_pairs(pack: tb.ToolsPack) -> None:
+    item = _item(pack, "S6")
+
+    def row(model: str, passed: bool, error: str = "", item_id: str = "S6") -> tb.ToolResponse:
+        t = turn(content="x" if passed else "", finish="stop")
+        t.error = error
+        r = tb.make_response(pack, item, model, model, 0, t, tb.run_checks(item, t, {}), 0.0)
+        r.item_id = item_id
+        return r
+
+    with pytest.raises(ValueError, match="exactly one model"):
+        tb.compare_bundles([row("a", True), row("b", True, item_id="S1")], [row("b", True)])
+    cmp = tb.compare_bundles(
+        [row("a", True), row("a", False, "Model unloaded.", "S1")],
+        [row("b", False), row("b", True, item_id="S1")],
+    )
+    assert cmp.pairs == 1 and cmp.dropped_errors == ["S1#0"] and cmp.only_a == 1

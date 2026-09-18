@@ -298,8 +298,15 @@ Project-specific:
   vorangegangenes read-Ergebnis. `calls` zählt nur **vollständige** Calls (arguments parsen zu einem
   Objekt): LM Studio liefert einen am Budget abgeschnittenen Call mit Namen, aber leerem `arguments` aus
   (der „Missing key at [content]"-Fall) — der darf das Soll nicht füllen. Code-Checks führen
-  Modell-Code aus (`python -I` bzw. `node` im Temp-Dir, Timeout 20 s); fehlt `node`, ist der Check
-  **nicht gemessen** (`ok=None`), nie bestanden. Jede Prüfung ist in `tests/test_toolbench.py` gegen eine
+  **unbeaufsichtigt Modell-Code** aus: `sandbox-exec` (kein Netz, Schreiben nur im Temp-Dir), leeres
+  Env, kein stdin, eigene Prozessgruppe (SIGKILL nach 20 s); Python-Code wird per `runpy` als Modul
+  **nicht** `__main__` geladen (ein Demo-`__main__`-Block darf nicht laufen). Braucht das Pack `node`
+  und fehlt es, bricht `tools` vorab ab — sonst bestünden JS-Items ungeprüft. **Transportfehler sind
+  kein Modellbefund:** nach 3 in Folge bricht der Lauf ab (`ToolsAborted`), `--resume` wiederholt die
+  Fehler-Zellen (letzte Zeile je Zelle gilt), `tools-compare` wertet Fehler-Paare nicht und lehnt
+  Bundles mit mehr als einem Modell ab; Resume verlangt denselben Pack-Hash (inkl. Kontext). Unbekannte
+  Argument-Keys werden **gezählt, nicht bestraft** (opencode ignoriert sie vermutlich); Edits prüfen
+  **exakt** — strenger als opencodes 9 Fallback-Strategien, ein Beinahe-Treffer steht im Detail. Jede Prüfung ist in `tests/test_toolbench.py` gegen eine
   Referenzantwort (muss bestehen) **und** eine kaputte (muss scheitern) abgesichert — wer ein Item
   ändert, pflegt beide mit.
   Die Langkontext-Items **L1–L3** sind per YAML-Anker identisch mit M1/E3/C1, bekommen aber vorher ~50k

@@ -1043,18 +1043,34 @@ def tools_cmd(
             console.print(f"[red]--models-json:[/] {e}")
             raise typer.Exit(1) from None
     pk = tb.load_tools_pack(pack)
-    if items:
-        wanted = [i.strip() for i in items.split(",") if i.strip()]
+    fingerprint = tb.pack_fingerprint(pack, pk)
+    wanted = [i.strip() for i in items.split(",") if i.strip()]
+    if wanted:
         unknown = sorted(set(wanted) - {i.id for i in pk.items})
         if unknown:
             console.print(f"[red]--items: unbekannt:[/] {unknown}")
             raise typer.Exit(1)
         pk = pk.model_copy(update={"items": [i for i in pk.items if i.id in wanted]})
+    node = tb.node_path()
+    if tb.needs_node(pk) and node is None:
+        # Without node the JS checks would be "not measured" and those items could pass on the
+        # remaining checks alone — unfair between two runs on differently set-up shells.
+        console.print("[red]Pack braucht node (JS-Checks), aber node ist nicht im PATH.[/]")
+        raise typer.Exit(1)
     run_dir = resume or run_dir_opt or cfg.output_path() / f"{_timestamp()}_tools_{pk.id}"
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "bundle.json"
-    if resume is not None and manifest_path.exists():
+    if resume is not None:
+        if not manifest_path.exists():
+            console.print(f"[red]--resume: kein bundle.json in {run_dir}[/]")
+            raise typer.Exit(1)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("pack_sha256") != fingerprint or manifest.get("items") != (wanted or None):
+            console.print(
+                "[red]--resume: Pack (Inhalt/Kontext) oder --items weichen vom ursprünglichen "
+                "Lauf ab — ein Mischlauf wäre nicht vergleichbar.[/]"
+            )
+            raise typer.Exit(1)
         models = [
             (m["id"], m.get("quant", ""), m.get("extra_body") or {}) for m in manifest["models"]
         ]
@@ -1065,22 +1081,38 @@ def tools_cmd(
             "pack_id": pk.id,
             "pack_version": pk.version,
             "pack_path": str(Path(pack).resolve()),
+            "pack_sha256": fingerprint,
+            "items": wanted or None,
             "models": [{"id": i, "quant": q, "extra_body": e} for i, q, e in models],
             "endpoint": cfg.endpoint.base_url,
             "host": hostinfo.summary(),
+            "node": node,
             "sampling": pk.sampling.model_dump(),
             "max_tokens": pk.max_tokens,
             "date": _today(),
         }
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
     console.print(f"[bold]touchstone tools[/] [{pk.id}] → [cyan]{run_dir}[/]")
-    client = _make_client(cfg)
-    rows = tb.run_tools(
-        pk, models, client.stream_tools, run_dir, resume=resume is not None, log=console.print
-    )
-    # Evidence of what was actually loaded (LM Studio: per-model quantization) — best-effort.
+    # max_retries=0: a silent SDK retry would re-send a long-context request and inflate e2e_s;
+    # a transport error is recorded instead and re-run on resume.
+    engine = cfg.engine or resolve_engine(cfg.endpoint.base_url)
+    client = OpenAIStreamClient(
+        cfg.endpoint.base_url, cfg.endpoint.api_key, engine=engine,
+        engine_version=cfg.engine_version or "unknown", max_retries=0,
+    )  # fmt: skip
+    aborted = ""
+    try:
+        tb.run_tools(
+            pk, models, client.stream_tools, run_dir, resume=resume is not None, log=console.print
+        )
+    except tb.ToolsAborted as e:
+        aborted = str(e)
+        console.print(f"[red]✗ abgebrochen:[/] {aborted}")
+    rows = tb.load_tool_responses(run_dir / "responses.jsonl")
+    # Evidence of what was actually loaded (LM Studio: quantization + context) — best-effort.
     build = client.probe_build_metadata()
     manifest["loaded_at_end"] = build.loaded
+    manifest["aborted"] = aborted or None
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
     tb.write_results_csv(rows, run_dir / "results.csv")
     meta = {
@@ -1089,12 +1121,16 @@ def tools_cmd(
         "Geladen laut Server am Ende": build.loaded or "n. v.",
         "Sampling": pk.sampling.model_dump(),
         "max_tokens": pk.max_tokens,
+        "node": node or "n. v.",
+        "Abbruch": aborted or "nein",
     }
     (run_dir / "report.md").write_text(tb.render_report_md(pk, rows, meta), encoding="utf-8")
     console.print(
         f"[green]✓[/] {sum(r.passed for r in rows)}/{len(rows)} Items bestanden → "
         f"{run_dir / 'report.md'}"
     )
+    if aborted:
+        raise typer.Exit(1)
 
 
 @app.command(name="tools-compare")
@@ -1111,7 +1147,22 @@ def tools_compare_cmd(
     if not a or not b:
         console.print("[red]leeres Bundle[/]")
         raise typer.Exit(1)
-    md = tb.render_compare_md(tb.compare_bundles(a, b))
+    try:
+        cmp = tb.compare_bundles(a, b)
+    except ValueError as e:
+        console.print(f"[red]{e}[/]")
+        raise typer.Exit(1) from None
+    notes = []
+    for label, bdir in (("A", bundle_a), ("B", bundle_b)):
+        mf = bdir / "bundle.json"
+        man = json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {}
+        ctx = [m.get("loaded_context_length") for m in man.get("loaded_at_end") or []]
+        notes.append(f"- {label}: geladen laut Server {man.get('loaded_at_end') or 'n. v.'}")
+        if any(isinstance(c, int) and c < 90_000 for c in ctx):
+            notes.append(f"- ⚠ {label}: Kontext < 90k — Langkontext-Items (L*) evtl. abgeschnitten")
+        if man.get("aborted"):
+            notes.append(f"- ⚠ {label}: Lauf abgebrochen: {man['aborted']}")
+    md = tb.render_compare_md(cmp) + "\n## Belege\n\n" + "\n".join(notes) + "\n"
     if out is not None:
         out.write_text(md, encoding="utf-8")
     console.print(md)

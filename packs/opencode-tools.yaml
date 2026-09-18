@@ -108,7 +108,7 @@ items:
       - { type: calls, tool: bash, count: 1 }
       - { type: schema_valid }
       - { type: arg_regex, tool: bash, key: command, pattern: 'pytest.*tests/test_api\.py' }
-      - { type: arg_regex, tool: bash, key: command, pattern: '(\s-x\b|--exitfirst|--maxfail[= ]1\b)' }
+      - { type: arg_regex, tool: bash, key: command, pattern: '(\s-[a-wyzA-Z]*x[a-zA-Z]*\b|--exitfirst|--maxfail[= ]1\b)', label: "bricht beim ersten Fehler ab (-x/-xq/--exitfirst/--maxfail 1)" }
 
   - id: S3
     category: schema
@@ -160,9 +160,9 @@ items:
     checks:
       - { type: calls, tool: write, count: 1 }
       - { type: schema_valid }
-      - { type: write_regex, path: /work/proj/Makefile, pattern: '^test:.*\n\tuv run pytest -q\s*$', label: "test-Rezept mit Tab" }
-      - { type: write_regex, path: /work/proj/Makefile, pattern: '^lint:.*\n\tuv run ruff check \.\s*$', label: "lint-Rezept mit Tab" }
-      - { type: write_regex, path: /work/proj/Makefile, pattern: '^\.PHONY:.*\btest\b', label: ".PHONY" }
+      - { type: write_regex, path: /work/proj/Makefile, pattern: '^test:[^\n]*\n\t@?uv run pytest -q[ \t]*$', label: "test-Rezept mit Tab" }
+      - { type: write_regex, path: /work/proj/Makefile, pattern: '^lint:[^\n]*\n\t@?uv run ruff check \.[ \t]*$', label: "lint-Rezept mit Tab" }
+      - { type: write_regex, path: /work/proj/Makefile, pattern: '^\.PHONY:[^\n]*\btest\b', label: ".PHONY" }
 
   - id: S6
     category: schema
@@ -257,7 +257,7 @@ items:
           assert slugify("ÄÖÜ") == "aeoeue"
           assert slugify("a__b") == "a-b"
           assert slugify("---") == ""
-      - { type: write_regex, path: /work/proj/tests/test_textutil.py, pattern: '^def test_', label: "Testdatei hat Tests" }
+      - { type: write_regex, path: /work/proj/tests/test_textutil.py, pattern: '^\s*def test_', label: "Testdatei hat Tests" }
 
   - id: M4
     category: multi
@@ -275,8 +275,8 @@ items:
       - { type: no_empty_args }
       - { type: schema_valid }
       - { type: write_html, path: /work/video/intro/index.html, tags: { div: 4, script: 1, link: 1 } }
-      - { type: write_regex, path: /work/video/intro/index.html, pattern: 'href=["'']style\.css', label: "bindet style.css ein" }
-      - { type: write_regex, path: /work/video/intro/index.html, pattern: 'src=["'']main\.js', label: "bindet main.js ein" }
+      - { type: write_regex, path: /work/video/intro/index.html, pattern: 'href=["''](\./)?style\.css', label: "bindet style.css ein" }
+      - { type: write_regex, path: /work/video/intro/index.html, pattern: 'src=["''](\./)?main\.js', label: "bindet main.js ein" }
       - { type: write_regex, path: /work/video/intro/style.css, pattern: '1920px', label: "Bühnenbreite" }
       - { type: write_regex, path: /work/video/intro/style.css, pattern: 'position:\s*absolute', label: ".clip absolut" }
       - { type: write_js_syntax, path: /work/video/intro/main.js }
@@ -540,7 +540,7 @@ items:
       - { type: calls, tool: edit, min: 1 }
       - { type: schema_valid }
       - { type: edit_applies, path: /work/video/frames/01-titel.html }
-      - { type: edited_regex, path: /work/video/frames/01-titel.html, pattern: 'h1\s*\{[^}]*color:\s*#e4572e', label: "h1 neu eingefärbt" }
+      - { type: edited_regex, path: /work/video/frames/01-titel.html, pattern: 'h1\s*\{[^}]*color:\s*#(?i:e4572e)', label: "h1 neu eingefärbt" }
       - { type: edited_regex, path: /work/video/frames/01-titel.html, pattern: 'p\s*\{[^}]*color:\s*#333', label: "p unverändert" }
 
   - id: E5
