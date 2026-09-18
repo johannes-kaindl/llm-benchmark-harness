@@ -849,3 +849,89 @@ def test_compare_refuses_mixed_bundle_and_drops_error_pairs(pack: tb.ToolsPack) 
         [row("b", False), row("b", True, item_id="S1")],
     )
     assert cmp.pairs == 1 and cmp.dropped_errors == ["S1#0"] and cmp.only_a == 1
+
+
+# --------------------------------------------------------------------------- review round 2
+
+
+class _Status(Exception):
+    def __init__(self, code: int) -> None:
+        super().__init__(f"HTTP {code}")
+        self.status_code = code
+
+
+def test_4xx_is_a_rejected_result_not_a_transport_error(pack: tb.ToolsPack, tmp_path: Path) -> None:
+    assert tb.classify_exception(_Status(400))[1] and not tb.classify_exception(_Status(400))[0]
+    for transient in (_Status(429), _Status(408), _Status(503), ConnectionError("x")):
+        assert tb.classify_exception(transient)[0]
+    sub = tb.ToolsPack.model_validate(
+        {
+            **pack.model_dump(),
+            "items": [i.model_dump() for i in pack.items if i.id in ("S1", "S2", "S3", "S6")],
+        }
+    )
+
+    def overflow(**kw: Any) -> Iterator[tb.ToolStreamEvent]:
+        raise _Status(400)
+
+    rows = tb.run_tools(
+        sub, [("m", "q", {})], overflow, tmp_path, max_consecutive_errors=2, log=lambda _: None
+    )  # fmt: skip  — 4 rejections, no abort
+    assert len(rows) == 4 and all(r.rejected and not r.error and not r.passed for r in rows)
+    calls: list[int] = []
+
+    def never(**kw: Any) -> Iterator[tb.ToolStreamEvent]:
+        calls.append(1)
+        yield tb.ToolStreamEvent(content="x")
+
+    tb.run_tools(sub, [("m", "q", {})], never, tmp_path, resume=True, log=lambda _: None)
+    assert calls == []  # rejected cells are results — resume does not re-run them
+
+
+def test_s2_rejects_report_flag_rx(pack: tb.ToolsPack) -> None:
+    t = turn(call("bash", {"command": "pytest -q -rx tests/test_api.py"}))
+    res = tb.run_checks(_item(pack, "S2"), t, pack.tool_schemas())
+    assert not all(r.ok for r in res)
+
+
+def test_collect_turn_splits_idless_indexless_calls_by_name() -> None:
+    evs = [
+        tb.ToolStreamEvent(is_tool=True, tc_name="read", tc_args='{"a":1}'),
+        tb.ToolStreamEvent(is_tool=True, tc_name="write", tc_args='{"b":2}'),
+    ]
+    t = tb.collect_turn(evs, clock=lambda: 0.0)
+    assert [(c.name, c.arguments) for c in t.tool_calls] == [
+        ("read", '{"a":1}'),
+        ("write", '{"b":2}'),
+    ]
+
+
+def test_timeout_does_not_wait_for_escaped_grandchild() -> None:
+    import time as _t
+
+    code = (
+        "import os, time\n"
+        "if os.fork() == 0:\n    os.setsid()\n    time.sleep(30)\n    os._exit(0)\n"
+        "time.sleep(30)\n"
+    )
+    t0 = _t.monotonic()
+    ok, det = tb.run_python(code, "", timeout_s=1.0)
+    assert ok is False and "timeout" in det and _t.monotonic() - t0 < 10
+
+
+def test_tools_compare_refuses_different_pack_hash(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from touchstone.cli import app
+
+    pk = tb.load_tools_pack(PACK)
+    item = next(i for i in pk.items if i.id == "S6")
+    for name, sha in (("a", "1" * 64), ("b", "2" * 64)):
+        d = tmp_path / name
+        d.mkdir()
+        t = turn(content="x", finish="stop")
+        r = tb.make_response(pk, item, name, name, 0, t, tb.run_checks(item, t, {}), 0.0)
+        (d / "responses.jsonl").write_text(json.dumps(tb.asdict(r)) + "\n", encoding="utf-8")
+        (d / "bundle.json").write_text(json.dumps({"pack_sha256": sha}), encoding="utf-8")
+    res = CliRunner().invoke(app, ["tools-compare", str(tmp_path / "a"), str(tmp_path / "b")])
+    assert res.exit_code == 1 and "Pack-Hash" in res.output

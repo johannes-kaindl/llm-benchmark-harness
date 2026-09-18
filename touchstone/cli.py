@@ -1152,10 +1152,18 @@ def tools_compare_cmd(
     except ValueError as e:
         console.print(f"[red]{e}[/]")
         raise typer.Exit(1) from None
-    notes = []
-    for label, bdir in (("A", bundle_a), ("B", bundle_b)):
+    mans = []
+    for bdir in (bundle_a, bundle_b):
         mf = bdir / "bundle.json"
-        man = json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {}
+        mans.append(json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {})
+    shas = [m.get("pack_sha256") for m in mans]
+    if None in shas or shas[0] != shas[1]:
+        # pack_version alone is not enough: check semantics can change without a version bump.
+        console.print(f"[red]Pack-Hash fehlt oder weicht ab (A={shas[0]}, B={shas[1]}) — "
+                      "die Läufe sind nicht mit identischen Checks gemessen.[/]")  # fmt: skip
+        raise typer.Exit(1)
+    notes = []
+    for label, man in (("A", mans[0]), ("B", mans[1])):
         ctx = [m.get("loaded_context_length") for m in man.get("loaded_at_end") or []]
         notes.append(f"- {label}: geladen laut Server {man.get('loaded_at_end') or 'n. v.'}")
         if any(isinstance(c, int) and c < 90_000 for c in ctx):

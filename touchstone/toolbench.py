@@ -279,7 +279,18 @@ class ToolTurn:
     ttft_s: float | None = None  # first generated token of any kind
     t_first_tool_s: float | None = None
     e2e_s: float = 0.0
-    error: str = ""
+    error: str = ""  # transport failure (dead/evicted server) — not a model result, re-run
+    rejected: str = ""  # deterministic 4xx (e.g. context overflow) — a result, counted as fail
+
+
+def classify_exception(e: Exception) -> tuple[str, str]:
+    """(error, rejected). A 4xx other than 408/429 is deterministic for this model+load (e.g.
+    context overflow) → a result that counts as a fail; everything else is transport."""
+    msg = f"{type(e).__name__}: {e}"[:500]
+    status = getattr(e, "status_code", None)
+    if isinstance(status, int) and 400 <= status < 500 and status not in (408, 429):
+        return "", msg
+    return msg, ""
 
 
 def collect_turn(events: Iterable[ToolStreamEvent], clock: Callable[[], float]) -> ToolTurn:
@@ -308,7 +319,11 @@ def collect_turn(events: Iterable[ToolStreamEvent], clock: Callable[[], float]) 
                     turn.t_first_tool_s = now
                 if ev.tc_index is not None:
                     key = ev.tc_index
-                elif current is None or (ev.tc_id and calls[current].id not in ("", ev.tc_id)):
+                elif (
+                    current is None
+                    or (ev.tc_id and calls[current].id not in ("", ev.tc_id))
+                    or (not ev.tc_id and ev.tc_name and calls[current].name not in ("", ev.tc_name))
+                ):
                     key = max(calls, default=-1) + 1  # index-less server: new id → new call
                 else:
                     key = current
@@ -327,7 +342,7 @@ def collect_turn(events: Iterable[ToolStreamEvent], clock: Callable[[], float]) 
             if ev.completion_tokens is not None:
                 turn.completion_tokens = ev.completion_tokens
     except Exception as e:  # connection drop / server error mid-stream: keep what arrived
-        turn.error = f"{type(e).__name__}: {e}"
+        turn.error, turn.rejected = classify_exception(e)
     turn.e2e_s = clock() - t0
     turn.content = "".join(content)
     turn.reasoning = "".join(reasoning)
@@ -421,7 +436,12 @@ def _exec_untrusted(argv: list[str], workdir: str, timeout_s: float) -> tuple[bo
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGKILL)
-        proc.communicate()
+        # A grandchild that escaped the group (setsid) may still hold the pipes — don't wait on it.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.communicate(timeout=5)
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
         return False, f"timeout after {timeout_s:.0f}s"
     if proc.returncode == 0:
         return True, ""
@@ -712,6 +732,7 @@ class ToolResponse:
     e2e_s: float
     error: str
     t_start: float
+    rejected: str = ""  # deterministic 4xx — counted as a fail, not re-run, not dropped
     reasoning_text: str = ""  # persisted only when there is no tool call and no content
     unknown_keys: list[str] = field(default_factory=list)  # "tool.key" not in the schema (info)
 
@@ -742,7 +763,7 @@ def make_response(
         item_id=item.id,
         category=item.category,
         repeat=repeat,
-        passed=bool(measured) and ok == len(measured) and not turn.error,
+        passed=bool(measured) and ok == len(measured) and not turn.error and not turn.rejected,
         checks_ok=ok,
         checks_measured=len(measured),
         checks=[asdict(r) for r in results],
@@ -759,6 +780,7 @@ def make_response(
         t_first_tool_s=turn.t_first_tool_s,
         e2e_s=turn.e2e_s,
         error=turn.error,
+        rejected=turn.rejected,
         t_start=t_start,
         reasoning_text=turn.reasoning if bare else "",
         unknown_keys=extra,
@@ -835,7 +857,8 @@ def run_tools(
             )
             turn = collect_turn(events, clock)
         except Exception as e:  # request rejected before streaming began
-            turn = ToolTurn(error=f"{type(e).__name__}: {e}")
+            err, rej = classify_exception(e)
+            turn = ToolTurn(error=err, rejected=rej)
         res = run_checks(item, turn, schemas)
         resp = make_response(pack, item, model, quant, rep, turn, res, t_start, schemas)
         with path.open("a", encoding="utf-8") as f:
@@ -846,7 +869,7 @@ def run_tools(
             f"[{len(cells) - len(todo) + n}/{len(cells)}] {model} {item.id}#{rep} {mark} "
             f"{resp.checks_ok}/{resp.checks_measured} calls={resp.n_calls} "
             f"finish={resp.finish_reason} tok={resp.completion_tokens} {resp.e2e_s:.0f}s"
-            + (f" — {resp.error[:120]}" if resp.error else "")
+            + (f" — {(resp.error or resp.rejected)[:120]}" if resp.error or resp.rejected else "")
         )
         streak = streak + 1 if resp.error else 0
         if max_consecutive_errors and streak >= max_consecutive_errors:
@@ -889,6 +912,7 @@ def _summary(rows: list[ToolResponse]) -> dict[str, Any]:
         "empty_args_calls": sum(r.n_empty_args for r in rows),
         "calls": sum(r.n_calls for r in rows),
         "errors": sum(1 for r in rows if r.error),
+        "rejected": sum(1 for r in rows if r.rejected),
         "unknown_keys": sum(len(r.unknown_keys) for r in rows),
         "completion_tokens": sum(r.completion_tokens or 0 for r in rows),
         "e2e_s": sum(r.e2e_s for r in rows),
@@ -905,15 +929,16 @@ def render_report_md(pack: ToolsPack, rows: list[ToolResponse], meta: dict[str, 
         by_model.setdefault(r.model, []).append(r)
     lines += [
         "| Modell | Quant | Items bestanden | Checks ok | nicht gemessen | length-Abbrüche "
-        "| leere arguments | Transportfehler | unbek. Keys | Tokens | Laufzeit |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "| leere arguments | Transportfehler | 4xx abgelehnt | unbek. Keys | Tokens | Laufzeit |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for m, rs in by_model.items():
         s = _summary(rs)
         lines.append(
             f"| {m} | {rs[0].quant} | {s['passed']}/{s['items']} | "
             f"{s['checks_ok']}/{s['checks_measured']} | {s['not_measured']} | {s['truncated']} | "
-            f"{s['empty_args_calls']}/{s['calls']} | {s['errors']} | {s['unknown_keys']} | "
+            f"{s['empty_args_calls']}/{s['calls']} | {s['errors']} | {s['rejected']} | "
+            f"{s['unknown_keys']} | "
             f"{s['completion_tokens']} | "
             f"{s['e2e_s'] / 60:.0f} min |"
         )

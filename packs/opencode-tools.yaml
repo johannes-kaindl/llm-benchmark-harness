@@ -1,6 +1,6 @@
 id: opencode-tools
 title: "Coding-Agent (opencode): Tool-Calls, Code, Edits — deterministisch geprüft"
-version: 1
+version: 2
 description: >
   Bildet den Einsatz als Coding-Agent in opencode ab: Tool-Wahl, gültige JSON-Argumente gegen
   die echten opencode-Schemas, mehrere Tool-Calls in einem Turn (inkl. „drei HTML-Dateien in
@@ -108,7 +108,7 @@ items:
       - { type: calls, tool: bash, count: 1 }
       - { type: schema_valid }
       - { type: arg_regex, tool: bash, key: command, pattern: 'pytest.*tests/test_api\.py' }
-      - { type: arg_regex, tool: bash, key: command, pattern: '(\s-[a-wyzA-Z]*x[a-zA-Z]*\b|--exitfirst|--maxfail[= ]1\b)', label: "bricht beim ersten Fehler ab (-x/-xq/--exitfirst/--maxfail 1)" }
+      - { type: arg_regex, tool: bash, key: command, pattern: '(\s-[qvsl]*x[qvsl]*\b|--exitfirst|--maxfail[= ]1\b)', label: "bricht beim ersten Fehler ab (-x/-xq/--exitfirst/--maxfail 1)" }
 
   - id: S3
     category: schema
