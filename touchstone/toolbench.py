@@ -258,6 +258,7 @@ class ToolStreamEvent:
     finish_reason: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    reasoning_tokens: int | None = None  # usage.completion_tokens_details, if the server sends it
 
 
 @dataclass
@@ -276,6 +277,7 @@ class ToolTurn:
     finish_reason: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    reasoning_tokens: int | None = None
     ttft_s: float | None = None  # first generated token of any kind
     t_first_tool_s: float | None = None
     e2e_s: float = 0.0
@@ -341,6 +343,8 @@ def collect_turn(events: Iterable[ToolStreamEvent], clock: Callable[[], float]) 
                 turn.prompt_tokens = ev.prompt_tokens
             if ev.completion_tokens is not None:
                 turn.completion_tokens = ev.completion_tokens
+            if ev.reasoning_tokens is not None:
+                turn.reasoning_tokens = ev.reasoning_tokens
     except Exception as e:  # connection drop / server error mid-stream: keep what arrived
         turn.error, turn.rejected = classify_exception(e)
     turn.e2e_s = clock() - t0
@@ -733,6 +737,7 @@ class ToolResponse:
     error: str
     t_start: float
     rejected: str = ""  # deterministic 4xx — counted as a fail, not re-run, not dropped
+    reasoning_tokens: int | None = None  # from usage; None if the server doesn't report it
     reasoning_text: str = ""  # persisted only when there is no tool call and no content
     unknown_keys: list[str] = field(default_factory=list)  # "tool.key" not in the schema (info)
 
@@ -781,6 +786,7 @@ def make_response(
         e2e_s=turn.e2e_s,
         error=turn.error,
         rejected=turn.rejected,
+        reasoning_tokens=turn.reasoning_tokens,
         t_start=t_start,
         reasoning_text=turn.reasoning if bare else "",
         unknown_keys=extra,
@@ -808,6 +814,33 @@ def load_tool_responses(path: str | Path) -> list[ToolResponse]:
 # --------------------------------------------------------------------------- orchestration
 
 StreamFn = Callable[..., Iterator[ToolStreamEvent]]
+
+
+PREFLIGHT_PROMPT = "Antworte nur mit OK. Rufe kein Tool auf."
+
+
+def preflight(stream_fn: StreamFn, model: str, extra_body: dict[str, Any], pack: ToolsPack) -> str:
+    """One tiny request with the model's exact extra_body (e.g. reasoning_effort) before the
+    matrix. Returns "" or the error — a bad knob must fail loudly up front, not per item."""
+    try:
+        turn = collect_turn(
+            stream_fn(
+                model=model,
+                messages=[
+                    {"role": "system", "content": pack.system_prompt},
+                    {"role": "user", "content": PREFLIGHT_PROMPT},
+                ],
+                tools=pack.tools,
+                max_tokens=pack.max_tokens,
+                temperature=pack.sampling.temperature,
+                seed=pack.sampling.seed,
+                extra_body=extra_body or None,
+            ),
+            time.perf_counter,
+        )
+    except Exception as e:
+        return f"{type(e).__name__}: {e}"[:500]
+    return turn.error or turn.rejected
 
 
 class ToolsAborted(RuntimeError):
@@ -956,6 +989,41 @@ def render_report_md(pack: ToolsPack, rows: list[ToolResponse], meta: dict[str, 
     return "\n".join(lines) + "\n"
 
 
+def _median(xs: list[float]) -> float | None:
+    xs = sorted(xs)
+    if not xs:
+        return None
+    m = len(xs) // 2
+    return xs[m] if len(xs) % 2 else (xs[m - 1] + xs[m]) / 2
+
+
+def side_stats(rows: list[ToolResponse]) -> dict[str, Any]:
+    """Per-bundle counters the effort comparison asks for (hypothesis: less effort → fewer
+    truncated calls on L1). Reasoning tokens come from usage when reported, else ≈ chars/4."""
+    rt = [r.reasoning_tokens for r in rows if r.reasoning_tokens is not None]
+    est = not rt
+    vals = rt if rt else [r.reasoning_chars / 4 for r in rows]
+    return {
+        "items": len(rows),
+        "passed": sum(r.passed for r in rows),
+        "truncated_length": sum(r.truncated for r in rows),
+        "empty_args_calls": sum(r.n_empty_args for r in rows),
+        "calls": sum(r.n_calls for r in rows),
+        "rejected": sum(1 for r in rows if r.rejected),
+        "transport_errors": sum(1 for r in rows if r.error),
+        "median_reasoning_tokens": _median([float(v) for v in vals]),
+        "reasoning_tokens_estimated": est,
+        "median_completion_tokens": _median(
+            [float(r.completion_tokens) for r in rows if r.completion_tokens is not None]
+        ),
+        "l_items": {
+            r.item_id: {"passed": r.passed, "finish": r.finish_reason, "empty_args": r.n_empty_args}
+            for r in rows
+            if r.category == "longctx"
+        },
+    }
+
+
 def mcnemar_exact_p(b: int, c: int) -> float:
     """Two-sided exact McNemar = binomial sign test on the discordant pairs."""
     n = b + c
@@ -979,6 +1047,8 @@ class PairedComparison:
     checks_b: tuple[int, int]
     per_item: list[tuple[str, bool, bool]]
     dropped_errors: list[str] = field(default_factory=list)  # pairs with a transport error
+    stats_a: dict[str, Any] = field(default_factory=dict)
+    stats_b: dict[str, Any] = field(default_factory=dict)
 
 
 def compare_bundles(a: list[ToolResponse], b: list[ToolResponse]) -> PairedComparison:
@@ -1018,6 +1088,8 @@ def compare_bundles(a: list[ToolResponse], b: list[ToolResponse]) -> PairedCompa
         checks_b=cb,
         per_item=per,
         dropped_errors=dropped,
+        stats_a=side_stats(a),
+        stats_b=side_stats(b),
     )
 
 
@@ -1034,6 +1106,22 @@ def render_compare_md(cmp: PairedComparison) -> str:
         f"- Einzel-Checks: {a} {cmp.checks_a[0]}/{cmp.checks_a[1]} · "
         f"{b} {cmp.checks_b[0]}/{cmp.checks_b[1]}",
         f"- wegen Transportfehler nicht gewertet: {', '.join(cmp.dropped_errors) or 'keine'}",
+        "",
+        "## Je Stufe",
+        "",
+        "| | Items ✓ | finish=length | leere arguments | 4xx | Transportfehler "
+        "| Median Reasoning-Token | Median completion |",
+        "|---|---|---|---|---|---|---|---|",
+        *[
+            f"| {lab} | {st['passed']}/{st['items']} | {st['truncated_length']} | "
+            f"{st['empty_args_calls']}/{st['calls']} | {st['rejected']} | {st['transport_errors']} | "
+            f"{st['median_reasoning_tokens']}{' (≈ aus Zeichen/4)' if st['reasoning_tokens_estimated'] else ''} | "
+            f"{st['median_completion_tokens']} |"
+            for lab, st in ((a, cmp.stats_a), (b, cmp.stats_b))
+        ],
+        "",
+        f"- Langkontext {a}: {cmp.stats_a.get('l_items') or 'n. v.'}",
+        f"- Langkontext {b}: {cmp.stats_b.get('l_items') or 'n. v.'}",
         "",
         f"| Item | {a} | {b} |",
         "|---|---|---|",
