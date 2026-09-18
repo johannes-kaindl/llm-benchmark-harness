@@ -1030,6 +1030,7 @@ def tools_cmd(
     models_json: str = typer.Option(
         "", "--models-json", help="JSON list[ModelSpec]; replaces config.models for this run"
     ),
+    items: str = typer.Option("", "--items", help="comma-separated item ids (smoke subset)"),
 ) -> None:
     """Deterministic tool-calling/code pack: tool choice, JSON args vs schema, code that runs."""
     from touchstone import toolbench as tb
@@ -1042,6 +1043,13 @@ def tools_cmd(
             console.print(f"[red]--models-json:[/] {e}")
             raise typer.Exit(1) from None
     pk = tb.load_tools_pack(pack)
+    if items:
+        wanted = [i.strip() for i in items.split(",") if i.strip()]
+        unknown = sorted(set(wanted) - {i.id for i in pk.items})
+        if unknown:
+            console.print(f"[red]--items: unbekannt:[/] {unknown}")
+            raise typer.Exit(1)
+        pk = pk.model_copy(update={"items": [i for i in pk.items if i.id in wanted]})
     run_dir = resume or run_dir_opt or cfg.output_path() / f"{_timestamp()}_tools_{pk.id}"
     run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = run_dir / "bundle.json"
