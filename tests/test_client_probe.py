@@ -18,3 +18,15 @@ def test_parse_lmstudio_models_empty_on_garbage():
     meta = parse_lmstudio_models({"unexpected": True})
     assert meta.runtime is None
     assert meta.quant_by_model == {}
+
+
+def test_parse_lmstudio_models_lists_only_loaded_with_quant():
+    payload = {
+        "data": [
+            {"id": "q@4bit", "state": "loaded", "quantization": "4bit", "loaded_context_length": 8},
+            {"id": "q", "state": "not-loaded", "quantization": "4bit"},
+        ]
+    }
+    meta = parse_lmstudio_models(payload)
+    assert meta.loaded == [{"id": "q@4bit", "quantization": "4bit", "loaded_context_length": 8}]
+    assert set(meta.quant_by_model) == {"q@4bit", "q"}

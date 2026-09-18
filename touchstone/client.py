@@ -19,6 +19,9 @@ class BuildMetadata:
     engine_version: str | None = None
     runtime: str | None = None
     quant_by_model: dict[str, str] = field(default_factory=dict)
+    # Only the models whose state is "loaded", with their quant/context — the evidence of what
+    # actually answered. quant_by_model covers every listed model, including not-loaded ones.
+    loaded: list[dict[str, object]] = field(default_factory=list)
 
 
 def parse_lmstudio_models(payload: dict[str, object]) -> BuildMetadata:
@@ -30,17 +33,24 @@ def parse_lmstudio_models(payload: dict[str, object]) -> BuildMetadata:
         return BuildMetadata()
     quant_by_model: dict[str, str] = {}
     runtimes: list[str] = []
+    loaded: list[dict[str, object]] = []
     for m in data:
         if not isinstance(m, dict):
             continue
         mid = m.get("id")
         q = m.get("quantization")
+        if m.get("state") == "loaded":
+            loaded.append(
+                {k: m.get(k) for k in ("id", "quantization", "loaded_context_length") if k in m}
+            )
         rt = m.get("compatibility_type")
         if isinstance(mid, str) and isinstance(q, str):
             quant_by_model[mid] = q
         if isinstance(rt, str):
             runtimes.append(rt)
-    return BuildMetadata(runtime=runtimes[0] if runtimes else None, quant_by_model=quant_by_model)
+    return BuildMetadata(
+        runtime=runtimes[0] if runtimes else None, quant_by_model=quant_by_model, loaded=loaded
+    )
 
 
 class OpenAIStreamClient:

@@ -1080,13 +1080,13 @@ def tools_cmd(
     )
     # Evidence of what was actually loaded (LM Studio: per-model quantization) — best-effort.
     build = client.probe_build_metadata()
-    manifest["loaded_quant_at_end"] = build.quant_by_model
+    manifest["loaded_at_end"] = build.loaded
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
     tb.write_results_csv(rows, run_dir / "results.csv")
     meta = {
         "Endpoint": cfg.endpoint.base_url,
         "Datum": _today(),
-        "Quant laut Server am Ende": build.quant_by_model or "n. v.",
+        "Geladen laut Server am Ende": build.loaded or "n. v.",
         "Sampling": pk.sampling.model_dump(),
         "max_tokens": pk.max_tokens,
     }
