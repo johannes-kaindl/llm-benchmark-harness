@@ -8,7 +8,8 @@ dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/) (Tags **
 ## [Unreleased]
 
 ### Added
-- Tools-Pack für den Coding-Agent-Einsatz (`touchstone tools`, `packs/opencode-tools.yaml`, 21 Items):
+- Tools-Pack für den Coding-Agent-Einsatz (`touchstone tools`, `packs/opencode-tools.yaml`, 24 Items,
+  davon 3 mit ~50k Token Vorkontext):
   Tool-Wahl, JSON-Argumente gegen die echten opencode-Schemas, mehrere Calls in einem Turn
   (inkl. „drei HTML-Dateien in einem Zug"), Code gegen Asserts (Python/node), Edit-Treue. Rein
   deterministisch, kein Judge; `touchstone tools-compare` liefert den Paarvergleich mit exaktem McNemar.

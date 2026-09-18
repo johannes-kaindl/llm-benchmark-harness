@@ -12,6 +12,8 @@ source: >
   Tool-Beschreibungen gekürzt. bash hat in 1.18.31 {command, timeout?, workdir?} — kein
   description-Feld.
 max_tokens: 32000
+# Langkontext-Items (L*): diese Dateien werden vor der Aufgabe als read-Ergebnisse eingespielt.
+context_dir: opencode-tools-context
 sampling: { temperature: 0.0, seed: 42 }
 
 system_prompt: |
@@ -206,7 +208,7 @@ items:
     tests: >-
       Die Aufgabe hinter „Missing key at [content]“: drei vollständige write-Calls in EINER
       Antwort; kein leeres arguments, finish_reason tool_calls.
-    prompt: |
+    prompt: &m1_prompt |
       Lege in einem Zug — drei write-Aufrufe in derselben Antwort — drei Frames für ein
       HyperFrames-Video an. Jede Datei ist ein vollständiges HTML-Dokument mit eingebettetem
       <style>, Bühne 1920×1080.
@@ -214,7 +216,7 @@ items:
       2. /work/video/frames/02-karte.html: ein inline-<svg> mit viewBox="0 0 1920 1080", darin
          mindestens 5 <circle> als Standorte und ein <path> als Route zwischen ihnen.
       3. /work/video/frames/03-abspann.html: Abspann mit einer <ul> aus drei Mitwirkenden.
-    checks:
+    checks: &m1_checks
       - { type: calls, tool: write, count: 3 }
       - { type: no_empty_args }
       - { type: schema_valid }
@@ -285,12 +287,12 @@ items:
     category: code
     title: "Python: parse_duration"
     tests: "Parser mit Fehlerfällen gegen Asserts."
-    prompt: |
+    prompt: &c1_prompt |
       Lege /work/proj/src/duration.py an mit `parse_duration(s: str) -> int`, das Sekunden
       zurückgibt für Angaben wie "1h30m", "45s", "2h", "1h2m3s", "90m". Einheiten h, m, s, jede
       höchstens einmal und in dieser Reihenfolge. Ungültige Eingaben ("", "abc", "1x", "5",
       "30m1h") lösen ValueError aus.
-    checks:
+    checks: &c1_checks
       - { type: calls, tool: write, count: 1 }
       - { type: schema_valid }
       - type: write_python
@@ -466,11 +468,11 @@ items:
     category: edit
     title: "edit: mehrdeutiger oldString — Kontext nötig"
     tests: "'return None' steht zweimal; ohne Kontext scheitert der Edit (opencode-Semantik)."
-    prompt: >-
+    prompt: &e3_prompt >-
       In /work/proj/src/users.py soll `find_by_email` nicht mehr None zurückgeben, wenn nichts
       gefunden wurde, sondern `LookupError(f"no user {email}")` auslösen. `find_by_id` bleibt
       unverändert.
-    fixtures:
+    fixtures: &e3_fixtures
       /work/proj/src/users.py: |
         USERS = [{"id": 1, "email": "a@example.org"}, {"id": 2, "email": "b@example.org"}]
 
@@ -488,7 +490,7 @@ items:
                     return u
             return None
     preread: [/work/proj/src/users.py]
-    checks:
+    checks: &e3_checks
       - { type: calls, tool: edit, min: 1 }
       - { type: schema_valid }
       - { type: edit_applies, path: /work/proj/src/users.py }
@@ -574,3 +576,35 @@ items:
                   {"id": 4, "name": "d"}]
           assert imp.process(rows) == 2
           assert imp.seen == [(1, "a"), (4, "d")]
+
+  # ------------------------------------------------------------------ L: Langkontext (~50k Token)
+  # Dieselben Aufgaben wie M1/E3/C1 (YAML-Anker: identischer Prompt, identische Checks), aber nach
+  # einem früheren Austausch, in dem 12 Projektmodule gelesen wurden — wie in einer laufenden
+  # opencode-Sitzung. Der Vergleich L* vs. Original isoliert den Kontexteffekt; 4bit vs. 8bit bei
+  # L* misst, ob Quantisierung unter langem Kontext stärker durchschlägt. Bleibt unter 131k
+  # (8bit lädt per JIT mit 131072) inkl. 32k Antwortbudget.
+  - id: L1
+    category: longctx
+    title: "Langkontext: drei HTML-Dateien in einem Zug (= M1)"
+    tests: "M1 nach ~50k Token Vorkontext — der reale Fehlerfall lag bei 95–108k Kontext."
+    context: [runner.py, judge.py, runqueue.py, scorecard.py, qualrun.py, report.py, aggregate.py, sampler.py, client.py, prompts.py, events.py, judge_events.py]
+    prompt: *m1_prompt
+    checks: *m1_checks
+
+  - id: L2
+    category: longctx
+    title: "Langkontext: mehrdeutiger oldString (= E3)"
+    tests: "E3 nach ~50k Token Vorkontext."
+    context: [runner.py, judge.py, runqueue.py, scorecard.py, qualrun.py, report.py, aggregate.py, sampler.py, client.py, prompts.py, events.py, judge_events.py]
+    prompt: *e3_prompt
+    fixtures: *e3_fixtures
+    preread: [/work/proj/src/users.py]
+    checks: *e3_checks
+
+  - id: L3
+    category: longctx
+    title: "Langkontext: parse_duration (= C1)"
+    tests: "C1 nach ~50k Token Vorkontext."
+    context: [runner.py, judge.py, runqueue.py, scorecard.py, qualrun.py, report.py, aggregate.py, sampler.py, client.py, prompts.py, events.py, judge_events.py]
+    prompt: *c1_prompt
+    checks: *c1_checks

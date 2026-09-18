@@ -92,6 +92,10 @@ class ToolItem(BaseModel):
     tests: str = ""  # what the item probes (documentation)
     fixtures: dict[str, str] = Field(default_factory=dict)  # filePath → original content
     preread: list[str] = Field(default_factory=list)  # fixtures fed as prior read tool results
+    # Long-context items: files (names inside the pack's context_dir) read in an EARLIER exchange,
+    # before the task — reproduces a running opencode session with a large, realistic context.
+    context: list[str] = Field(default_factory=list)
+    context_fixtures: dict[str, str] = Field(default_factory=dict)  # filled by load_tools_pack
     max_tokens: int | None = None  # None → pack default
     repeats: int = 1
     checks: list[Check]
@@ -120,6 +124,15 @@ class ToolsPack(BaseModel):
     version: int = 1
     description: str = ""
     source: str = ""  # where the tool schemas were taken from
+    context_dir: str | None = None  # relative to the pack file; holds long-context snapshots
+    context_root: str = "/work/proj/src/touchstone"  # virtual dir the context files appear under
+    context_intro: str = (
+        "Verschaff dir zuerst einen Überblick über die Kernmodule unter /work/proj/src/touchstone/ "
+        "— lies sie. Die eigentliche Aufgabe kommt danach."
+    )
+    context_ack: str = (
+        "Ich habe die Kernmodule gelesen und habe den Überblick. Was ist die Aufgabe?"
+    )
     system_prompt: str
     max_tokens: int | None = None  # default per-item cap (None = server decides)
     sampling: ToolsSampling = Field(default_factory=ToolsSampling)
@@ -142,7 +155,21 @@ def load_tools_pack(path: str | Path) -> ToolsPack:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError(f"tools pack {path} did not parse to a mapping")
-    return ToolsPack.model_validate(raw)
+    pack = ToolsPack.model_validate(raw)
+    needs = [it for it in pack.items if it.context]
+    if needs:
+        if not pack.context_dir:
+            raise ValueError("items use `context` but the pack has no context_dir")
+        base = Path(path).resolve().parent / pack.context_dir
+        for it in needs:
+            fx: dict[str, str] = {}
+            for name in it.context:
+                src = base / f"{name}.txt"
+                if not src.is_file():
+                    raise ValueError(f"item {it.id}: context file missing: {src}")
+                fx[f"{pack.context_root}/{name}"] = src.read_text(encoding="utf-8")
+            it.context_fixtures = fx
+    return pack
 
 
 # --------------------------------------------------------------------------- messages
@@ -161,29 +188,37 @@ def read_tool_output(path: str, content: str) -> str:
 
 
 def build_messages(pack: ToolsPack, item: ToolItem) -> list[dict[str, Any]]:
-    msgs: list[dict[str, Any]] = [
-        {"role": "system", "content": pack.system_prompt},
-        {"role": "user", "content": item.prompt},
-    ]
+    msgs: list[dict[str, Any]] = [{"role": "system", "content": pack.system_prompt}]
+    if item.context_fixtures:
+        msgs.append({"role": "user", "content": pack.context_intro})
+        msgs += _read_exchange(item.context_fixtures, "call_ctx")
+        msgs.append({"role": "assistant", "content": pack.context_ack})
+    msgs.append({"role": "user", "content": item.prompt})
     if item.preread:
-        calls = [
-            {
-                "id": f"call_read_{n}",
-                "type": "function",
-                "function": {"name": "read", "arguments": json.dumps({"filePath": p})},
-            }
-            for n, p in enumerate(item.preread)
-        ]
-        msgs.append({"role": "assistant", "content": "", "tool_calls": calls})
-        for n, p in enumerate(item.preread):
-            msgs.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": f"call_read_{n}",
-                    "content": read_tool_output(p, item.fixtures[p]),
-                }
-            )
+        msgs += _read_exchange({p: item.fixtures[p] for p in item.preread}, "call_read")
     return msgs
+
+
+def _read_exchange(files: dict[str, str], prefix: str) -> list[dict[str, Any]]:
+    """One assistant turn with parallel read calls + one tool result per file (opencode shape)."""
+    calls = [
+        {
+            "id": f"{prefix}_{n}",
+            "type": "function",
+            "function": {"name": "read", "arguments": json.dumps({"filePath": p})},
+        }
+        for n, p in enumerate(files)
+    ]
+    out: list[dict[str, Any]] = [{"role": "assistant", "content": "", "tool_calls": calls}]
+    for n, (p, content) in enumerate(files.items()):
+        out.append(
+            {
+                "role": "tool",
+                "tool_call_id": f"{prefix}_{n}",
+                "content": read_tool_output(p, content),
+            }
+        )
+    return out
 
 
 # --------------------------------------------------------------------------- stream → turn

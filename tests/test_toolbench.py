@@ -225,6 +225,9 @@ GOLDEN: dict[str, tb.ToolTurn] = {
 }
 
 
+GOLDEN["L1"], GOLDEN["L2"], GOLDEN["L3"] = GOLDEN["M1"], GOLDEN["E3"], GOLDEN["C1"]
+
+
 @pytest.fixture(scope="module")
 def pack() -> tb.ToolsPack:
     return tb.load_tools_pack(PACK)
@@ -234,7 +237,37 @@ def test_shipped_pack_validates(pack: tb.ToolsPack) -> None:
     assert 15 <= len(pack.items) <= 25
     assert pack.max_tokens == 32000
     assert set(pack.tool_schemas()) == {"read", "write", "edit", "bash"}
-    assert {i.category for i in pack.items} == {"schema", "multi", "code", "edit"}
+    assert {i.category for i in pack.items} == {"schema", "multi", "code", "edit", "longctx"}
+
+
+def test_longctx_items_mirror_their_originals_and_carry_context(pack: tb.ToolsPack) -> None:
+    by = {i.id: i for i in pack.items}
+    for long_id, orig_id in (("L1", "M1"), ("L2", "E3"), ("L3", "C1")):
+        lg, og = by[long_id], by[orig_id]
+        assert (lg.prompt, lg.checks, lg.fixtures) == (og.prompt, og.checks, og.fixtures)
+        assert len(lg.context_fixtures) == 12 and not og.context_fixtures
+        msgs = tb.build_messages(pack, lg)
+        chars = sum(len(m.get("content") or "") for m in msgs)
+        # ~50k tokens of context: big enough to matter, small enough for the 8bit JIT (131k)
+        assert 150_000 < chars < 300_000
+        # context exchange first, then the task (then E3's own preread of the target file)
+        roles = [m["role"] for m in msgs]
+        assert roles[:3] == ["system", "user", "assistant"]
+        assert msgs[1]["content"] == pack.context_intro
+        task_at = next(i for i, m in enumerate(msgs) if m.get("content") == lg.prompt)
+        assert msgs[task_at - 1] == {"role": "assistant", "content": pack.context_ack}
+        assert all(m["role"] == "tool" for m in msgs[3 : task_at - 1])
+
+
+def test_missing_context_file_is_a_load_error(tmp_path: Path) -> None:
+    import yaml
+
+    raw = yaml.safe_load(PACK.read_text(encoding="utf-8"))
+    raw["context_dir"] = "nope"
+    bad = tmp_path / "p.yaml"
+    bad.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+    with pytest.raises(ValueError, match="context file missing"):
+        tb.load_tools_pack(bad)
 
 
 def test_golden_covers_every_item(pack: tb.ToolsPack) -> None:

@@ -302,6 +302,10 @@ Project-specific:
   **nicht gemessen** (`ok=None`), nie bestanden. Jede Prüfung ist in `tests/test_toolbench.py` gegen eine
   Referenzantwort (muss bestehen) **und** eine kaputte (muss scheitern) abgesichert — wer ein Item
   ändert, pflegt beide mit.
+  Die Langkontext-Items **L1–L3** sind per YAML-Anker identisch mit M1/E3/C1, bekommen aber vorher ~50k
+  Token Vorkontext (12 Module als read-Ergebnisse aus `packs/opencode-tools-context/`, ein **eingefrorener**
+  Schnappschuss als `.py.txt` — nie nachziehen, sonst sind Läufe untereinander unvergleichbar). Obergrenze:
+  8bit-JIT lädt mit 131072 Kontext, Vorkontext + 32k Budget muss darunter bleiben (Test prüft die Größe).
 - **Die Nacht-Queue (`touchstone queue`) erkennt Fertigstellung am Subprozess-Exit (+ Finalize-Artefakten),
   nie an einem Fortschrittsbalken.** Ein eval/judge-Subprozess existiert erst *nach* `_finalize`, also gibt
   es kein „100 % ≠ fertig"-Problem (die holistische Judge-Phase liefert ~0 Events, läuft aber weiter — genau
