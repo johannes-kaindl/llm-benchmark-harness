@@ -55,6 +55,9 @@ scorecard.py weighting/K.-o./category math (pure) + renders scorecard.md + score
 result_schema.py canonical per-(model×variant) result.json (ResultDoc, pure) — SSOT for
             the report renderer, GUI compare view, and cross-machine aggregator
 aggregate.py cross-run/machine: many scores.csv → one Hardware×Quality table (md + scores_all.csv)
+toolbench.py deterministic tools pack (Coding-Agent): opencode tool schemas as data, streamed
+            tool calls (client.stream_tools) → checks (schema, complete calls, empty arguments,
+            code vs asserts, edit applies) — no judge; `tools` + `tools-compare` (McNemar)
 
 # live monitoring (Ink. 3/5 — opt-in `eval --web` / `judge --web`, a separate viewing process):
 webmon.py   transport-only live-monitor process (stdlib http.server + SSE): tails the event
@@ -107,6 +110,9 @@ uv run touchstone gui                            # local web control-center: con
 uv run touchstone queue --queue queue.example.yaml          # Nacht-Queue: mehrere Modelle sequenziell eval→judge
 uv run touchstone queue --queue queue.example.yaml --check  # nur die LM-Studio-Modell-Wechsel-Kette verifizieren (kein Matrix-Lauf)
 uv run touchstone queue --queue queue.example.yaml --resume runs/<ts>_queue  # nach Abbruch weiter (fertige Einträge übersprungen)
+
+uv run touchstone tools --pack packs/opencode-tools.yaml --config config.m5-lmstudio.yaml --models-json '[{"id":"<id>","quant":"<q>"}]'  # Tool-Calls/Code deterministisch
+uv run touchstone tools-compare runs/<A> runs/<B> --out cmp.md   # Paarvergleich je Item + exakter McNemar
 
 uv run pytest -q                               # tests (no server/sudo needed)
 uv run ruff check . && uv run ruff format .    # lint + format
@@ -285,6 +291,17 @@ Project-specific:
   (`tests/test_report_md_golden.py`); `pool_rows` folgt **keinen** Symlinks → ein extern hineingelinktes
   Bundle erscheint nicht im `/compare`-Pool (Confinement sicher-by-construction, `is_relative_to`-Guard =
   Defense-in-Depth).
+- **Das Tools-Pack (`touchstone tools`, `packs/opencode-tools.yaml`) wird nie gejudged.** Strukturierter
+  Output ist mechanisch prüfbar; ein Judge brächte dort nur Rauschen. Die Tool-Schemas sind **Daten im
+  Pack**, aus dem opencode-Binary 1.18.31 übernommen (bash dort `{command, timeout?, workdir?}`, *kein*
+  `description`); das read-Ausgabeformat (`N: text`) ebenso — Edit-Items bekommen die Fixture als
+  vorangegangenes read-Ergebnis. `calls` zählt nur **vollständige** Calls (arguments parsen zu einem
+  Objekt): LM Studio liefert einen am Budget abgeschnittenen Call mit Namen, aber leerem `arguments` aus
+  (der „Missing key at [content]"-Fall) — der darf das Soll nicht füllen. Code-Checks führen
+  Modell-Code aus (`python -I` bzw. `node` im Temp-Dir, Timeout 20 s); fehlt `node`, ist der Check
+  **nicht gemessen** (`ok=None`), nie bestanden. Jede Prüfung ist in `tests/test_toolbench.py` gegen eine
+  Referenzantwort (muss bestehen) **und** eine kaputte (muss scheitern) abgesichert — wer ein Item
+  ändert, pflegt beide mit.
 - **Die Nacht-Queue (`touchstone queue`) erkennt Fertigstellung am Subprozess-Exit (+ Finalize-Artefakten),
   nie an einem Fortschrittsbalken.** Ein eval/judge-Subprozess existiert erst *nach* `_finalize`, also gibt
   es kein „100 % ≠ fertig"-Problem (die holistische Judge-Phase liefert ~0 Events, läuft aber weiter — genau

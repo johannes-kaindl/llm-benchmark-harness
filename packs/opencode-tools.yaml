@@ -1,0 +1,576 @@
+id: opencode-tools
+title: "Coding-Agent (opencode): Tool-Calls, Code, Edits — deterministisch geprüft"
+version: 1
+description: >
+  Bildet den Einsatz als Coding-Agent in opencode ab: Tool-Wahl, gültige JSON-Argumente gegen
+  die echten opencode-Schemas, mehrere Tool-Calls in einem Turn (inkl. „drei HTML-Dateien in
+  einem Zug“), Code, der gegen mitgelieferte Asserts laufen muss, und Edit-Treue
+  (oldString muss im Original eindeutig vorkommen). Kein Judge — jede Prüfung ist mechanisch.
+source: >
+  Tool-Parameter-Schemas aus dem opencode-Binary 1.18.31 (edit/write/read/bash, Effect-Schema
+  p.Struct). read-Ausgabeformat ebenfalls von dort (<path>/<type>/<content>, Zeilen als "N: text").
+  Tool-Beschreibungen gekürzt. bash hat in 1.18.31 {command, timeout?, workdir?} — kein
+  description-Feld.
+max_tokens: 32000
+sampling: { temperature: 0.0, seed: 42 }
+
+system_prompt: |
+  You are opencode, an interactive CLI coding agent. You help the user with software engineering
+  tasks by calling the provided tools. The working directory is /work/proj unless the user names
+  another one. All file paths passed to tools must be absolute.
+  - Make file changes ONLY through the tools (write for new files, edit for changes to existing
+    files). Never paste the file into your answer instead of calling the tool.
+  - When several independent tool calls are needed, issue them together in one response.
+  - Answer questions that need no file or shell access directly, without calling tools.
+  - Keep your text answers short.
+
+tools:
+  - type: function
+    function:
+      name: read
+      description: >-
+        Reads a file from the local filesystem. The filePath parameter must be an absolute path.
+        By default it reads up to 2000 lines starting from the beginning of the file. Lines are
+        returned as "N: text" (line numbers are not part of the file content).
+      parameters:
+        type: object
+        properties:
+          filePath: { type: string, description: "The absolute path to the file or directory to read" }
+          offset: { type: integer, description: "The line number to start reading from (1-indexed)" }
+          limit: { type: integer, description: "The maximum number of lines to read (defaults to 2000)" }
+        required: [filePath]
+  - type: function
+    function:
+      name: write
+      description: >-
+        Writes a file to the local filesystem. This tool will overwrite the existing file if there
+        is one at the provided path. ALWAYS prefer editing existing files. NEVER write new files
+        unless explicitly required.
+      parameters:
+        type: object
+        properties:
+          content: { type: string, description: "The content to write to the file" }
+          filePath: { type: string, description: "The absolute path to the file to write (must be absolute, not relative)" }
+        required: [content, filePath]
+  - type: function
+    function:
+      name: edit
+      description: >-
+        Performs exact string replacements in files. oldString must match the file content
+        exactly (without the "N: " line-number prefix of the read output). The edit fails if
+        oldString is not found or is found multiple times — provide more surrounding context to
+        make it unique, or use replaceAll to change every instance.
+      parameters:
+        type: object
+        properties:
+          filePath: { type: string, description: "The absolute path to the file to modify" }
+          oldString: { type: string, description: "The text to replace" }
+          newString: { type: string, description: "The text to replace it with (must be different from oldString)" }
+          replaceAll: { type: boolean, description: "Replace all occurrences of oldString (default false)" }
+        required: [filePath, oldString, newString]
+  - type: function
+    function:
+      name: bash
+      description: >-
+        Executes a given bash command in a persistent shell session with optional timeout.
+      parameters:
+        type: object
+        properties:
+          command: { type: string, description: "The command to execute" }
+          timeout: { type: integer, description: "Optional timeout in milliseconds" }
+          workdir: { type: string, description: "The working directory to run the command in. Defaults to the current directory. Use this instead of 'cd' commands." }
+        required: [command]
+
+items:
+  # ------------------------------------------------------------------ S: ein Call, Schema-Treue
+  - id: S1
+    category: schema
+    title: "read mit limit (integer, nicht string)"
+    tests: "Tool-Wahl read, exakter Pfad, limit als integer 40."
+    prompt: "Zeig mir die ersten 40 Zeilen von /work/proj/src/app.py."
+    checks:
+      - { type: calls, tool: read, count: 1 }
+      - { type: calls, max: 1, label: "keine weiteren Calls" }
+      - { type: schema_valid }
+      - { type: arg_equals, tool: read, key: filePath, value: /work/proj/src/app.py }
+      - { type: arg_equals, tool: read, key: limit, value: 40 }
+
+  - id: S2
+    category: schema
+    title: "bash: gezielter pytest-Aufruf mit Abbruch beim ersten Fehler"
+    tests: "Tool-Wahl bash, Kommando-Inhalt, keine erfundenen Keys (z. B. description)."
+    prompt: >-
+      Führe im Projekt /work/proj nur die Tests aus tests/test_api.py aus und brich beim ersten
+      fehlschlagenden Test ab.
+    checks:
+      - { type: calls, tool: bash, count: 1 }
+      - { type: schema_valid }
+      - { type: arg_regex, tool: bash, key: command, pattern: 'pytest.*tests/test_api\.py' }
+      - { type: arg_regex, tool: bash, key: command, pattern: '(\s-x\b|--exitfirst|--maxfail[= ]1\b)' }
+
+  - id: S3
+    category: schema
+    title: "bash: Timeout in Millisekunden"
+    tests: "Einheit des timeout-Parameters (ms) + Typ integer."
+    prompt: >-
+      Starte im Ordner /work/site den Build mit `npm run build`. Er darf höchstens 2 Minuten
+      laufen — gib dem Befehl dafür das passende Timeout mit.
+    checks:
+      - { type: calls, tool: bash, count: 1 }
+      - { type: schema_valid }
+      - { type: arg_regex, tool: bash, key: command, pattern: 'npm run build' }
+      - { type: arg_equals, tool: bash, key: timeout, value: 120000 }
+
+  - id: S4
+    category: schema
+    title: "write: JSON-Datei mit Escapes (JSON in JSON)"
+    tests: "Doppeltes Escaping: Backslashes und Anführungszeichen im content-String."
+    prompt: |
+      Lege /work/proj/config.json an. Inhalt ist genau dieses JSON-Objekt, nichts sonst:
+      - "name": touchstone-demo
+      - "version": 0.3.1 (als String)
+      - "debug": false
+      - "ports": die Zahlen 8080 und 8443
+      - "pattern": der reguläre Ausdruck ^\d{3}-[a-z]+$
+      - "greeting": Er sagte "Grüß Gott" und ging.
+      - "windows_path": C:\data\in
+    checks:
+      - { type: calls, tool: write, count: 1 }
+      - { type: schema_valid }
+      - type: write_json_equals
+        path: /work/proj/config.json
+        value:
+          name: touchstone-demo
+          version: "0.3.1"
+          debug: false
+          ports: [8080, 8443]
+          pattern: '^\d{3}-[a-z]+$'
+          greeting: 'Er sagte "Grüß Gott" und ging.'
+          windows_path: 'C:\data\in'
+
+  - id: S5
+    category: schema
+    title: "write: Makefile mit echten Tabs"
+    tests: "Tab-Zeichen im content (\\t) — Leerzeichen brechen make."
+    prompt: >-
+      Lege /work/proj/Makefile an mit zwei Targets: `test` führt `uv run pytest -q` aus, `lint`
+      führt `uv run ruff check .` aus. Beide als .PHONY deklarieren.
+    checks:
+      - { type: calls, tool: write, count: 1 }
+      - { type: schema_valid }
+      - { type: write_regex, path: /work/proj/Makefile, pattern: '^test:.*\n\tuv run pytest -q\s*$', label: "test-Rezept mit Tab" }
+      - { type: write_regex, path: /work/proj/Makefile, pattern: '^lint:.*\n\tuv run ruff check \.\s*$', label: "lint-Rezept mit Tab" }
+      - { type: write_regex, path: /work/proj/Makefile, pattern: '^\.PHONY:.*\btest\b', label: ".PHONY" }
+
+  - id: S6
+    category: schema
+    title: "Kein Tool, wenn keins nötig ist"
+    tests: "Tool-Abstinenz bei einer Wissensfrage."
+    prompt: >-
+      Kurze Frage ohne Dateiarbeit: Was ist der Unterschied zwischen `git merge` und
+      `git rebase`? Zwei, drei Sätze reichen.
+    checks:
+      - { type: no_tools }
+
+  - id: S7
+    category: schema
+    title: "edit: Umbenennen überall (replaceAll als boolean)"
+    tests: "Mehrfachvorkommen: replaceAll true (boolean) oder eindeutige Einzel-Edits; Ergebnis läuft."
+    prompt: "Benenne in /work/proj/src/stats.py die Variable tmp_val überall in running_total um."
+    fixtures:
+      /work/proj/src/stats.py: |
+        def cumulative(values: list[int]) -> list[int]:
+            tmp_val = 0
+            out = []
+            for v in values:
+                tmp_val += v
+                out.append(tmp_val)
+            return out
+    preread: [/work/proj/src/stats.py]
+    checks:
+      - { type: calls, tool: edit, min: 1 }
+      - { type: schema_valid }
+      - { type: edit_applies, path: /work/proj/src/stats.py }
+      - { type: edited_regex, path: /work/proj/src/stats.py, pattern: 'tmp_val', absent: true, label: "tmp_val restlos weg" }
+      - type: edited_python
+        path: /work/proj/src/stats.py
+        test: |
+          assert cumulative([1, 2, 3]) == [1, 3, 6]
+          import inspect
+          assert "running_total" in inspect.getsource(cumulative)
+
+  # ------------------------------------------------------------------ M: mehrere Calls in einem Turn
+  - id: M1
+    category: multi
+    title: "Drei HTML-Dateien in einem Zug, eine mit inline-SVG"
+    tests: >-
+      Die Aufgabe hinter „Missing key at [content]“: drei vollständige write-Calls in EINER
+      Antwort; kein leeres arguments, finish_reason tool_calls.
+    prompt: |
+      Lege in einem Zug — drei write-Aufrufe in derselben Antwort — drei Frames für ein
+      HyperFrames-Video an. Jede Datei ist ein vollständiges HTML-Dokument mit eingebettetem
+      <style>, Bühne 1920×1080.
+      1. /work/video/frames/01-titel.html: Überschrift <h1> „Außenposten“ und ein Untertitel.
+      2. /work/video/frames/02-karte.html: ein inline-<svg> mit viewBox="0 0 1920 1080", darin
+         mindestens 5 <circle> als Standorte und ein <path> als Route zwischen ihnen.
+      3. /work/video/frames/03-abspann.html: Abspann mit einer <ul> aus drei Mitwirkenden.
+    checks:
+      - { type: calls, tool: write, count: 3 }
+      - { type: no_empty_args }
+      - { type: schema_valid }
+      - { type: finish_reason, value: tool_calls }
+      - { type: write_html, path: /work/video/frames/01-titel.html, tags: { h1: 1, style: 1 } }
+      - { type: write_html, path: /work/video/frames/02-karte.html, tags: { svg: 1, circle: 5, path: 1, style: 1 } }
+      - { type: write_html, path: /work/video/frames/03-abspann.html, tags: { ul: 1, li: 3, style: 1 } }
+
+  - id: M2
+    category: multi
+    title: "Zwei reads parallel"
+    tests: "Zwei unabhängige Calls in einem Turn statt nacheinander."
+    prompt: "Lies /work/proj/pyproject.toml und /work/proj/README.md, bevor wir weitermachen."
+    checks:
+      - { type: calls, tool: read, count: 2 }
+      - { type: schema_valid }
+      - { type: call_paths, tool: read, value: [/work/proj/pyproject.toml, /work/proj/README.md] }
+
+  - id: M3
+    category: multi
+    title: "Python-Modul + Testdatei in einem Turn"
+    tests: "Zwei writes; das Modul muss gegen versteckte Asserts bestehen."
+    prompt: |
+      Lege /work/proj/src/textutil.py mit einer Funktion `slugify(text: str) -> str` an und dazu
+      /work/proj/tests/test_textutil.py mit pytest-Tests dafür. Regeln für slugify:
+      - Kleinbuchstaben; ä→ae, ö→oe, ü→ue, ß→ss (auch Großbuchstaben Ä/Ö/Ü)
+      - jedes andere Zeichen außer a-z und 0-9 wird zu einem Bindestrich
+      - mehrere Bindestriche in Folge werden zu einem; keine Bindestriche am Anfang oder Ende
+    checks:
+      - { type: calls, tool: write, count: 2 }
+      - { type: no_empty_args }
+      - { type: schema_valid }
+      - type: write_python
+        path: /work/proj/src/textutil.py
+        test: |
+          assert slugify("Grüße aus Köln!") == "gruesse-aus-koeln"
+          assert slugify("  Straße -- Nr. 5  ") == "strasse-nr-5"
+          assert slugify("ÄÖÜ") == "aeoeue"
+          assert slugify("a__b") == "a-b"
+          assert slugify("---") == ""
+      - { type: write_regex, path: /work/proj/tests/test_textutil.py, pattern: '^def test_', label: "Testdatei hat Tests" }
+
+  - id: M4
+    category: multi
+    title: "HyperFrames-Trio: index.html, style.css, main.js"
+    tests: "Drei zusammenhängende Dateien, Querverweise, JS syntaktisch gültig."
+    prompt: |
+      Lege im Ordner /work/video/intro/ drei Dateien in einem Zug an:
+      - index.html: bindet style.css und main.js ein und enthält <div id="stage"> mit genau drei
+        Kindern <div class="clip">.
+      - style.css: #stage ist 1920px × 1080px und position: relative; .clip ist position: absolute.
+      - main.js: setzt nach dem Laden (DOMContentLoaded) für die drei .clip-Elemente der Reihe nach
+        das Attribut data-start auf 0, 2 und 4 und loggt die Anzahl der Clips mit console.log.
+    checks:
+      - { type: calls, tool: write, count: 3 }
+      - { type: no_empty_args }
+      - { type: schema_valid }
+      - { type: write_html, path: /work/video/intro/index.html, tags: { div: 4, script: 1, link: 1 } }
+      - { type: write_regex, path: /work/video/intro/index.html, pattern: 'href=["'']style\.css', label: "bindet style.css ein" }
+      - { type: write_regex, path: /work/video/intro/index.html, pattern: 'src=["'']main\.js', label: "bindet main.js ein" }
+      - { type: write_regex, path: /work/video/intro/style.css, pattern: '1920px', label: "Bühnenbreite" }
+      - { type: write_regex, path: /work/video/intro/style.css, pattern: 'position:\s*absolute', label: ".clip absolut" }
+      - { type: write_js_syntax, path: /work/video/intro/main.js }
+      - { type: write_regex, path: /work/video/intro/main.js, pattern: 'DOMContentLoaded', label: "wartet auf DOMContentLoaded" }
+
+  # ------------------------------------------------------------------ C: Code-Korrektheit
+  - id: C1
+    category: code
+    title: "Python: parse_duration"
+    tests: "Parser mit Fehlerfällen gegen Asserts."
+    prompt: |
+      Lege /work/proj/src/duration.py an mit `parse_duration(s: str) -> int`, das Sekunden
+      zurückgibt für Angaben wie "1h30m", "45s", "2h", "1h2m3s", "90m". Einheiten h, m, s, jede
+      höchstens einmal und in dieser Reihenfolge. Ungültige Eingaben ("", "abc", "1x", "5",
+      "30m1h") lösen ValueError aus.
+    checks:
+      - { type: calls, tool: write, count: 1 }
+      - { type: schema_valid }
+      - type: write_python
+        path: /work/proj/src/duration.py
+        test: |
+          assert parse_duration("1h30m") == 5400
+          assert parse_duration("45s") == 45
+          assert parse_duration("2h") == 7200
+          assert parse_duration("1h2m3s") == 3723
+          assert parse_duration("90m") == 5400
+          for bad in ["", "abc", "1x", "5", "30m1h"]:
+              try:
+                  parse_duration(bad)
+              except ValueError:
+                  pass
+              else:
+                  raise AssertionError(f"no ValueError for {bad!r}")
+
+  - id: C2
+    category: code
+    title: "Python: merge_intervals (angrenzend + unsortiert)"
+    tests: "Randfälle: angrenzende Intervalle, unsortierte Eingabe, Eingabe unverändert."
+    prompt: |
+      Lege /work/proj/src/intervals.py an mit `merge_intervals(iv: list[tuple[int, int]]) ->
+      list[tuple[int, int]]`. Überlappende UND direkt angrenzende Intervalle (z. B. (1, 3) und
+      (3, 5)) werden zusammengefasst, das Ergebnis ist aufsteigend sortiert. Die Eingabe darf
+      unsortiert sein und darf nicht verändert werden.
+    checks:
+      - { type: calls, tool: write, count: 1 }
+      - { type: schema_valid }
+      - type: write_python
+        path: /work/proj/src/intervals.py
+        test: |
+          assert merge_intervals([]) == []
+          assert merge_intervals([(1, 3), (3, 5)]) == [(1, 5)]
+          src = [(8, 10), (1, 4), (2, 3), (5, 6)]
+          before = list(src)
+          assert merge_intervals(src) == [(1, 4), (5, 6), (8, 10)]
+          assert src == before
+          assert merge_intervals([(1, 10), (2, 3)]) == [(1, 10)]
+
+  - id: C3
+    category: code
+    title: "Python: IBAN-Prüfsumme"
+    tests: "Algorithmus mit Normalisierung (Leerzeichen, Groß/Klein) und Längengrenzen."
+    prompt: |
+      Lege /work/proj/src/iban.py an mit `iban_valid(iban: str) -> bool`: Prüfung per Mod-97
+      (ISO 13616). Leerzeichen werden ignoriert, Groß-/Kleinschreibung ist egal, nach dem
+      Entfernen der Leerzeichen sind nur A-Z und 0-9 erlaubt, Länge 15 bis 34.
+    checks:
+      - { type: calls, tool: write, count: 1 }
+      - { type: schema_valid }
+      - type: write_python
+        path: /work/proj/src/iban.py
+        test: |
+          assert iban_valid("DE89 3704 0044 0532 0130 00")
+          assert iban_valid("de89370400440532013000")
+          assert iban_valid("GB82 WEST 1234 5698 7654 32")
+          assert not iban_valid("DE89 3704 0044 0532 0130 01")
+          assert not iban_valid("DE89-3704-0044-0532-0130-00")
+          assert not iban_valid("DE89")
+          assert not iban_valid("")
+
+  - id: C4
+    category: code
+    title: "SVG-Balkendiagramm mit exakten Maßen"
+    tests: "Geometrie aus Daten: Höhen, y auf der Grundlinie, Beschriftungen."
+    prompt: |
+      Lege /work/video/frames/balken.html an: ein HTML-Dokument mit einem inline-<svg>
+      (viewBox="0 0 400 200") als Balkendiagramm für die Werte [3, 7, 5, 9] in dieser
+      Reihenfolge. Je Wert genau ein <rect> mit Höhe = Wert × 20, die Balken stehen auf der
+      Grundlinie y = 200 (also y = 200 − Höhe). Dazu je Balken ein <text> mit dem Wert. Keine
+      weiteren <rect>-Elemente.
+    checks:
+      - { type: calls, tool: write, count: 1 }
+      - { type: schema_valid }
+      - { type: write_html, path: /work/video/frames/balken.html, tags: { svg: 1, rect: 4, text: 4 } }
+      - type: write_check
+        path: /work/video/frames/balken.html
+        label: "rect-Höhen und y korrekt"
+        test: |
+          import re
+          rects = re.findall(r"<rect\b[^>]*>", CONTENT)
+          assert len(rects) == 4, len(rects)
+          def attr(tag, name):
+              m = re.search(r'\b' + name + r'\s*=\s*["\']([\d.]+)', tag)
+              assert m, (name, tag)
+              return float(m.group(1))
+          assert [attr(r, "height") for r in rects] == [60, 140, 100, 180]
+          assert [attr(r, "y") for r in rects] == [140, 60, 100, 20]
+
+  - id: C5
+    category: code
+    title: "JavaScript: Frames und Timecode"
+    tests: "JS-Logik gegen node-Asserts (Rundung, Zero-Padding)."
+    prompt: |
+      Lege /work/video/lib/timing.js an (CommonJS, `module.exports = { framesFor, toTimecode }`):
+      - framesFor(seconds, fps) → Math.round(seconds * fps)
+      - toTimecode(frame, fps) → "MM:SS:FF" (Minuten, Sekunden, Rest-Frames, je zweistellig mit
+        führender Null), z. B. toTimecode(3725, 30) → "02:04:05".
+    checks:
+      - { type: calls, tool: write, count: 1 }
+      - { type: schema_valid }
+      - type: write_node
+        path: /work/video/lib/timing.js
+        test: |
+          const assert = require("assert");
+          const t = module.exports;
+          assert.strictEqual(t.framesFor(2.5, 30), 75);
+          assert.strictEqual(t.framesFor(1.01, 24), 24);
+          assert.strictEqual(t.toTimecode(3725, 30), "02:04:05");
+          assert.strictEqual(t.toTimecode(0, 25), "00:00:00");
+          assert.strictEqual(t.toTimecode(59 * 25 + 24, 25), "00:59:24");
+
+  # ------------------------------------------------------------------ E: Edit-Treue
+  - id: E1
+    category: edit
+    title: "edit: eine Konstante ändern, Nachbar unberührt"
+    tests: "Kleinster Edit; oldString ohne 'N: '-Präfix aus der read-Ausgabe."
+    prompt: "Setze in /work/proj/src/settings.py MAX_RETRIES auf 5."
+    fixtures:
+      /work/proj/src/settings.py: |
+        """Laufzeit-Einstellungen."""
+
+        MAX_RETRIES = 3
+        TIMEOUT_S = 30
+        RETRY_BACKOFF = 1.5
+    preread: [/work/proj/src/settings.py]
+    checks:
+      - { type: calls, tool: edit, count: 1 }
+      - { type: schema_valid }
+      - { type: edit_applies, path: /work/proj/src/settings.py }
+      - type: edited_python
+        path: /work/proj/src/settings.py
+        test: |
+          assert MAX_RETRIES == 5
+          assert TIMEOUT_S == 30 and RETRY_BACKOFF == 1.5
+
+  - id: E2
+    category: edit
+    title: "edit: Off-by-one beheben"
+    tests: "Bug finden und gezielt ändern; Verhalten per Assert."
+    prompt: "In /work/proj/src/window.py liefert `moving_average` ein Element zu wenig. Behebe den Fehler."
+    fixtures:
+      /work/proj/src/window.py: |
+        def moving_average(values: list[float], k: int) -> list[float]:
+            """Gleitender Mittelwert über Fenster der Länge k."""
+            if k <= 0:
+                raise ValueError("k must be positive")
+            out = []
+            for i in range(len(values) - k):
+                out.append(sum(values[i : i + k]) / k)
+            return out
+    preread: [/work/proj/src/window.py]
+    checks:
+      - { type: calls, tool: edit, min: 1 }
+      - { type: schema_valid }
+      - { type: edit_applies, path: /work/proj/src/window.py }
+      - type: edited_python
+        path: /work/proj/src/window.py
+        test: |
+          assert moving_average([1, 2, 3, 4], 2) == [1.5, 2.5, 3.5]
+          assert moving_average([5], 1) == [5]
+          assert moving_average([1, 2], 3) == []
+          try:
+              moving_average([1], 0)
+          except ValueError:
+              pass
+          else:
+              raise AssertionError("k=0 must raise")
+
+  - id: E3
+    category: edit
+    title: "edit: mehrdeutiger oldString — Kontext nötig"
+    tests: "'return None' steht zweimal; ohne Kontext scheitert der Edit (opencode-Semantik)."
+    prompt: >-
+      In /work/proj/src/users.py soll `find_by_email` nicht mehr None zurückgeben, wenn nichts
+      gefunden wurde, sondern `LookupError(f"no user {email}")` auslösen. `find_by_id` bleibt
+      unverändert.
+    fixtures:
+      /work/proj/src/users.py: |
+        USERS = [{"id": 1, "email": "a@example.org"}, {"id": 2, "email": "b@example.org"}]
+
+
+        def find_by_id(uid):
+            for u in USERS:
+                if u["id"] == uid:
+                    return u
+            return None
+
+
+        def find_by_email(email):
+            for u in USERS:
+                if u["email"] == email:
+                    return u
+            return None
+    preread: [/work/proj/src/users.py]
+    checks:
+      - { type: calls, tool: edit, min: 1 }
+      - { type: schema_valid }
+      - { type: edit_applies, path: /work/proj/src/users.py }
+      - type: edited_python
+        path: /work/proj/src/users.py
+        test: |
+          assert find_by_id(3) is None
+          assert find_by_id(1)["email"] == "a@example.org"
+          assert find_by_email("b@example.org")["id"] == 2
+          try:
+              find_by_email("x@example.org")
+          except LookupError as e:
+              assert "x@example.org" in str(e)
+          else:
+              raise AssertionError("expected LookupError")
+
+  - id: E4
+    category: edit
+    title: "edit: CSS in HTML — nur die Überschrift"
+    tests: "'color: #333;' steht zweimal; nur der h1-Block darf sich ändern."
+    prompt: "Ändere in /work/video/frames/01-titel.html nur die Farbe der Überschrift h1 auf #e4572e."
+    fixtures:
+      /work/video/frames/01-titel.html: |
+        <!doctype html>
+        <html lang="de">
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { margin: 0; width: 1920px; height: 1080px; background: #fafafa; }
+            h1 {
+              font-size: 120px;
+              color: #333;
+            }
+            p {
+              font-size: 48px;
+              color: #333;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Außenposten</h1>
+          <p>Ein Film über Orte am Rand.</p>
+        </body>
+        </html>
+    preread: [/work/video/frames/01-titel.html]
+    checks:
+      - { type: calls, tool: edit, min: 1 }
+      - { type: schema_valid }
+      - { type: edit_applies, path: /work/video/frames/01-titel.html }
+      - { type: edited_regex, path: /work/video/frames/01-titel.html, pattern: 'h1\s*\{[^}]*color:\s*#e4572e', label: "h1 neu eingefärbt" }
+      - { type: edited_regex, path: /work/video/frames/01-titel.html, pattern: 'p\s*\{[^}]*color:\s*#333', label: "p unverändert" }
+
+  - id: E5
+    category: edit
+    title: "edit: Guard in verschachteltem Python-Block (Einrückung)"
+    tests: "Einrückungstreue in einer Methode mit Schleife; Verhalten per Assert."
+    prompt: >-
+      In /work/proj/src/importer.py soll `Importer.process` Zeilen überspringen, deren "id" leer
+      ist (None oder leerer String), statt sie zu verarbeiten.
+    fixtures:
+      /work/proj/src/importer.py: |
+        class Importer:
+            def __init__(self):
+                self.seen = []
+
+            def process(self, rows):
+                count = 0
+                for row in rows:
+                    name = row["name"].strip()
+                    self.seen.append((row["id"], name))
+                    count += 1
+                return count
+    preread: [/work/proj/src/importer.py]
+    checks:
+      - { type: calls, tool: edit, min: 1 }
+      - { type: schema_valid }
+      - { type: edit_applies, path: /work/proj/src/importer.py }
+      - type: edited_python
+        path: /work/proj/src/importer.py
+        test: |
+          imp = Importer()
+          rows = [{"id": 1, "name": " a "}, {"id": None, "name": "b"}, {"id": "", "name": "c"},
+                  {"id": 4, "name": "d"}]
+          assert imp.process(rows) == 2
+          assert imp.seen == [(1, "a"), (4, "d")]

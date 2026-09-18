@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from touchstone.runner import StreamEvent
+from touchstone.toolbench import ToolStreamEvent
 
 
 @dataclass
@@ -140,6 +141,66 @@ class OpenAIStreamClient:
             usage = getattr(chunk, "usage", None)
             if usage is not None:
                 yield StreamEvent(
+                    prompt_tokens=getattr(usage, "prompt_tokens", None),
+                    completion_tokens=getattr(usage, "completion_tokens", None),
+                )
+
+    def stream_tools(
+        self,
+        *,
+        messages: list[dict[str, object]],
+        model: str,
+        tools: list[dict[str, object]],
+        max_tokens: int | None,
+        temperature: float,
+        seed: int,
+        extra_body: dict[str, object] | None = None,
+    ) -> Iterator[ToolStreamEvent]:
+        """Stream a tool-enabled turn as raw fragments (``toolbench.collect_turn`` assembles).
+
+        Streams like opencode does, so a server that ships a truncated call with empty
+        ``arguments`` at the budget edge shows up here exactly as it does there."""
+        extra: dict[str, object] = {}
+        if max_tokens is not None:
+            extra["max_tokens"] = max_tokens
+        if extra_body:
+            extra["extra_body"] = extra_body
+        stream = self._client.chat.completions.create(  # type: ignore[call-overload]
+            model=model,
+            messages=messages,
+            tools=tools,
+            temperature=temperature,
+            seed=seed,
+            stream=True,
+            stream_options={"include_usage": True},
+            **extra,
+        )
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None) or []
+            if choices:
+                ch = choices[0]
+                delta = getattr(ch, "delta", None)
+                if delta is not None:
+                    content = getattr(delta, "content", None)
+                    reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                        delta, "reasoning", None
+                    )
+                    if content or reasoning:
+                        yield ToolStreamEvent(content=content or None, reasoning=reasoning or None)
+                    for tc in getattr(delta, "tool_calls", None) or []:
+                        fn = getattr(tc, "function", None)
+                        yield ToolStreamEvent(
+                            tc_index=getattr(tc, "index", 0) or 0,
+                            tc_id=getattr(tc, "id", None),
+                            tc_name=getattr(fn, "name", None) if fn else None,
+                            tc_args=getattr(fn, "arguments", None) if fn else None,
+                        )
+                fr = getattr(ch, "finish_reason", None)
+                if fr:
+                    yield ToolStreamEvent(finish_reason=fr)
+            usage = getattr(chunk, "usage", None)
+            if usage is not None:
+                yield ToolStreamEvent(
                     prompt_tokens=getattr(usage, "prompt_tokens", None),
                     completion_tokens=getattr(usage, "completion_tokens", None),
                 )

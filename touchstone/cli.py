@@ -1019,5 +1019,95 @@ def queue_cmd(
     )
 
 
+@app.command(name="tools")
+def tools_cmd(
+    pack: Path = typer.Option(..., "--pack", exists=True, help="tools pack YAML"),
+    config: Path = typer.Option(..., "--config", "-c", exists=True, help="endpoint/models YAML"),
+    resume: Path | None = typer.Option(
+        None, "--resume", exists=True, help="continue an existing tools bundle (skip done cells)"
+    ),
+    run_dir_opt: Path | None = typer.Option(None, "--run-dir", help="use this exact run dir"),
+    models_json: str = typer.Option(
+        "", "--models-json", help="JSON list[ModelSpec]; replaces config.models for this run"
+    ),
+) -> None:
+    """Deterministic tool-calling/code pack: tool choice, JSON args vs schema, code that runs."""
+    from touchstone import toolbench as tb
+
+    cfg = load_config(config)
+    if resume is None:
+        try:
+            cfg = apply_models_override(cfg, models_json)
+        except ValueError as e:
+            console.print(f"[red]--models-json:[/] {e}")
+            raise typer.Exit(1) from None
+    pk = tb.load_tools_pack(pack)
+    run_dir = resume or run_dir_opt or cfg.output_path() / f"{_timestamp()}_tools_{pk.id}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = run_dir / "bundle.json"
+    if resume is not None and manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        models = [
+            (m["id"], m.get("quant", ""), m.get("extra_body") or {}) for m in manifest["models"]
+        ]
+    else:
+        models = [(m.id, m.quant, dict(m.extra_body)) for m in cfg.models]
+        manifest = {
+            "kind": "tools",
+            "pack_id": pk.id,
+            "pack_version": pk.version,
+            "pack_path": str(Path(pack).resolve()),
+            "models": [{"id": i, "quant": q, "extra_body": e} for i, q, e in models],
+            "endpoint": cfg.endpoint.base_url,
+            "host": hostinfo.summary(),
+            "sampling": pk.sampling.model_dump(),
+            "max_tokens": pk.max_tokens,
+            "date": _today(),
+        }
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
+    console.print(f"[bold]touchstone tools[/] [{pk.id}] → [cyan]{run_dir}[/]")
+    client = _make_client(cfg)
+    rows = tb.run_tools(
+        pk, models, client.stream_tools, run_dir, resume=resume is not None, log=console.print
+    )
+    # Evidence of what was actually loaded (LM Studio: per-model quantization) — best-effort.
+    build = client.probe_build_metadata()
+    manifest["loaded_quant_at_end"] = build.quant_by_model
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
+    tb.write_results_csv(rows, run_dir / "results.csv")
+    meta = {
+        "Endpoint": cfg.endpoint.base_url,
+        "Datum": _today(),
+        "Quant laut Server am Ende": build.quant_by_model or "n. v.",
+        "Sampling": pk.sampling.model_dump(),
+        "max_tokens": pk.max_tokens,
+    }
+    (run_dir / "report.md").write_text(tb.render_report_md(pk, rows, meta), encoding="utf-8")
+    console.print(
+        f"[green]✓[/] {sum(r.passed for r in rows)}/{len(rows)} Items bestanden → "
+        f"{run_dir / 'report.md'}"
+    )
+
+
+@app.command(name="tools-compare")
+def tools_compare_cmd(
+    bundle_a: Path = typer.Argument(..., exists=True, help="tools bundle A"),
+    bundle_b: Path = typer.Argument(..., exists=True, help="tools bundle B"),
+    out: Path | None = typer.Option(None, "--out", help="write the comparison markdown here"),
+) -> None:
+    """Paired A/B over the same tools pack: per-item pass, discordant pairs, exact McNemar."""
+    from touchstone import toolbench as tb
+
+    a = tb.load_tool_responses(bundle_a / "responses.jsonl")
+    b = tb.load_tool_responses(bundle_b / "responses.jsonl")
+    if not a or not b:
+        console.print("[red]leeres Bundle[/]")
+        raise typer.Exit(1)
+    md = tb.render_compare_md(tb.compare_bundles(a, b))
+    if out is not None:
+        out.write_text(md, encoding="utf-8")
+    console.print(md)
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
