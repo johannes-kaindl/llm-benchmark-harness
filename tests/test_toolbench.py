@@ -556,3 +556,81 @@ def test_request_error_is_recorded_not_raised(pack: tb.ToolsPack, tmp_path: Path
 
     rows = tb.run_tools(sub, [("m", "q", {})], boom, tmp_path, log=lambda _: None)
     assert rows[0].passed is False and "Model unloaded" in rows[0].error
+
+
+# --------------------------------------------------------------------------- real SDK over SSE
+
+
+def test_client_stream_tools_over_real_sdk_sse() -> None:
+    """client.stream_tools through the real OpenAI SDK against a local SSE server that streams
+    like LM Studio: reasoning, one complete write split over chunks, one truncated write with a
+    name but empty arguments, finish_reason=length, usage. (A stand-in server — it pins the
+    parsing contract, it does not prove LM Studio's behaviour.)"""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from touchstone.client import OpenAIStreamClient
+
+    def chunk(delta: dict[str, Any], finish: str | None = None) -> dict[str, Any]:
+        return {
+            "id": "x", "object": "chat.completion.chunk", "created": 0, "model": "m",
+            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+        }  # fmt: skip
+
+    fn0 = {"name": "write", "arguments": '{"filePath": "/a", '}
+    chunks = [
+        chunk({"role": "assistant", "reasoning_content": "hmm"}),
+        chunk({"tool_calls": [{"index": 0, "id": "c0", "type": "function", "function": fn0}]}),
+        chunk({"tool_calls": [{"index": 0, "function": {"arguments": '"content": "x"}'}}]}),
+        chunk(
+            {
+                "tool_calls": [
+                    {
+                        "index": 1,
+                        "id": "c1",
+                        "type": "function",
+                        "function": {"name": "write", "arguments": ""},
+                    }
+                ]
+            }
+        ),
+        chunk({}, finish="length"),
+        {
+            "id": "x",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "m",
+            "choices": [],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 7, "total_tokens": 12},
+        },
+    ]
+    got: dict[str, Any] = {}
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            got["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for c in chunks:
+                self.wfile.write(f"data: {json.dumps(c)}\n\n".encode())
+            self.wfile.write(b"data: [DONE]\n\n")
+
+        def log_message(self, *a: Any) -> None:
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        client = OpenAIStreamClient(f"http://127.0.0.1:{srv.server_port}/v1", max_retries=0)
+        tools: list[dict[str, object]] = [{"type": "function", "function": {"name": "write"}}]
+        t = tb.collect_turn(
+            client.stream_tools(messages=[{"role": "user", "content": "hi"}], model="m",
+                                tools=tools, max_tokens=32000, temperature=0.0, seed=42),
+            clock=lambda: 0.0,
+        )  # fmt: skip
+    finally:
+        srv.shutdown()
+    assert got["body"]["tools"] == tools and got["body"]["max_tokens"] == 32000
+    assert [c.arguments for c in t.tool_calls] == ['{"filePath": "/a", "content": "x"}', ""]
+    assert t.finish_reason == "length" and t.completion_tokens == 7 and t.reasoning == "hmm"
