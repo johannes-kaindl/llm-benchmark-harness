@@ -200,8 +200,7 @@ class OpenAIStreamClient:
                     for tc in getattr(delta, "tool_calls", None) or []:
                         fn = getattr(tc, "function", None)
                         yield ToolStreamEvent(
-                            is_tool=True,
-                            tc_index=getattr(tc, "index", None),
+                            tc_index=getattr(tc, "index", 0) or 0,
                             tc_id=getattr(tc, "id", None),
                             tc_name=getattr(fn, "name", None) if fn else None,
                             tc_args=getattr(fn, "arguments", None) if fn else None,
