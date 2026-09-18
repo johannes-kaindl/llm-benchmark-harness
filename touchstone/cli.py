@@ -202,7 +202,11 @@ def _write_bundle_manifest(
         "pack_id": pk.id,
         "pack_version": pk.version,
         "pack_path": str(Path(pack_path).resolve()),
-        "models": [{"id": m.id, "quant": m.quant} for m in cfg.models],
+        # extra_body (e.g. reasoning_effort) is part of what was measured — and what resume reuses
+        "models": [
+            {"id": m.id, "quant": m.quant, **({"extra_body": m.extra_body} if m.extra_body else {})}
+            for m in cfg.models
+        ],
         "variants": [v.id for v in pk.prompt_variants],
         "host": host,
         "sampling": {"temperature": pk.sampling.temperature, "seed": pk.sampling.seed},
@@ -570,6 +574,13 @@ def eval_cmd(
         except ValueError as e:
             console.print(f"[red]--models-json:[/] {e}")
             raise typer.Exit(1) from None
+    else:
+        # Resume continues the BUNDLE's models (incl. extra_body), not the config's — a bundle
+        # started with --models-json would otherwise resume with a different model.
+        manifest_path = resume / "bundle.json"
+        if manifest_path.exists():
+            man = json.loads(manifest_path.read_text(encoding="utf-8"))
+            cfg = apply_models_override(cfg, json.dumps(man.get("models") or []))
     pk = load_pack(pack)
     if resume is not None:
         run_dir = resume
@@ -1083,7 +1094,15 @@ def tools_cmd(
             "pack_path": str(Path(pack).resolve()),
             "pack_sha256": fingerprint,
             "items": wanted or None,
-            "models": [{"id": i, "quant": q, "extra_body": e} for i, q, e in models],
+            "models": [
+                {
+                    "id": i,
+                    "quant": q,
+                    "extra_body": e,
+                    "reasoning_effort": e.get("reasoning_effort"),
+                }
+                for i, q, e in models
+            ],
             "endpoint": cfg.endpoint.base_url,
             "host": hostinfo.summary(),
             "node": node,
@@ -1100,6 +1119,15 @@ def tools_cmd(
         cfg.endpoint.base_url, cfg.endpoint.api_key, engine=engine,
         engine_version=cfg.engine_version or "unknown", max_retries=0,
     )  # fmt: skip
+    for mid, _q, eb in models:
+        err = tb.preflight(client.stream_tools, mid, eb, pk)
+        if err:
+            # e.g. an invalid reasoning_effort → the chat template raises; never fall back silently
+            console.print(f"[red]✗ Pre-Flight {mid} {eb or ''}:[/] {err}")
+            manifest["preflight_error"] = err
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), "utf-8")
+            raise typer.Exit(1)
+    console.print("[green]✓ Pre-Flight[/] Endpoint nimmt die Modell-Parameter an")
     aborted = ""
     try:
         tb.run_tools(

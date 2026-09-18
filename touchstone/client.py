@@ -211,9 +211,13 @@ class OpenAIStreamClient:
                     yield ToolStreamEvent(finish_reason=fr)
             usage = getattr(chunk, "usage", None)
             if usage is not None:
+                details = getattr(usage, "completion_tokens_details", None)
                 yield ToolStreamEvent(
                     prompt_tokens=getattr(usage, "prompt_tokens", None),
                     completion_tokens=getattr(usage, "completion_tokens", None),
+                    reasoning_tokens=getattr(details, "reasoning_tokens", None)
+                    if details
+                    else None,
                 )
 
     def embed(self, *, model: str, inputs: list[str]) -> int:

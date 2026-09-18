@@ -935,3 +935,30 @@ def test_tools_compare_refuses_different_pack_hash(tmp_path: Path) -> None:
         (d / "bundle.json").write_text(json.dumps({"pack_sha256": sha}), encoding="utf-8")
     res = CliRunner().invoke(app, ["tools-compare", str(tmp_path / "a"), str(tmp_path / "b")])
     assert res.exit_code == 1 and "Pack-Hash" in res.output
+
+
+# --------------------------------------------------------------------------- effort stages
+
+
+def test_side_stats_counts_truncation_empty_args_and_reasoning(pack: tb.ToolsPack) -> None:
+    m1 = _item(pack, "L1")
+    cut = turn(*GOLDEN["M1"].tool_calls[:2], call("write", "", 2), finish="length")
+    cut.reasoning_tokens = 9000
+    import dataclasses
+
+    ok = dataclasses.replace(GOLDEN["M1"], reasoning_tokens=1000)  # never mutate the shared golden
+    rows = [
+        tb.make_response(pack, m1, "m", "4bit-xhigh", 0, cut, tb.run_checks(m1, cut, {}), 0.0),
+        tb.make_response(pack, m1, "m", "4bit-xhigh", 1, ok, tb.run_checks(m1, ok, {}), 0.0),
+    ]
+    st = tb.side_stats(rows)
+    assert (st["truncated_length"], st["empty_args_calls"], st["calls"]) == (1, 1, 6)
+    assert st["median_reasoning_tokens"] == 5000 and st["reasoning_tokens_estimated"] is False
+    assert set(st["l_items"]) == {"L1"}
+
+
+def test_collect_turn_takes_reasoning_tokens_from_usage() -> None:
+    t = tb.collect_turn(
+        [tb.ToolStreamEvent(completion_tokens=50, reasoning_tokens=30)], clock=lambda: 0.0
+    )
+    assert (t.completion_tokens, t.reasoning_tokens) == (50, 30)

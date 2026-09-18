@@ -216,6 +216,15 @@ Project-specific:
   is forwarded verbatim to `chat.completions.create` (e.g. `{"chat_template_kwargs": {"enable_thinking": false}}`)
   — engine-agnostic, no engine branch outside `client.py`, forwarded only when non-empty. The judge backend
   never disables thinking.
+- **Reasoning-Effort als `extra_body`, oberste Body-Ebene.** `ModelSpec.extra_body = {"reasoning_effort": "medium"}`
+  landet über das OpenAI-SDK **auf oberster Ebene** im Request (wie opencodes `options.reasoningEffort`);
+  LM Studio liest es dort, `chat_template_kwargs` reicht es **nicht** durch. Das qwen3.8-Template kennt nur
+  `xhigh` (Default) / `medium` / `low` und wirft sonst einen Template-Fehler → `tools` hat einen **Pre-Flight**
+  mit exakt diesem `extra_body` und bricht vor der Matrix ab (Eval: `--strict-preflight`). Das Label (`quant`)
+  muss den Effort tragen (`4bit-medium`), sonst kollidieren gleich quantisierte Bundles im Vergleich; das
+  Manifest hält `extra_body`/`reasoning_effort` fest (`tests/test_reasoning_effort.py`, echte CLI gegen Stand-in).
+- **Eval-Resume nimmt die Modelle aus dem Bundle**, nicht aus der Config: vorher lief ein mit `--models-json`
+  gestartetes Bundle beim `--resume` mit den `models:` der Config weiter (still ein anderes Modell).
 - **Judge model is pickable like the eval model.** `gui/configs.discover_models` is the shared discovery
   core; `discover_judge_endpoint_models` + `GET /judge-endpoint-models` (never-500, `judge*.yaml` path-guard)
   feed a GUI dropdown; `judge --judge-model <id>` overrides the YAML model for one run (no write-back),
