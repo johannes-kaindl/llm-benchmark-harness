@@ -13,6 +13,7 @@ dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/) (Tags **
   Tool-Wahl, JSON-Argumente gegen die echten opencode-Schemas, mehrere Calls in einem Turn
   (inkl. „drei HTML-Dateien in einem Zug"), Code gegen Asserts (Python/node), Edit-Treue. Rein
   deterministisch, kein Judge; `touchstone tools-compare` liefert den Paarvergleich mit exaktem McNemar.
+- `api_key_file` für Endpoint (Config) und Judge-Endpoint: der Key wird aus einer Datei gelesen (`~` expandiert, Leerraum entfernt) statt im YAML zu stehen — für Remote-Endpoints wie die Hetzner Inference API. Gesetzt gewinnt die Datei über `api_key`; fehlende oder leere Datei ist ein Validierungsfehler.
 - `vlm`-Szenario produktiv gegen einen echten MLX-VLM-Server gegengetestet (bislang nur Platzhalter-Bild).
 
 ## [0.1.0] — 2026-06-15

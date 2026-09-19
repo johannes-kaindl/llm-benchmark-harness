@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 # Built-in default output budget per scenario (tokens). Overridable via config.max_tokens.
 DEFAULT_MAX_TOKENS: dict[str, int] = {
@@ -26,9 +26,32 @@ DEFAULT_MAX_TOKENS: dict[str, int] = {
 KNOWN_SCENARIOS = set(DEFAULT_MAX_TOKENS)
 
 
-class Endpoint(BaseModel):
+class KeyedEndpoint(BaseModel):
+    """base_url + api_key; ``api_key_file`` reads the key from a file (``~`` expanded, stripped)
+    so it never has to sit in a tracked YAML. When set, the file wins over an inline ``api_key``
+    — that also keeps a model_dump → model_validate round-trip (apply_overrides) stable."""
+
     base_url: str
     api_key: str = "not-needed"
+    api_key_file: str | None = None
+
+    @model_validator(mode="after")
+    def _read_key_file(self) -> KeyedEndpoint:
+        if self.api_key_file is None:
+            return self
+        path = Path(self.api_key_file).expanduser()
+        try:
+            key = path.read_text(encoding="utf-8").strip()
+        except OSError as e:
+            raise ValueError(f"api_key_file nicht lesbar: {path} ({e.strerror})") from None
+        if not key:
+            raise ValueError(f"api_key_file ist leer: {path}")
+        self.api_key = key
+        return self
+
+
+class Endpoint(KeyedEndpoint):
+    pass
 
 
 class ModelSpec(BaseModel):
