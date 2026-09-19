@@ -50,7 +50,7 @@ Prefill (tok/s) · Peak-RAM / Druck / Swap · Qual. · Flow · Konsist. (CV%) ·
 
 | Schlüssel | Bedeutung |
 |---|---|
-| `endpoint.base_url` / `endpoint.api_key` | OpenAI-kompatibler Endpoint; Key `"not-needed"`. |
+| `endpoint.base_url` / `endpoint.api_key` / `endpoint.api_key_file` | OpenAI-kompatibler Endpoint; Key `"not-needed"` (lokal). Echter Key eines Remote-Endpoints per `api_key_file` (Pfad, `~` erlaubt) — gesetzt gewinnt die Datei; gilt auch im `judge.yaml`. |
 | `machine` | Freier Bezeichner für den Report-Header. |
 | `runs_per_cell` | N pro Zelle (≥2; 1 Warmup wird verworfen). |
 | `seed`, `temperature` | Reproduzierbarkeit (`temperature: 0.0`). |
