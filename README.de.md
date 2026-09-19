@@ -26,6 +26,11 @@ nur die Config wird getauscht.
   Green-/Red-Flags, gewichtete Dimensionen, Sicherheits-K.-o.) läuft deterministisch; ein
   austauschbarer LLM-as-judge macht daraus eine gewichtete Scorecard. Ein neuer Einsatzzweck ist
   ein neues YAML, kein neuer Code.
+- **Tool-Calls von Coding-Agents, mechanisch geprüft** — `touchstone tools` fährt ein Tools-Pack
+  (`packs/opencode-tools.yaml`: opencodes echte Tool-Schemas, mehrere Calls in einem Turn, Code
+  gegen Asserts, exakte Edits, Langkontext-Items) ganz ohne Judge; `tools-compare` stellt zwei
+  Läufe je Item gegenüber (exakter McNemar), etwa zwei Quantisierungen oder zwei
+  `reasoning_effort`-Stufen.
 - **System-Prompts als gemessene Achse** — jeder Prompt läuft einmal pro System-Prompt-Variante.
   Derselbe Lauf zeigt damit, ob dein Prompt überhaupt etwas bringt.
 - **Engine-agnostisch by construction** — die einzige engine-bewusste Datei ist `client.py`.
@@ -104,6 +109,16 @@ einer gewichteten Scorecard (`aggregate` rollt viele Bundles in eine Hardware×Q
 Generierung und Bewertung sind **zwei entkoppelte Phasen**, beide inkrementell und fortsetzbar.
 Ein neuer Use-Case ist ein neues YAML, kein neuer Code. Mitgeliefert sind zwei Packs:
 `ndassist` (Neurodivergenz-Assistent) und `buero` (Büro-/Wissensarbeit-Assistent).
+
+**Tool-Calls (Coding-Agents).** Strukturierter Output braucht keinen Judge. `touchstone tools`
+streamt jedes Item eines Tools-Packs genau wie opencode und prüft die Antwort mechanisch:
+vollständige Calls (ein am Budget abgeschnittener Call mit leerem `arguments` zählt nicht),
+JSON-Argumente gegen das Schema, `finish_reason`, Code in einer Sandbox gegen versteckte
+Asserts und Edits mit opencodes exakter Such-Semantik. `touchstone tools-compare A B` stellt
+zwei Läufe je Item gegenüber und nennt diskordante Paare, einen exakten McNemar-Test,
+Abbrüche, leere Argumente und den Median der Reasoning-Token je Seite. Modell-Parameter wie
+`reasoning_effort` stehen im `extra_body` des Modells und werden per Pre-Flight-Request
+geprüft: Ein ungültiger Wert scheitert laut vor der Matrix, statt still zurückzufallen.
 
 **Web-Steuerzentrale (`touchstone gui`).** Ein optionaler lokaler FastAPI-Server (das `[gui]`-Extra
 — build-freies HTMX/Alpine, vom Mess-Kern isoliert) bringt den ganzen Ablauf in den Browser:

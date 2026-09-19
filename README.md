@@ -24,6 +24,10 @@ the config.
 - **Answer quality, not just speed** — a use-case **pack** (`packs/*.yaml`: prompts, green/red
   flags, weighted dimensions, a safety knock-out) runs deterministically; a pluggable
   LLM-as-judge turns it into a weighted scorecard. A new use case is a new YAML, not new code.
+- **Coding-agent tool calls, checked mechanically** — `touchstone tools` runs a tools pack
+  (`packs/opencode-tools.yaml`: opencode's real tool schemas, multi-call turns, code run against
+  asserts, exact edits, long-context items) with no judge at all; `tools-compare` pairs two runs
+  per item (exact McNemar), e.g. two quantizations or two `reasoning_effort` settings.
 - **System prompts as a measured axis** — every prompt runs once per system-prompt variant, so
   the same run tells you whether your prompt actually helps.
 - **Engine-agnostic by construction** — the only engine-aware file is `client.py`. LM Studio,
@@ -101,6 +105,16 @@ LLM-as-judge into a weighted scorecard (`aggregate` rolls many bundles into one 
 table). Generation and judging are **two decoupled phases**, both incremental and resumable.
 A new use case is a new YAML, not new code. Two packs ship today: `ndassist`
 (Neurodivergenz-Assistent) and `buero` (Büro-/Wissensarbeit-Assistent).
+
+**Tool calling (coding agents).** Structured output doesn't need a judge. `touchstone tools`
+streams each item of a tools pack exactly the way opencode does and checks the turn
+mechanically: complete calls (a call truncated at the budget edge with empty `arguments` does
+not count), JSON arguments against the schema, `finish_reason`, code executed against hidden
+asserts in a sandbox, and edits applied with opencode's exact-match semantics.
+`touchstone tools-compare A B` pairs two runs per item and reports discordant pairs, an exact
+McNemar test, truncations, empty arguments and median reasoning tokens per side. Model knobs
+such as `reasoning_effort` go into the model's `extra_body` and are checked by a pre-flight
+request, so an invalid value fails loudly before the matrix instead of falling back silently.
 
 **Web control-center (`touchstone gui`).** An optional local FastAPI server (the `[gui]` extra —
 build-free HTMX/Alpine, isolated from the measurement core) puts the whole workflow in the
