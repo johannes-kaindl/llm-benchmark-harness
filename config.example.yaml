@@ -4,6 +4,8 @@
 endpoint:
   base_url: "http://localhost:1234/v1"   # M1 → LM Studio. M5 → :8080 (mlx_lm.server) / :8000 (mlx-openai-server)
   api_key: "not-needed"                  # lokaler Server, kein echter Key
+  # api_key_file: "~/.mein-token"        # echter Key (Remote-Endpoint): aus Datei lesen, nie ins YAML;
+  #                                      # gesetzt gewinnt sie über api_key (gilt auch im judge.yaml)
 
 machine: "M1-16GB"                        # freier Bezeichner; landet im Report-Header
 

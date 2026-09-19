@@ -17,6 +17,7 @@ from typing import Protocol
 import yaml
 from pydantic import BaseModel
 
+from touchstone.config import KeyedEndpoint
 from touchstone.pack import Pack, PackPrompt
 from touchstone.results import EvalResponse, ModelReport, Verdict
 
@@ -433,9 +434,8 @@ def load_reports_jsonl(path: str | Path) -> list[ModelReport]:
 # --- real backend + config ---------------------------------------------------
 
 
-class JudgeEndpoint(BaseModel):
-    base_url: str
-    api_key: str = "not-needed"
+class JudgeEndpoint(KeyedEndpoint):
+    pass
 
 
 # Belt-and-suspenders body hints to disable a local model's "thinking" across servers, so a hybrid
