@@ -336,3 +336,23 @@ def test_head_mit_zeilenzahl_wird_beantwortet(pack: tb.ToolsPack) -> None:
         item_of(pack, "S2"), call("bash", {"command": "head -n 5 /work/proj/tests/test_api.py"})
     )
     assert "def test_" in out
+
+
+def test_jede_im_prompt_genannte_datei_ist_lesbar(pack: tb.ToolsPack) -> None:
+    """Strukturwächter: Nennt ein Item-Prompt eine Datei, die das Modell lesen soll, muss sie als
+    Fixture existieren. Sonst antwortet die gestellte Welt „not found", und das Modell sucht statt
+    zu arbeiten (gemessen 2026-09-20 an S1 gegen Hetzner: read app.py → not found → zwei
+    Such-Aufrufe → Item durchgefallen, obwohl der erste Zug genau richtig war)."""
+    import re
+
+    fehlend: list[tuple[str, str]] = []
+    for item in pack.items:
+        named = {p.rstrip(".,;:)") for p in re.findall(r"/work/[\w./-]+", item.prompt)}
+        named = {p for p in named if "." in p.rsplit("/", 1)[-1]}  # Dateien, keine Ordner
+        targets = {c.path for c in item.checks if c.path}
+        for c in item.checks:
+            if c.type == "call_paths" and isinstance(c.value, list):
+                targets |= set(c.value)
+        known = set(item.fixtures) | set(item.context_fixtures) | targets
+        fehlend += [(item.id, p) for p in sorted(named) if p not in known]
+    assert fehlend == [], f"im Prompt genannt, aber nicht lesbar und kein Schreibziel: {fehlend}"

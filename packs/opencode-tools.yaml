@@ -90,10 +90,66 @@ items:
     title: "read mit limit (integer, nicht string)"
     tests: "Tool-Wahl read, exakter Pfad, limit als integer 40."
     prompt: "Zeig mir die ersten 40 Zeilen von /work/proj/src/app.py."
+    # Die Datei, die der Prompt nennt, muss lesbar sein — sonst antwortet die gestellte Welt
+    # „not found", und das Modell sucht statt zu arbeiten (Strukturwächter in den Tests).
+    fixtures:
+      /work/proj/src/app.py: |
+        """Kleine Demo-App (Fixture für S1: bewusst mehr als 40 Zeilen)."""
+
+        from __future__ import annotations
+
+        import json
+        import logging
+        from dataclasses import dataclass, field
+
+        log = logging.getLogger(__name__)
+
+
+        @dataclass
+        class Route:
+            path: str
+            method: str = "GET"
+            tags: list[str] = field(default_factory=list)
+
+
+        ROUTES: list[Route] = [
+            Route("/ping"),
+            Route("/health"),
+            Route("/items", tags=["api"]),
+            Route("/items", "POST", tags=["api"]),
+        ]
+
+
+        def ping() -> str:
+            """Liveness-Antwort."""
+            return "pong"
+
+
+        def health() -> dict[str, object]:
+            return {"status": "ok", "routes": len(ROUTES)}
+
+
+        def dispatch(path: str, method: str = "GET") -> str:
+            for r in ROUTES:
+                if r.path == path and r.method == method:
+                    log.debug("hit %s %s", method, path)
+                    return json.dumps(health())
+            raise KeyError(f"no route for {method} {path}")
+
+
+        def main() -> None:
+            print(ping())
+            print(json.dumps(health(), indent=2))
+
+
+        if __name__ == "__main__":
+            main()
     checks:
       - { type: calls, tool: read, count: 1 }
       # Gilt seit v3 für die GANZE Episode (alle Züge), nicht nur den ersten: genau ein Aufruf,
       # kein zweites Lesen hinterher — das ist der Punkt des Items (gezielt statt mit Schrot).
+      # Gilt seit v3 für die GANZE Episode (alle Züge): genau ein Aufruf, kein Nachfassen —
+      # das ist der Punkt des Items (gezielt lesen statt mit Schrot schießen).
       - { type: calls, max: 1, label: "keine weiteren Calls" }
       - { type: schema_valid }
       - { type: arg_equals, tool: read, key: filePath, value: /work/proj/src/app.py }
