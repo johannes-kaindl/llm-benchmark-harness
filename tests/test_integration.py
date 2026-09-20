@@ -5,7 +5,7 @@ the whole chain produces report.md + raw.csv with the right row counts.
 """
 
 from touchstone import report
-from touchstone.config import Config
+from touchstone.config import Config, ModelSpec
 from touchstone.runner import StreamEvent, run_benchmark
 
 
@@ -79,3 +79,45 @@ def test_run_benchmark_aggregates_exclude_warmup_and_cold(tmp_path, monkeypatch)
     # 2 cells, each with 2 valid runs (3 runs − 1 warmup), cold excluded from cells
     assert len(cells) == 2
     assert all(c.n_valid == 2 for c in cells)
+
+
+def test_latency_runner_forwards_model_extra_body(tmp_path):
+    """`ModelSpec.extra_body` (z. B. `reasoning_effort`) muss AUCH im Latenz-Runner ankommen.
+    Er hat es still verworfen — gefunden am 2026-09-20 beim Splash-Smoke: Das Denken blieb an,
+    verbrauchte das Token-Budget, und `ttft_s` (= erster sichtbarer Inhalt) blieb `nan`,
+    während der Eval-Pfad denselben Knopf korrekt durchreicht."""
+    seen: list[dict | None] = []
+
+    class SpyClient(FakeClient):
+        def stream(self, *, messages, model, max_tokens, temperature, seed, extra_body=None):
+            seen.append(extra_body)
+            yield StreamEvent(delta_text="Hallo")
+            yield StreamEvent(prompt_tokens=10, completion_tokens=2)
+
+    cfg = _cfg(tmp_path).model_copy(
+        update={
+            "models": [
+                ModelSpec.model_validate(
+                    {"id": "qwen3-8b", "quant": "Q5", "extra_body": {"reasoning_effort": "none"}}
+                )
+            ]
+        }
+    )
+    run_benchmark(cfg, SpyClient(), run_dir=tmp_path / "eb", sampler=NoopSampler())
+    assert seen, "kein Request abgesetzt"
+    assert all(e == {"reasoning_effort": "none"} for e in seen), seen
+
+
+def test_latency_runner_omits_extra_body_when_unset(tmp_path):
+    """Gegenprobe: ohne Knopf darf nichts mitgeschickt werden (sonst überschriebe ein leeres
+    Dict Server-Defaults)."""
+    seen: list[dict | None] = []
+
+    class SpyClient(FakeClient):
+        def stream(self, *, messages, model, max_tokens, temperature, seed, extra_body=None):
+            seen.append(extra_body)
+            yield StreamEvent(delta_text="Hallo")
+            yield StreamEvent(prompt_tokens=10, completion_tokens=2)
+
+    run_benchmark(_cfg(tmp_path), SpyClient(), run_dir=tmp_path / "nb", sampler=NoopSampler())
+    assert seen and all(e is None for e in seen), seen

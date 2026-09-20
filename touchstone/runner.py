@@ -496,6 +496,9 @@ def run_benchmark(
                     max_tokens=cell.max_tokens,
                     temperature=config.temperature,
                     seed=config.seed,
+                    # Modell-Knöpfe (z. B. reasoning_effort) gelten auch hier — der Eval-Pfad
+                    # reichte sie durch, dieser verwarf sie still (Splash-Smoke 2026-09-20).
+                    extra_body=cell.model.extra_body or None,
                     counter=counter,
                 )
                 records.append(
@@ -522,6 +525,9 @@ def run_benchmark(
                     max_tokens=cell.max_tokens,
                     temperature=config.temperature,
                     seed=config.seed,
+                    # Modell-Knöpfe (z. B. reasoning_effort) gelten auch hier — der Eval-Pfad
+                    # reichte sie durch, dieser verwarf sie still (Splash-Smoke 2026-09-20).
+                    extra_body=cell.model.extra_body or None,
                     counter=counter,
                 )
                 records.append(
