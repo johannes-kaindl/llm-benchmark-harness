@@ -492,3 +492,24 @@ def test_jedes_im_prompt_genannte_verzeichnis_existiert(pack: tb.ToolsPack) -> N
             if "No such file" in out:
                 fehlend.append((item.id, d))
     assert fehlend == [], f"im Prompt genannt, aber die gestellte Welt kennt es nicht: {fehlend}"
+
+
+def test_folgenachricht_reicht_reasoning_zurueck(pack: tb.ToolsPack) -> None:
+    """opencode schickt das Reasoning des vorigen Zugs als `reasoning_content` mit, und die
+    Gegenstelle liest es (von der opencode-Session am Draht gemessen, 2026-09-20: 668 statt 343
+    Prompt-Token, und das Modell kannte ein Codewort, das nur im Reasoning stand). Die Schleife
+    muss das nachbilden, sonst denkt das Modell bei uns ohne Gedächtnis."""
+    t = tb.ToolTurn(
+        content="",
+        reasoning="Erst nachsehen, dann pytest.",
+        tool_calls=[call("bash", {"command": "ls /work/proj"}, 0)],
+        finish_reason="tool_calls",
+    )
+    msgs = tb.follow_up_messages(item_of(pack, "S2"), t)
+    assert msgs[0]["reasoning_content"] == "Erst nachsehen, dann pytest."
+
+
+def test_folgenachricht_ohne_reasoning_hat_das_feld_nicht(pack: tb.ToolsPack) -> None:
+    """Gegenprobe: Ein Modell ohne Reasoning schickt kein leeres Feld mit."""
+    t = turn(call("bash", {"command": "ls /work/proj"}, 0))
+    assert "reasoning_content" not in tb.follow_up_messages(item_of(pack, "S2"), t)[0]

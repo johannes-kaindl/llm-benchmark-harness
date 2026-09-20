@@ -1023,9 +1023,15 @@ def follow_up_messages(item: ToolItem, turn: ToolTurn) -> list[dict[str, Any]]:
         }
         for c in turn.tool_calls
     ]
-    out: list[dict[str, Any]] = [
-        {"role": "assistant", "content": turn.content, "tool_calls": calls}
-    ]
+    assistant: dict[str, Any] = {"role": "assistant", "content": turn.content, "tool_calls": calls}
+    if turn.reasoning:
+        # opencode reaches the previous turn's thinking back as `reasoning_content` — whichever
+        # field the server emitted it in — and the server reads it (measured by the opencode
+        # session 2026-09-20 against Hetzner: 668 vs 343 prompt tokens, and the model knew a
+        # codeword that existed only in the reasoning). Dropping it would make the model think
+        # without memory of its own previous step, which is not what the agent under test does.
+        assistant["reasoning_content"] = turn.reasoning
+    out: list[dict[str, Any]] = [assistant]
     for c in turn.tool_calls:
         out.append({"role": "tool", "tool_call_id": c.id, "content": tool_result_for(item, c)})
     return out
