@@ -301,6 +301,27 @@ Project-specific:
   (`tests/test_report_md_golden.py`); `pool_rows` folgt **keinen** Symlinks → ein extern hineingelinktes
   Bundle erscheint nicht im `/compare`-Pool (Confinement sicher-by-construction, `is_relative_to`-Guard =
   Defense-in-Depth).
+- **Das Tools-Pack wertet die Summe aller Züge, nicht den ersten (Pack v3, 2026-09-20).** v2 wertete
+  nur den ersten Zug und bestrafte damit Umsicht: Gegen Hetzner waren **alle 11 Durchfaller** dasselbe
+  Muster — das Modell rief erst `ls` / `find` / `read` / `mkdir -p` und erst danach die Zielaktion, die
+  in opencodes Schleife folgen würde (`none` tat das nie → 24/24, xhigh 20/24; der Unterschied war die
+  Metrik, nicht das Modell). v3 fährt eine **Agenten-Schleife**: Auf jeden Aufruf bekommt das Modell ein
+  gestelltes Tool-Ergebnis (`tool_result_for`: `read` auf eine Fixture → die echte Datei im
+  opencode-Format, `read` auf Unbekanntes → „not found", sonst die im Item hinterlegte Antwort
+  (`turn_results`, Muster → Ausgabe, Daten wie alles andere) oder die neutrale Quittung `(exit 0)` —
+  **nie erfundene Dateiinhalte**) und darf weitermachen, bis es keine Aufrufe mehr macht oder
+  `pack.max_turns` (3) erschöpft ist. Die Schleife endet **nicht**, wenn die Checks erfüllt sind — das
+  wäre Wertung im Lauf. `merge_turns` führt die Züge zu dem einen Turn zusammen, gegen den die Checks
+  laufen (Aufrufe aneinander, `prompt_tokens` vom letzten Zug, Dauern summiert, Fehler des letzten);
+  `n_turns` + `turn_calls` stehen in `responses.jsonl`, CSV und Bericht, denn **jeder Zug kostet in
+  opencode einen weiteren Request**. Mit der Schleife wurde `arg_equals`/`arg_regex` von „der **erste**
+  Aufruf des Tools" auf „**irgendein** Aufruf" umgestellt; ein *verbotenes* Muster (`absent: true`)
+  gilt spiegelbildlich für **jeden** Aufruf, sonst entschuldigte ein harmloses `ls` das verbotene Flag
+  daneben. Exakte `calls`-Zahlen auf `bash` sind zu `min` geworden (Erkundung darf einen Aufruf kosten);
+  auf `write`/`read` bleiben sie exakt (Zielaktion bzw. „nicht mit Schrot schießen"). **v2- und
+  v3-Bundles sind nicht vergleichbar** — `compare_bundles` verweigert gemischte `pack_version`, Resume
+  ohnehin (Pack-Hash). Alle Hetzner-tools-Zahlen aus v2 sind damit Altlast und gehören nicht in einen
+  Bericht.
 - **Das Tools-Pack (`touchstone tools`, `packs/opencode-tools.yaml`) wird nie gejudged.** Strukturierter
   Output ist mechanisch prüfbar; ein Judge brächte dort nur Rauschen. Die Tool-Schemas sind **Daten im
   Pack**, aus dem opencode-Binary 1.18.31 übernommen (bash dort `{command, timeout?, workdir?}`, *kein*

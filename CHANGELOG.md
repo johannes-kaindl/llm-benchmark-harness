@@ -7,6 +7,18 @@ dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/) (Tags **
 
 ## [Unreleased]
 
+### Changed
+- **Tools-Pack v3: gewertet wird die Summe aller Züge, nicht mehr der erste.** `touchstone tools` fährt
+  eine Agenten-Schleife wie opencode: Auf jeden Tool-Aufruf bekommt das Modell ein gestelltes Ergebnis
+  zurück (`read` auf eine Fixture die echte Datei, sonst eine im Item hinterlegte Antwort oder eine
+  neutrale Quittung — nie erfundene Dateiinhalte) und darf bis `max_turns` (3) weitermachen. Grund:
+  Die v2-Wertung des ersten Zugs bestrafte Umsicht — gegen Hetzner waren **alle 11 Durchfaller**
+  Modelle, die erst `ls`/`find`/`read`/`mkdir` riefen und die Zielaktion danach gebracht hätten.
+  Neu im Ergebnis: `n_turns` und `turn_calls` (je Zug die Tool-Namen), denn jeder Zug kostet in
+  opencode einen Request. `arg_equals`/`arg_regex` prüfen jetzt **irgendeinen** Aufruf des Tools statt
+  nur den ersten; ein verbotenes Muster (`absent`) muss weiterhin für **jeden** gelten.
+  **v2-Bundles sind mit v3 nicht vergleichbar** (`compare_bundles` verweigert gemischte Versionen).
+
 ### Added
 - Tools-Pack für den Coding-Agent-Einsatz (`touchstone tools`, `packs/opencode-tools.yaml`, 24 Items,
   davon 3 mit ~50k Token Vorkontext):

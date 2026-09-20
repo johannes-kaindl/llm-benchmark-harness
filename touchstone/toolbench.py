@@ -87,6 +87,15 @@ class Check(BaseModel):
         return ":".join(bits)
 
 
+class TurnReply(BaseModel):
+    """A canned tool result for a call the item anticipates (data, not code): the first reply
+    whose tool and pattern match is returned instead of the neutral receipt."""
+
+    tool: str | None = None  # None → any tool
+    pattern: str | None = None  # searched in the call's leading argument (bash: command)
+    output: str
+
+
 class ToolItem(BaseModel):
     id: str
     title: str
@@ -101,6 +110,8 @@ class ToolItem(BaseModel):
     context_fixtures: dict[str, str] = Field(default_factory=dict)  # filled by load_tools_pack
     max_tokens: int | None = None  # None → pack default
     repeats: int = 1
+    # Anticipated exploration: `ls`/`find`/… get this output instead of the neutral receipt.
+    turn_results: list[TurnReply] = Field(default_factory=list)
     checks: list[Check]
 
     @model_validator(mode="after")
@@ -128,6 +139,11 @@ class ToolsPack(BaseModel):
     description: str = ""
     source: str = ""  # where the tool schemas were taken from
     context_dir: str | None = None  # relative to the pack file; holds long-context snapshots
+    # Agent loop: how many model turns one item may take. Scoring is over the SUM of all turns,
+    # so a preparatory call (ls/mkdir/read) costs a turn but is not a failure — opencode does
+    # the same. The loop never stops because the checks are satisfied (that would leak the
+    # scoring into the run); it stops at a turn without tool calls, or at this budget.
+    max_turns: int = 3
     context_root: str = "/work/proj/src/touchstone"  # virtual dir the context files appear under
     context_intro: str = (
         "Verschaff dir zuerst einen Überblick über die Kernmodule unter /work/proj/src/touchstone/ "
@@ -579,6 +595,10 @@ def apply_edits(turn: ToolTurn, path: str, original: str) -> tuple[str | None, s
     return text, ""
 
 
+def _among(cs: list[ToolCall]) -> str:
+    return f" (of {len(cs)} call(s))" if len(cs) > 1 else ""
+
+
 def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, Any]) -> CheckResult:
     name = check.name()
     t = check.type
@@ -631,19 +651,39 @@ def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, A
         cs = _calls_of(turn, check.tool)
         if not cs:
             return CheckResult(name, False, f"no {check.tool} call")
-        a, err = parse_args(cs[0])
-        if not isinstance(a, dict):
-            return CheckResult(name, False, err or "arguments not an object")
-        if check.key not in a:
-            return CheckResult(name, False, f"key {check.key!r} missing")
-        v = a[check.key]
-        if t == "arg_equals":
-            same = v == check.value and type(v) is type(check.value)
-            if isinstance(check.value, int) and isinstance(v, float) and v.is_integer():
-                same = int(v) == check.value
-            return CheckResult(name, same, f"got {v!r}")
-        ok = bool(re.search(check.pattern or "", str(v), re.S))
-        return CheckResult(name, ok != check.absent, f"got {str(v)[:120]!r}")
+        # ANY of the tool's calls may satisfy it: a model that looks around first (ls/find/read)
+        # and THEN does the real thing is doing what opencode's loop expects, not failing.
+        # A forbidden pattern (absent=True) is the mirror image: it must hold for EVERY call,
+        # otherwise a harmless `ls` would excuse the forbidden flag in the call next to it.
+        if t == "arg_regex" and check.absent:
+            bad = [
+                str(a.get(check.key))
+                for a in (parse_args(c)[0] for c in cs)
+                if isinstance(a, dict)
+                and check.key in a
+                and re.search(check.pattern or "", str(a[check.key]), re.S)
+            ]
+            return CheckResult(name, not bad, ("forbidden in: " + " | ".join(bad))[:300])
+        seen: list[str] = []
+        for c in cs:
+            a, err = parse_args(c)
+            if not isinstance(a, dict):
+                seen.append(err or "arguments not an object")
+                continue
+            if check.key not in a:
+                seen.append(f"key {check.key!r} missing")
+                continue
+            v = a[check.key]
+            if t == "arg_equals":
+                hit = v == check.value and type(v) is type(check.value)
+                if isinstance(check.value, int) and isinstance(v, float) and v.is_integer():
+                    hit = int(v) == check.value
+            else:
+                hit = bool(re.search(check.pattern or "", str(v), re.S)) != check.absent
+            if hit:
+                return CheckResult(name, True, f"got {str(v)[:120]!r}" + _among(cs))
+            seen.append(f"{str(v)[:120]!r}")
+        return CheckResult(name, False, "got " + " | ".join(seen)[:300])
     if t.startswith("write_"):
         writes = _writes(turn)
         path = check.path or ""
@@ -740,6 +780,8 @@ class ToolResponse:
     reasoning_tokens: int | None = None  # from usage; None if the server doesn't report it
     reasoning_text: str = ""  # persisted only when there is no tool call and no content
     unknown_keys: list[str] = field(default_factory=list)  # "tool.key" not in the schema (info)
+    n_turns: int = 1  # model turns the item took (agent loop); 1 = answered right away
+    turn_calls: list[list[str]] = field(default_factory=list)  # tool names per turn
 
 
 def make_response(
@@ -752,6 +794,7 @@ def make_response(
     results: list[CheckResult],
     t_start: float,
     schemas: dict[str, Any] | None = None,
+    turns: list[ToolTurn] | None = None,
 ) -> ToolResponse:
     extra: list[str] = []
     for c in turn.tool_calls:
@@ -790,6 +833,8 @@ def make_response(
         t_start=t_start,
         reasoning_text=turn.reasoning if bare else "",
         unknown_keys=extra,
+        n_turns=len(turns) if turns else 1,
+        turn_calls=[[c.name for c in t.tool_calls] for t in (turns or [turn])],
     )
 
 
@@ -843,6 +888,95 @@ def preflight(stream_fn: StreamFn, model: str, extra_body: dict[str, Any], pack:
     return turn.error or turn.rejected
 
 
+# --------------------------------------------------------------------------- agent loop
+
+_LEAD_ARG = {"bash": "command", "read": "filePath", "write": "filePath", "edit": "filePath"}
+NEUTRAL_RESULT = "(exit 0)"
+
+
+def tool_result_for(item: ToolItem, c: ToolCall) -> str:
+    """The tool result the item hands back for one call. ``read`` on a fixture returns the real
+    file (opencode's format); ``read`` on anything else says so. Everything else gets the item's
+    canned reply if one matches, otherwise a neutral receipt — we never invent file contents."""
+    args, _ = parse_args(c)
+    a = args if isinstance(args, dict) else {}
+    lead = a.get(_LEAD_ARG.get(c.name, ""), "")
+    for r in item.turn_results:
+        if r.tool not in (None, c.name):
+            continue
+        if r.pattern and not re.search(r.pattern, str(lead), re.S):
+            continue
+        return r.output
+    known = {**item.fixtures, **item.context_fixtures}
+    if c.name == "read":
+        path = str(lead)
+        if path in known:
+            return read_tool_output(path, known[path])
+        return f"Error: file not found: {path}"
+    if c.name == "bash":
+        # A plain read of a single file is answered from the fixtures. Not a shell simulator:
+        # only `cat/head/tail <path>` with nothing else on the line qualifies. Measured
+        # 2026-09-20: with a silent receipt the model keeps looking around and never reaches
+        # the task — an artefact of the stand-in world, not model behaviour.
+        m = re.fullmatch(r"\s*(cat|head|tail)(?:\s+-n\s*\d+)?\s+(\S+)\s*", str(lead))
+        if m:
+            path = m.group(2).strip("\"'")
+            if path in known:
+                return known[path]
+            return f"{m.group(1)}: {path}: No such file or directory"
+    return NEUTRAL_RESULT
+
+
+def follow_up_messages(item: ToolItem, turn: ToolTurn) -> list[dict[str, Any]]:
+    """The model's own turn echoed back plus one tool result per call — the shape an
+    OpenAI-compatible server expects before it will continue the conversation."""
+    calls = [
+        {
+            "id": c.id,
+            "type": "function",
+            "function": {"name": c.name, "arguments": c.arguments or "{}"},
+        }
+        for c in turn.tool_calls
+    ]
+    out: list[dict[str, Any]] = [
+        {"role": "assistant", "content": turn.content, "tool_calls": calls}
+    ]
+    for c in turn.tool_calls:
+        out.append({"role": "tool", "tool_call_id": c.id, "content": tool_result_for(item, c)})
+    return out
+
+
+def merge_turns(turns: list[ToolTurn]) -> ToolTurn:
+    """Fold an item's turns into the one turn the checks are run against. Calls are concatenated
+    in order and re-indexed; timings are the first turn's start and the sum of the durations;
+    ``prompt_tokens`` is the LAST turn's (it already covers the whole exchange)."""
+    if not turns:  # pragma: no cover — run_tools always has at least one turn
+        return ToolTurn()
+    calls: list[ToolCall] = []
+    for t in turns:
+        for c in t.tool_calls:
+            calls.append(ToolCall(index=len(calls), id=c.id, name=c.name, arguments=c.arguments))
+    last = turns[-1]
+    comp = [t.completion_tokens for t in turns if t.completion_tokens is not None]
+    reas = [t.reasoning_tokens for t in turns if t.reasoning_tokens is not None]
+    return ToolTurn(
+        content=last.content,
+        reasoning="".join(t.reasoning for t in turns),
+        tool_calls=calls,
+        finish_reason=last.finish_reason,
+        prompt_tokens=last.prompt_tokens,
+        completion_tokens=sum(comp) if comp else None,
+        reasoning_tokens=sum(reas) if reas else None,
+        ttft_s=turns[0].ttft_s,
+        t_first_tool_s=next(
+            (t.t_first_tool_s for t in turns if t.t_first_tool_s is not None), None
+        ),
+        e2e_s=sum(t.e2e_s for t in turns),
+        error=last.error,
+        rejected=last.rejected,
+    )
+
+
 class ToolsAborted(RuntimeError):
     """Too many consecutive transport errors — the server is gone; stop instead of recording
     the rest of the matrix as instant failures (resume redoes the error cells)."""
@@ -878,22 +1012,34 @@ def run_tools(
     for n, ((model, quant, extra_body), item, rep) in enumerate(todo, 1):
         t_start = wall()
         cap = item.max_tokens if item.max_tokens is not None else pack.max_tokens
-        try:
-            events = stream_fn(
-                model=model,
-                messages=build_messages(pack, item),
-                tools=pack.tools,
-                max_tokens=cap,
-                temperature=pack.sampling.temperature,
-                seed=pack.sampling.seed,
-                extra_body=extra_body or None,
-            )
-            turn = collect_turn(events, clock)
-        except Exception as e:  # request rejected before streaming began
-            err, rej = classify_exception(e)
-            turn = ToolTurn(error=err, rejected=rej)
+        msgs = build_messages(pack, item)
+        turns: list[ToolTurn] = []
+        for _turn_no in range(max(1, pack.max_turns)):
+            try:
+                events = stream_fn(
+                    model=model,
+                    messages=msgs,
+                    tools=pack.tools,
+                    max_tokens=cap,
+                    temperature=pack.sampling.temperature,
+                    seed=pack.sampling.seed,
+                    extra_body=extra_body or None,
+                )
+                one = collect_turn(events, clock)
+            except Exception as e:  # request rejected before streaming began
+                err, rej = classify_exception(e)
+                one = ToolTurn(error=err, rejected=rej)
+            turns.append(one)
+            # Stop on a turn without tool calls (the model is done talking) and on a broken
+            # exchange — feeding results into a dead stream would only pile up errors.
+            if not one.tool_calls or one.error or one.rejected:
+                break
+            msgs = msgs + follow_up_messages(item, one)
+        turn = merge_turns(turns)
         res = run_checks(item, turn, schemas)
-        resp = make_response(pack, item, model, quant, rep, turn, res, t_start, schemas)
+        resp = make_response(
+            pack, item, model, quant, rep, turn, res, t_start, schemas, turns=turns
+        )
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(resp), ensure_ascii=True) + "\n")
         results.append(resp)
@@ -917,7 +1063,7 @@ def run_tools(
 
 CSV_COLUMNS = [
     "model", "quant", "item_id", "category", "repeat", "passed", "checks_ok", "checks_measured",
-    "finish_reason", "truncated", "n_calls", "n_empty_args", "reasoning_chars", "prompt_tokens",
+    "finish_reason", "truncated", "n_calls", "n_turns", "n_empty_args", "reasoning_chars", "prompt_tokens",
     "completion_tokens", "ttft_s", "t_first_tool_s", "e2e_s", "error", "failed_checks",
 ]  # fmt: skip
 
@@ -976,7 +1122,7 @@ def render_report_md(pack: ToolsPack, rows: list[ToolResponse], meta: dict[str, 
             f"{s['e2e_s'] / 60:.0f} min |"
         )
     lines += ["", "## Je Item", "", "| Modell | Item | Kat. | ✓ | Checks | finish | Calls | "
-              "fehlgeschlagen |", "|---|---|---|---|---|---|---|---|"]  # fmt: skip
+              "Züge | fehlgeschlagen |", "|---|---|---|---|---|---|---|---|---|"]  # fmt: skip
     for r in rows:
         failed = "; ".join(
             f"{c['name']} ({c['detail'][:60]})" for c in r.checks if c["ok"] is False
@@ -984,6 +1130,7 @@ def render_report_md(pack: ToolsPack, rows: list[ToolResponse], meta: dict[str, 
         lines.append(
             f"| {r.model} | {r.item_id}#{r.repeat} | {r.category} | {'✓' if r.passed else '✗'} | "
             f"{r.checks_ok}/{r.checks_measured} | {r.finish_reason} | {r.n_calls} | "
+            f"{'·'.join(','.join(t) or '—' for t in r.turn_calls) or r.n_turns} | "
             f"{failed.replace('|', '/')} |"
         )
     return "\n".join(lines) + "\n"
@@ -1009,6 +1156,9 @@ def side_stats(rows: list[ToolResponse]) -> dict[str, Any]:
         "truncated_length": sum(r.truncated for r in rows),
         "empty_args_calls": sum(r.n_empty_args for r in rows),
         "calls": sum(r.n_calls for r in rows),
+        # Züge sind der Preis der Umsicht: in opencode kostet jeder einen weiteren Request.
+        "median_turns": _median([float(r.n_turns) for r in rows]),
+        "items_multi_turn": sum(1 for r in rows if r.n_turns > 1),
         "rejected": sum(1 for r in rows if r.rejected),
         "transport_errors": sum(1 for r in rows if r.error),
         "median_reasoning_tokens": _median([float(v) for v in vals]),
@@ -1064,7 +1214,10 @@ def compare_bundles(a: list[ToolResponse], b: list[ToolResponse]) -> PairedCompa
         if len(packs) != 1:
             raise ValueError(f"bundle {side} mixes pack versions: {sorted(packs)}")
     if {(r.pack_id, r.pack_version) for r in a} != {(r.pack_id, r.pack_version) for r in b}:
-        raise ValueError("bundles were run with different packs/versions")
+        raise ValueError(
+            "bundles were run with different pack_id/pack_version — v2 (first turn only) "
+            "and v3 (agent loop) are not comparable"
+        )
     ka = {(r.item_id, r.repeat): r for r in a}
     kb = {(r.item_id, r.repeat): r for r in b}
     both = sorted(set(ka) & set(kb))
@@ -1109,11 +1262,13 @@ def render_compare_md(cmp: PairedComparison) -> str:
         "",
         "## Je Stufe",
         "",
-        "| | Items ✓ | finish=length | leere arguments | 4xx | Transportfehler "
-        "| Median Reasoning-Token | Median completion |",
-        "|---|---|---|---|---|---|---|---|",
+        "| | Items ✓ | Züge (Median · >1 Zug) | finish=length | leere arguments | 4xx "
+        "| Transportfehler | Median Reasoning-Token | Median completion |",
+        "|---|---|---|---|---|---|---|---|---|",
         *[
-            f"| {lab} | {st['passed']}/{st['items']} | {st['truncated_length']} | "
+            f"| {lab} | {st['passed']}/{st['items']} | "
+            f"{st['median_turns']} · {st['items_multi_turn']}/{st['items']} | "
+            f"{st['truncated_length']} | "
             f"{st['empty_args_calls']}/{st['calls']} | {st['rejected']} | {st['transport_errors']} | "
             f"{st['median_reasoning_tokens']}{' (≈ aus Zeichen/4)' if st['reasoning_tokens_estimated'] else ''} | "
             f"{st['median_completion_tokens']} |"
