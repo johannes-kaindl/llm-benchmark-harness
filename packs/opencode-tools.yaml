@@ -1,6 +1,6 @@
 id: opencode-tools
 title: "Coding-Agent (opencode): Tool-Calls, Code, Edits — deterministisch geprüft"
-version: 2
+version: 3
 description: >
   Bildet den Einsatz als Coding-Agent in opencode ab: Tool-Wahl, gültige JSON-Argumente gegen
   die echten opencode-Schemas, mehrere Tool-Calls in einem Turn (inkl. „drei HTML-Dateien in
@@ -92,6 +92,8 @@ items:
     prompt: "Zeig mir die ersten 40 Zeilen von /work/proj/src/app.py."
     checks:
       - { type: calls, tool: read, count: 1 }
+      # Gilt seit v3 für die GANZE Episode (alle Züge), nicht nur den ersten: genau ein Aufruf,
+      # kein zweites Lesen hinterher — das ist der Punkt des Items (gezielt statt mit Schrot).
       - { type: calls, max: 1, label: "keine weiteren Calls" }
       - { type: schema_valid }
       - { type: arg_equals, tool: read, key: filePath, value: /work/proj/src/app.py }
@@ -101,11 +103,35 @@ items:
     category: schema
     title: "bash: gezielter pytest-Aufruf mit Abbruch beim ersten Fehler"
     tests: "Tool-Wahl bash, Kommando-Inhalt, keine erfundenen Keys (z. B. description)."
+    # Sieht das Modell sich erst um (gemessen: jede Denkstufe tat das), bekommt es eine echte
+    # Auflistung statt einer leeren Quittung — sonst hielte es das Projekt für leer.
+    turn_results:
+      - { tool: bash, pattern: '\b(ls|find|tree)\b', output: "src/app.py\ntests/test_api.py\ntests/test_cli.py\npyproject.toml" }
+    # Die Dateien, die die Auflistung nennt, müssen auch lesbar sein — sonst sucht das Modell
+    # weiter (gemessen 2026-09-20) und erreicht die Aufgabe nie.
+    fixtures:
+      /work/proj/pyproject.toml: |
+        [project]
+        name = "demo"
+        version = "0.1.0"
+
+        [tool.pytest.ini_options]
+        testpaths = ["tests"]
+      /work/proj/tests/test_api.py: |
+        from app import ping
+
+
+        def test_ping_returns_pong():
+            assert ping() == "pong"
+
+
+        def test_ping_is_idempotent():
+            assert ping() == ping()
     prompt: >-
       Führe im Projekt /work/proj nur die Tests aus tests/test_api.py aus und brich beim ersten
       fehlschlagenden Test ab.
     checks:
-      - { type: calls, tool: bash, count: 1 }
+      - { type: calls, tool: bash, min: 1 }
       - { type: schema_valid }
       - { type: arg_regex, tool: bash, key: command, pattern: 'pytest.*tests/test_api\.py' }
       - { type: arg_regex, tool: bash, key: command, pattern: '(\s-[qvsl]*x[qvsl]*\b|--exitfirst|--maxfail[= ]1\b)', label: "bricht beim ersten Fehler ab (-x/-xq/--exitfirst/--maxfail 1)" }
@@ -118,7 +144,7 @@ items:
       Starte im Ordner /work/site den Build mit `npm run build`. Er darf höchstens 2 Minuten
       laufen — gib dem Befehl dafür das passende Timeout mit.
     checks:
-      - { type: calls, tool: bash, count: 1 }
+      - { type: calls, tool: bash, min: 1 }
       - { type: schema_valid }
       - { type: arg_regex, tool: bash, key: command, pattern: 'npm run build' }
       - { type: arg_equals, tool: bash, key: timeout, value: 120000 }

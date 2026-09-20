@@ -556,7 +556,12 @@ def test_run_tools_incremental_resume_and_compare(pack: tb.ToolsPack, tmp_path: 
     def fake_stream(**kw: Any) -> Iterator[tb.ToolStreamEvent]:
         seen.append(kw["model"])
         assert kw["tools"] == sub.tools and kw["max_tokens"] == 32000
-        if "Zeilen" in kw["messages"][1]["content"]:
+        # In der Agenten-Schleife (Pack v3) bekommt das Modell das Tool-Ergebnis vorgelegt und
+        # antwortet dann mit Text — wie ein echtes Modell, das die Datei schon gelesen hat.
+        if kw["messages"][-1]["role"] == "tool":
+            yield tb.ToolStreamEvent(content="Datei gelesen.")
+            yield tb.ToolStreamEvent(finish_reason="stop")
+        elif "Zeilen" in kw["messages"][1]["content"]:
             good = kw["model"] == "good"
             args = {"filePath": "/work/proj/src/app.py", "limit": 40 if good else "40"}
             yield tb.ToolStreamEvent(
@@ -571,6 +576,7 @@ def test_run_tools_incremental_resume_and_compare(pack: tb.ToolsPack, tmp_path: 
     b = tb.run_tools(sub, [("bad", "4bit", {})], fake_stream, tmp_path / "b", log=lambda _: None)
     assert [r.passed for r in a] == [True, True]
     assert [r.passed for r in b] == [False, True]
+    assert seen.count("good") == 3  # S1: read + Abschlusszug, S6: nur Text
     n = len(seen)
     again = tb.run_tools(sub, [("good", "8bit", {})], fake_stream, tmp_path / "a", resume=True,
                          log=lambda _: None)  # fmt: skip
