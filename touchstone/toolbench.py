@@ -667,8 +667,8 @@ def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, A
         empty = [c.index for c in turn.tool_calls if not c.arguments.strip()]
         return CheckResult(name, not empty, f"empty: {empty}" if empty else "")
     if t == "finish_reason":
-        seen = turn.finishes or [turn.finish_reason]
-        return CheckResult(name, check.value in seen, ", ".join(str(x) for x in seen))
+        finishes = turn.finishes or [turn.finish_reason]
+        return CheckResult(name, check.value in finishes, ", ".join(str(x) for x in finishes))
     if t == "call_paths":
         paths = []
         for c in _calls_of(turn, check.tool):
@@ -926,6 +926,44 @@ _LEAD_ARG = {"bash": "command", "read": "filePath", "write": "filePath", "edit":
 NEUTRAL_RESULT = "(exit 0)"
 
 
+def known_paths(item: ToolItem) -> set[str]:
+    """Every path the stand-in world knows: the item's fixtures, its long-context files and the
+    paths its checks name as write/edit targets. Data the item already carries — nothing invented."""
+    out = set(item.fixtures) | set(item.context_fixtures)
+    for ch in item.checks:
+        if ch.path:
+            out.add(ch.path)
+        if ch.type == "call_paths" and isinstance(ch.value, list):
+            out |= {v for v in ch.value if isinstance(v, str)}
+    return out
+
+
+def known_dirs(item: ToolItem) -> set[str]:
+    dirs: set[str] = set()
+    for p in known_paths(item):
+        parts = p.split("/")
+        for n in range(2, len(parts)):
+            dirs.add("/".join(parts[:n]))
+    return dirs
+
+
+def _listing(item: ToolItem, path: str, recursive: bool) -> str | None:
+    """`ls`/`find` answered from the item's own paths. None → the directory is unknown."""
+    base = (path or "/work/proj").rstrip("/") or "/"
+    files = sorted(known_paths(item))
+    if base not in known_dirs(item) and base not in files:
+        return None
+    if recursive:
+        return "\n".join(p for p in files if p.startswith(base + "/") or p == base)
+    entries: set[str] = set()
+    for p in files:
+        if not p.startswith(base + "/"):
+            continue
+        rest = p[len(base) + 1 :]
+        entries.add(rest.split("/")[0] + ("/" if "/" in rest else ""))
+    return "\n".join(sorted(entries))
+
+
 def tool_result_for(item: ToolItem, c: ToolCall) -> str:
     """The tool result the item hands back for one call. ``read`` on a fixture returns the real
     file (opencode's format); ``read`` on anything else says so. Everything else gets the item's
@@ -944,6 +982,8 @@ def tool_result_for(item: ToolItem, c: ToolCall) -> str:
         path = str(lead)
         if path in known:
             return read_tool_output(path, known[path])
+        if path.rstrip("/") in known_dirs(item):
+            return f"Error: {path} is a directory, not a file"
         return f"Error: file not found: {path}"
     if c.name == "bash":
         # A plain read of a single file is answered from the fixtures. Not a shell simulator:
@@ -956,6 +996,19 @@ def tool_result_for(item: ToolItem, c: ToolCall) -> str:
             if path in known:
                 return known[path]
             return f"{m.group(1)}: {path}: No such file or directory"
+        cmd = str(lead).strip()
+        m = re.fullmatch(r"(?:ls|find|tree)((?:\s+-{1,2}[\w-]+)*)(?:\s+(\S+))?(?:\s+-.*)?", cmd)
+        if m:
+            path = (m.group(2) or "/work/proj").strip("\"'")
+            listing = _listing(item, path, recursive=cmd.startswith("find"))
+            if listing is None:
+                return f"ls: {path}: No such file or directory"
+            return listing or "(leer)"
+        m = re.fullmatch(r"echo\s+(?:-n\s+)?(.*)", cmd)
+        if m:
+            return m.group(1).strip("\"'")
+        if cmd == "pwd":
+            return "/work/proj"
     return NEUTRAL_RESULT
 
 

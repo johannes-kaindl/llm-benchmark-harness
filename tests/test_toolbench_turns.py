@@ -104,16 +104,17 @@ def test_read_auf_unbekanntes_sagt_das_ehrlich(pack: tb.ToolsPack) -> None:
 
 
 def test_bash_bekommt_neutrale_quittung_ohne_erfundene_ausgabe(pack: tb.ToolsPack) -> None:
-    """S3 hinterlegt keine Antwort: dann quittiert der Harness nur, er erfindet keine Ausgabe."""
-    out = tb.tool_result_for(item_of(pack, "S3"), call("bash", {"command": "ls /work/site"}))
+    """Ein Kommando mit Wirkung (kein Lesen) wird nur quittiert — der Harness erfindet keine
+    Ausgabe und baut keine Shell nach."""
+    out = tb.tool_result_for(item_of(pack, "S3"), call("bash", {"command": "npm run build"}))
     assert out.strip() == "(exit 0)"
 
 
-def test_s2_liefert_die_hinterlegte_auflistung(pack: tb.ToolsPack) -> None:
-    """Das ausgelieferte Pack antwortet auf `ls` mit einer echten Liste — eine leere Quittung
-    ließe das Modell glauben, das Projekt sei leer."""
+def test_s2_liefert_eine_echte_auflistung(pack: tb.ToolsPack) -> None:
+    """Das ausgelieferte Pack antwortet auf `ls` mit einer echten Liste (aus den Fixtures
+    abgeleitet) — eine leere Quittung ließe das Modell glauben, das Projekt sei leer."""
     out = tb.tool_result_for(item_of(pack, "S2"), call("bash", {"command": "ls /work/proj"}))
-    assert "tests/test_api.py" in out
+    assert "pyproject.toml" in out and "tests/" in out
 
 
 def test_item_darf_gezielte_antwort_hinterlegen() -> None:
@@ -137,7 +138,7 @@ def test_item_darf_gezielte_antwort_hinterlegen() -> None:
 
 
 def test_folgenachricht_hat_opencode_form(pack: tb.ToolsPack) -> None:
-    t = turn(call("bash", {"command": "ls /work/proj"}, 0))
+    t = turn(call("bash", {"command": "npm run build"}, 0))
     msgs = tb.follow_up_messages(item_of(pack, "S3"), t)
     assert msgs[0]["role"] == "assistant" and msgs[0]["tool_calls"][0]["function"]["name"] == "bash"
     assert msgs[1] == {"role": "tool", "tool_call_id": "c0", "content": "(exit 0)"}
@@ -234,7 +235,7 @@ def test_lauf_geht_nach_der_erkundung_weiter(pack: tb.ToolsPack, tmp_path: Path)
     assert rows[0].turn_calls == [["bash"], ["bash"], []]
     roles = [m["role"] for m in seen[1]]
     assert roles[-2:] == ["assistant", "tool"]
-    assert "tests/test_api.py" in seen[1][-1]["content"]
+    assert "pyproject.toml" in seen[1][-1]["content"]
 
 
 def test_schleife_endet_am_zugbudget(pack: tb.ToolsPack, tmp_path: Path) -> None:
@@ -426,3 +427,68 @@ def test_finish_reason_faellt_durch_wenn_kein_zug_ihn_hat(pack: tb.ToolsPack) ->
         tb.Check(type="finish_reason", value="tool_calls"), merged, pack.items[0], {}
     )
     assert res.ok is False and "length" in res.detail
+
+
+# ------------------------------------------------------- die Attrappe muss lesbar antworten
+# Dritter Anlauf derselben Fehlerklasse (2026-09-20): xhigh verbrauchte bei C1 alle fünf Züge mit
+# `ls -la`, `find`, `echo hello; whoami` und `read` auf ein Verzeichnis — Umgebungsdiagnose, weil
+# jede Probe „(exit 0)" zurückgab. Gemessen wurde die Attrappe, nicht das Modell.
+
+
+def test_ls_listet_die_bekannten_pfade(pack: tb.ToolsPack) -> None:
+    item = item_of(pack, "C1")  # Schreibziel /work/proj/src/duration.py, keine Fixtures
+    out = tb.tool_result_for(item, call("bash", {"command": "ls -la /work/proj"}))
+    assert "src" in out and "No such file" not in out
+
+
+def test_find_listet_rekursiv_die_bekannten_dateien(pack: tb.ToolsPack) -> None:
+    out = tb.tool_result_for(
+        item_of(pack, "S2"), call("bash", {"command": "find /work/proj -type f"})
+    )
+    assert "/work/proj/tests/test_api.py" in out and "/work/proj/pyproject.toml" in out
+
+
+def test_ls_auf_unbekanntes_verzeichnis_sagt_das(pack: tb.ToolsPack) -> None:
+    out = tb.tool_result_for(item_of(pack, "S2"), call("bash", {"command": "ls /nirgendwo"}))
+    assert "No such file or directory" in out
+
+
+def test_echo_und_pwd_antworten_wie_eine_shell(pack: tb.ToolsPack) -> None:
+    """`echo hello` war die Probe, mit der das Modell prüfte, ob die Shell lebt. Eine leere
+    Antwort darauf heißt für das Modell: hier ist alles kaputt."""
+    item = item_of(pack, "C1")
+    assert tb.tool_result_for(item, call("bash", {"command": "echo hello"})).strip() == "hello"
+    assert tb.tool_result_for(item, call("bash", {"command": "pwd"})).strip() == "/work/proj"
+
+
+def test_read_auf_verzeichnis_meldet_verzeichnis(pack: tb.ToolsPack) -> None:
+    out = tb.tool_result_for(item_of(pack, "S2"), call("read", {"filePath": "/work/proj"}))
+    assert "directory" in out.lower()
+
+
+def test_schreibende_kommandos_bleiben_neutral(pack: tb.ToolsPack) -> None:
+    """Gegenprobe: Es bleibt ein Stellvertreter, kein Shell-Nachbau — was Wirkung hätte, wird
+    nur quittiert, und die Zielaktion bleibt der Weg über write/edit."""
+    item = item_of(pack, "C1")
+    for cmd in ("mkdir -p /work/proj/src", "pytest -x", "rm -rf /work", "python -c 'print(1)'"):
+        assert tb.tool_result_for(item, call("bash", {"command": cmd})).strip() == tb.NEUTRAL_RESULT
+
+
+def test_jedes_im_prompt_genannte_verzeichnis_existiert(pack: tb.ToolsPack) -> None:
+    """Gegenstück zum Datei-Wächter: Nennt ein Prompt einen Ordner, darf `ls` darauf nicht
+    „No such file" sagen — sonst hält das Modell das Projekt für kaputt und diagnostiziert die
+    Umgebung, statt zu arbeiten (gemessen 2026-09-20: xhigh verbrauchte so alle fünf Züge)."""
+    import re
+
+    fehlend = []
+    for item in pack.items:
+        dirs = {
+            d.rstrip("/")
+            for d in re.findall(r"/work/[\w./-]+", item.prompt)
+            if "." not in d.rsplit("/", 1)[-1]
+        }
+        for d in sorted(dirs):
+            out = tb.tool_result_for(item, tb.ToolCall(0, "x", "bash", f'{{"command":"ls {d}"}}'))
+            if "No such file" in out:
+                fehlend.append((item.id, d))
+    assert fehlend == [], f"im Prompt genannt, aber die gestellte Welt kennt es nicht: {fehlend}"

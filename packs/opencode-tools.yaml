@@ -159,12 +159,8 @@ items:
     category: schema
     title: "bash: gezielter pytest-Aufruf mit Abbruch beim ersten Fehler"
     tests: "Tool-Wahl bash, Kommando-Inhalt, keine erfundenen Keys (z. B. description)."
-    # Sieht das Modell sich erst um (gemessen: jede Denkstufe tat das), bekommt es eine echte
-    # Auflistung statt einer leeren Quittung — sonst hielte es das Projekt für leer.
-    turn_results:
-      - { tool: bash, pattern: '\b(ls|find|tree)\b', output: "src/app.py\ntests/test_api.py\ntests/test_cli.py\npyproject.toml" }
-    # Die Dateien, die die Auflistung nennt, müssen auch lesbar sein — sonst sucht das Modell
-    # weiter (gemessen 2026-09-20) und erreicht die Aufgabe nie.
+    # Das Projekt, in dem die Aufgabe spielt: ls/find/read/cat werden daraus beantwortet.
+    # Ohne lesbare Dateien sucht das Modell weiter und erreicht die Aufgabe nie (2026-09-20).
     fixtures:
       /work/proj/pyproject.toml: |
         [project]
@@ -199,6 +195,18 @@ items:
     prompt: >-
       Starte im Ordner /work/site den Build mit `npm run build`. Er darf höchstens 2 Minuten
       laufen — gib dem Befehl dafür das passende Timeout mit.
+    # Der Ordner, in dem die Aufgabe spielt, muss existieren: `ls /work/site` darf nicht
+    # „No such file" sagen, sonst hält das Modell das Projekt für kaputt und sucht (2026-09-20).
+    fixtures:
+      /work/site/package.json: |
+        {
+          "name": "site",
+          "private": true,
+          "scripts": {
+            "build": "vite build",
+            "dev": "vite"
+          }
+        }
     checks:
       - { type: calls, tool: bash, min: 1 }
       - { type: schema_valid }
