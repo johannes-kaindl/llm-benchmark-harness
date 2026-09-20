@@ -111,10 +111,16 @@ Ein neuer Use-Case ist ein neues YAML, kein neuer Code. Mitgeliefert sind zwei P
 `ndassist` (Neurodivergenz-Assistent) und `buero` (Büro-/Wissensarbeit-Assistent).
 
 **Tool-Calls (Coding-Agents).** Strukturierter Output braucht keinen Judge. `touchstone tools`
-streamt jedes Item eines Tools-Packs genau wie opencode und prüft die Antwort mechanisch:
-vollständige Calls (ein am Budget abgeschnittener Call mit leerem `arguments` zählt nicht),
-JSON-Argumente gegen das Schema, `finish_reason`, Code in einer Sandbox gegen versteckte
-Asserts und Edits mit opencodes exakter Such-Semantik. `touchstone tools-compare A B` stellt
+fährt jedes Item eines Tools-Packs so, wie opencode einen Agenten fährt: Jeder Tool-Aufruf
+bekommt ein Ergebnis zurück — für `read`/`cat` die Fixture-Datei, für `ls`/`find` eine aus den
+Pfaden des Items abgeleitete Auflistung, für alles mit Wirkung eine schlichte Quittung — und das
+Modell macht weiter, bis es keine Aufrufe mehr schickt oder das Zugbudget erschöpft ist.
+**Gewertet wird die Summe aller Züge**, ein Modell, das sich erst umsieht und dann handelt,
+besteht also — genau wie in der echten Agenten-Schleife; die Zahl der Züge wird berichtet, denn
+jeder kostet einen Request. Mechanisch geprüft: vollständige Calls (ein am Budget abgeschnittener
+Call mit leerem `arguments` zählt nicht), JSON-Argumente gegen das Schema, `finish_reason` in
+irgendeinem Zug, Code in einer Sandbox gegen versteckte Asserts und Edits mit opencodes exakter
+Such-Semantik. `touchstone tools-compare A B` stellt
 zwei Läufe je Item gegenüber und nennt diskordante Paare, einen exakten McNemar-Test,
 Abbrüche, leere Argumente und den Median der Reasoning-Token je Seite. Modell-Parameter wie
 `reasoning_effort` stehen im `extra_body` des Modells und werden per Pre-Flight-Request

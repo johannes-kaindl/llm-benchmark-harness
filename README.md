@@ -107,10 +107,15 @@ A new use case is a new YAML, not new code. Two packs ship today: `ndassist`
 (Neurodivergenz-Assistent) and `buero` (Büro-/Wissensarbeit-Assistent).
 
 **Tool calling (coding agents).** Structured output doesn't need a judge. `touchstone tools`
-streams each item of a tools pack exactly the way opencode does and checks the turn
-mechanically: complete calls (a call truncated at the budget edge with empty `arguments` does
-not count), JSON arguments against the schema, `finish_reason`, code executed against hidden
-asserts in a sandbox, and edits applied with opencode's exact-match semantics.
+drives each item of a tools pack the way opencode drives an agent: every tool call gets a
+result back — a fixture file for `read`/`cat`, a listing derived from the item's own paths for
+`ls`/`find`, a plain receipt for anything with side effects — and the model keeps going until it
+stops calling tools or the turn budget runs out. **Scoring is over the sum of all turns**, so a
+model that looks around first and acts afterwards passes, exactly as it would in the real agent
+loop; the number of turns is reported, because each one costs a request. Checked mechanically:
+complete calls (a call truncated at the budget edge with empty `arguments` does not count), JSON
+arguments against the schema, `finish_reason` in any turn, code executed against hidden asserts
+in a sandbox, and edits applied with opencode's exact-match semantics.
 `touchstone tools-compare A B` pairs two runs per item and reports discordant pairs, an exact
 McNemar test, truncations, empty arguments and median reasoning tokens per side. Model knobs
 such as `reasoning_effort` go into the model's `extra_body` and are checked by a pre-flight
