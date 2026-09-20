@@ -396,3 +396,33 @@ def test_pack_fingerprint_bleibt_streng_fuer_resume(pack: tb.ToolsPack, tmp_path
     b.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
     pa, pb = tb.load_tools_pack(a), tb.load_tools_pack(b)
     assert tb.pack_fingerprint(a, pa) != tb.pack_fingerprint(b, pb)
+
+
+# ------------------------------------------------------- finish_reason über alle Züge
+
+
+def test_finish_reason_gilt_fuer_irgendeinen_zug(pack: tb.ToolsPack) -> None:
+    """M1 verlangt `finish_reason: tool_calls`. In der Schleife ist der LETZTE Zug aber der
+    Abschlusszug ohne Aufruf, also `stop` — gemessen 2026-09-20 gegen Hetzner: M1 und L1 fielen
+    allein daran durch, obwohl sie die Aufgabe erfüllt hatten. Erfüllt ein Zug die Erwartung,
+    ist der Check erfüllt."""
+    a = tb.ToolTurn(tool_calls=[call("write", {"filePath": "/x", "content": "y"}, 0)],
+                    finish_reason="tool_calls")  # fmt: skip
+    b = tb.ToolTurn(content="fertig", finish_reason="stop")
+    merged = tb.merge_turns([a, b])
+    assert merged.finish_reason == "stop"  # letzter Zug bleibt die Hauptangabe
+    res = tb.run_check(
+        tb.Check(type="finish_reason", value="tool_calls"), merged, pack.items[0], {}
+    )
+    assert res.ok is True, res.detail
+
+
+def test_finish_reason_faellt_durch_wenn_kein_zug_ihn_hat(pack: tb.ToolsPack) -> None:
+    """Gegenprobe: Wurde in keinem Zug so beendet, bleibt es ein Fehlschlag."""
+    merged = tb.merge_turns(
+        [tb.ToolTurn(finish_reason="length"), tb.ToolTurn(content="x", finish_reason="stop")]
+    )
+    res = tb.run_check(
+        tb.Check(type="finish_reason", value="tool_calls"), merged, pack.items[0], {}
+    )
+    assert res.ok is False and "length" in res.detail

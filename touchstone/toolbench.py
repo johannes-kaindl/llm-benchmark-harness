@@ -143,7 +143,11 @@ class ToolsPack(BaseModel):
     # so a preparatory call (ls/mkdir/read) costs a turn but is not a failure — opencode does
     # the same. The loop never stops because the checks are satisfied (that would leak the
     # scoring into the run); it stops at a turn without tool calls, or at this budget.
-    max_turns: int = 3
+    # 5 because a real opencode session needed 4–5 steps for a comparable task (measured by the
+    # opencode session 2026-09-20: build 4 steps, its old thinking config 5); with 3 the
+    # multi-file items were cut off mid-exploration. Every turn re-sends the whole exchange, so
+    # the budget costs prefill — on the long-context items (L*) that is the dominant cost.
+    max_turns: int = 5
     context_root: str = "/work/proj/src/touchstone"  # virtual dir the context files appear under
     context_intro: str = (
         "Verschaff dir zuerst einen Überblick über die Kernmodule unter /work/proj/src/touchstone/ "
@@ -322,6 +326,10 @@ class ToolTurn:
     e2e_s: float = 0.0
     error: str = ""  # transport failure (dead/evicted server) — not a model result, re-run
     rejected: str = ""  # deterministic 4xx (e.g. context overflow) — a result, counted as fail
+    # Agent loop: how EVERY turn ended. ``finish_reason`` stays the last turn's (the episode's
+    # ending), but a check asks about the turn that did the work — in the loop the last turn is
+    # the closing one without calls, i.e. "stop".
+    finishes: list[str | None] = field(default_factory=list)
 
 
 def classify_exception(e: Exception) -> tuple[str, str]:
@@ -659,7 +667,8 @@ def run_check(check: Check, turn: ToolTurn, item: ToolItem, schemas: dict[str, A
         empty = [c.index for c in turn.tool_calls if not c.arguments.strip()]
         return CheckResult(name, not empty, f"empty: {empty}" if empty else "")
     if t == "finish_reason":
-        return CheckResult(name, turn.finish_reason == check.value, str(turn.finish_reason))
+        seen = turn.finishes or [turn.finish_reason]
+        return CheckResult(name, check.value in seen, ", ".join(str(x) for x in seen))
     if t == "call_paths":
         paths = []
         for c in _calls_of(turn, check.tool):
@@ -997,6 +1006,7 @@ def merge_turns(turns: list[ToolTurn]) -> ToolTurn:
         e2e_s=sum(t.e2e_s for t in turns),
         error=last.error,
         rejected=last.rejected,
+        finishes=[t.finish_reason for t in turns],
     )
 
 
