@@ -341,7 +341,12 @@ Project-specific:
   **nicht** `__main__` geladen (ein Demo-`__main__`-Block darf nicht laufen). Braucht das Pack `node`
   und fehlt es, bricht `tools` vorab ab — sonst bestünden JS-Items ungeprüft. **Transportfehler sind
   kein Modellbefund:** nach 3 in Folge bricht der Lauf ab (`ToolsAborted`), `--resume` wiederholt die
-  Fehler-Zellen (letzte Zeile je Zelle gilt), `tools-compare` wertet Fehler-Paare nicht und lehnt
+  Fehler-Zellen (letzte Zeile je Zelle gilt). **Der Exit-Code trägt das mit:** `tools` endet mit **1**,
+  sobald auch nur *eine* Fehler-Zelle offen ist — nicht erst beim Abbruch. Verstreute Fehler (unter 3
+  in Folge) liefen vorher mit rc=0 durch, und die Schlusszeile zählte sie als „nicht bestanden", also
+  wie ein gemessenes Scheitern; ein Treiberskript konnte „Modell fiel durch" nicht von „nie gemessen"
+  unterscheiden (CORE-TEST-19). Die Quote zählt jetzt nur **gemessene** Zellen, die offenen stehen als
+  eigene rote Zeile mit `--resume`-Hinweis daneben. `tools-compare` wertet Fehler-Paare nicht und lehnt
   Bundles mit mehr als einem Modell ab; Resume verlangt denselben Pack-Hash (inkl. Kontext). Unbekannte
   Argument-Keys werden **gezählt, nicht bestraft** (opencode ignoriert sie vermutlich); Edits prüfen
   **exakt** — strenger als opencodes 9 Fallback-Strategien, ein Beinahe-Treffer steht im Detail. Jede Prüfung ist in `tests/test_toolbench.py` gegen eine

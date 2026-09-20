@@ -1154,11 +1154,24 @@ def tools_cmd(
         "Abbruch": aborted or "nein",
     }
     (run_dir / "report.md").write_text(tb.render_report_md(pk, rows, meta), encoding="utf-8")
+    # A transport error is not a model result: that cell was never measured, and --resume redoes
+    # it. Counting it as "not passed" would report absence of measurement as a finding, and
+    # rc=0 would tell a driver script the matrix is complete (CORE-TEST-19).
+    open_cells = [r for r in rows if r.error]
+    measured = [r for r in rows if not r.error]
     console.print(
-        f"[green]✓[/] {sum(r.passed for r in rows)}/{len(rows)} Items bestanden → "
+        f"[green]✓[/] {sum(r.passed for r in measured)}/{len(measured)} Items bestanden → "
         f"{run_dir / 'report.md'}"
     )
-    if aborted:
+    if open_cells:
+        which = ", ".join(f"{r.model} {r.item_id}#{r.repeat}" for r in open_cells[:10])
+        more = f" (+{len(open_cells) - 10})" if len(open_cells) > 10 else ""
+        plural = "n" if len(open_cells) != 1 else ""
+        console.print(
+            f"[red]✗[/] {len(open_cells)} offene Fehler-Zelle{plural} (nicht gemessen, kein "
+            f"Modell-Befund): {which}{more} — mit [bold]--resume {run_dir}[/] wiederholen"
+        )
+    if aborted or open_cells:
         raise typer.Exit(1)
 
 
