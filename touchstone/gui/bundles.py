@@ -25,6 +25,25 @@ class BundleSummary:
     run_kind: str = "eval"  # 'eval' | 'judge' — which live stream the running card should tail
 
 
+def _resolve_pack(pack_path: str | None, pack_id: str) -> Path | None:
+    """The pack file a bundle was run against, or None when it cannot be located.
+
+    bundle.json records the pack path as it was at run time — an *absolute* path in production.
+    That path dies whenever the checkout moves (or the bundle is read on another machine), and
+    the recorded pack is then unreachable although an identical one sits in this checkout. We
+    therefore fall back to the conventional ``packs/<pack_id>.yaml``, the same fallback
+    :func:`_pack_rel` already uses for the overview link. The fallback is keyed on the pack *id*,
+    so it can only ever resolve to the pack of the same name — never to some other pack.
+    """
+    if pack_path and Path(pack_path).exists():
+        return Path(pack_path)
+    if pack_id:
+        fallback = Path(f"packs/{pack_id}.yaml")
+        if fallback.exists():
+            return fallback
+    return None
+
+
 def _pack_rel(pack_path: str | None, pack_id: str) -> str:
     """A cwd-relative pack path the /packs/{path} route accepts, or "" when no such file exists.
 
@@ -125,10 +144,10 @@ def _recompute_verdict(run_dir: Path) -> tuple[str | None, bool | None]:
     from touchstone.qualrun import load_responses_jsonl
 
     m = _manifest(run_dir)
-    pack_path = m.get("pack_path")
-    if not pack_path or not Path(pack_path).exists():
+    resolved = _resolve_pack(m.get("pack_path"), str(m.get("pack_id", "")))
+    if resolved is None:
         return None, None
-    pk = load_pack(pack_path)
+    pk = load_pack(str(resolved))
     responses = load_responses_jsonl(run_dir / "responses.jsonl")
     verdicts = load_judgements_jsonl(run_dir / "judgements.jsonl")
     # master dims need a holistic ModelReport; v1 reads it back via re-judge-free path:

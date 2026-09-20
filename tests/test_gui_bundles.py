@@ -128,12 +128,14 @@ def _resp_dict(model, variant):
     ).as_dict()
 
 
-def _write_bundle(d, *, groups, scores_by_group, blank_dims=()):
+def _write_bundle(d, *, groups, scores_by_group, blank_dims=(), pack_path=None):
     """Build a self-contained judged bundle under d using the real in-repo pack.
 
     groups: list of (model, variant).
     scores_by_group: dict (model, variant) -> dict(dim_id -> score) (full master scores).
     blank_dims: iterable of dim ids to emit with score='' (judge omitted them).
+    pack_path: what to record in bundle.json (default: the real PACK) — override to
+        simulate a bundle written before the repo moved (dead absolute path).
     """
     from touchstone.pack import load_pack
 
@@ -143,7 +145,7 @@ def _write_bundle(d, *, groups, scores_by_group, blank_dims=()):
         json.dumps(
             {
                 "pack_id": pk.id,
-                "pack_path": PACK,
+                "pack_path": PACK if pack_path is None else pack_path,
                 "models": [{"id": g[0], "quant": "q"} for g in groups],
                 "date": "2026-06-20",
             }
@@ -216,6 +218,50 @@ def test_recompute_verdict_hermetic_ja(tmp_path):
     assert s is not None and s.status == "judged"
     assert s.rubric_level == "hoch"
     assert s.safety_passed is True
+
+
+def test_recompute_verdict_survives_dead_absolute_pack_path(tmp_path):
+    """A bundle written before the repo moved records an absolute pack_path that no longer
+    exists. The verdict must still be recomputed via the conventional packs/<pack_id>.yaml —
+    otherwise every pre-move bundle silently loses its badge in the overview (rubric_level=None,
+    although the bundle IS judged). Measured on runs/2026-06-20_104844_eval_ndassist, whose
+    manifest still points at /Users/Shared/code/llm-benchmark-harness/packs/ndassist.yaml.
+    """
+    from touchstone.pack import load_pack
+
+    pk = load_pack(PACK)
+    d = tmp_path / "2026_eval_nd"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {dim.id: 5 for dim in pk.dimensions}},
+        pack_path="/nonexistent/old/checkout/packs/ndassist.yaml",
+    )
+    s = bundles.classify(d)
+    assert s is not None and s.status == "judged"
+    assert s.rubric_level == "hoch"
+    assert s.safety_passed is True
+
+
+def test_recompute_verdict_gives_up_when_no_pack_resolvable(tmp_path):
+    """Counter-probe: the fallback must not invent a pack. An unknown pack_id with a dead
+    path stays unresolved → no verdict (rather than a wrong one from some other pack)."""
+    from touchstone.pack import load_pack
+
+    pk = load_pack(PACK)
+    d = tmp_path / "2026_eval_nd"
+    _write_bundle(
+        d,
+        groups=[("m", "baseline")],
+        scores_by_group={("m", "baseline"): {dim.id: 5 for dim in pk.dimensions}},
+        pack_path="/nonexistent/old/checkout/packs/ndassist.yaml",
+    )
+    manifest = json.loads((d / "bundle.json").read_text(encoding="utf-8"))
+    manifest["pack_id"] = "no-such-pack"
+    (d / "bundle.json").write_text(json.dumps(manifest), encoding="utf-8")
+    s = bundles.classify(d)
+    assert s is not None and s.status == "judged"
+    assert s.rubric_level is None
 
 
 def test_recompute_verdict_badge_picks_strongest(tmp_path):
