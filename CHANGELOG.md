@@ -8,6 +8,7 @@ dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/) (Tags **
 ## [Unreleased]
 
 ### Changed
+- **Gotcha dokumentiert: `temperature 0` widerspricht bei Thinking-Modellen der Hersteller-Empfehlung** (Qwen: kein Greedy-Decoding, „performance degradation and endless repetitions"); im Nachtlauf lief `xhigh` zweimal mit 103k Zeichen Reasoning ins Budget, ohne sichtbare Antwort. Der Zielkonflikt zur Vergleichbarkeit ist offen, die ausgelieferten Configs bleiben vorerst auf `0.0`.
 - **Tools-Pack v3: gewertet wird die Summe aller Züge, nicht mehr der erste.** `touchstone tools` fährt
   eine Agenten-Schleife wie opencode: Auf jeden Tool-Aufruf bekommt das Modell ein gestelltes Ergebnis
   zurück (`read` auf eine Fixture die echte Datei, sonst eine im Item hinterlegte Antwort oder eine
