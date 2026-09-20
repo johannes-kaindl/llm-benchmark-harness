@@ -204,6 +204,29 @@ def pack_fingerprint(path: str | Path, pack: ToolsPack) -> str:
     return h.hexdigest()
 
 
+def checks_fingerprint(pack: ToolsPack) -> str:
+    """sha256 over everything that defines WHAT is measured: items, checks, fixtures, tool
+    schemas, the framing prompts, the token budget and the turn budget — but **not** the
+    sampling. Two effort levels run with their own recommended sampling (thinking vs instruct)
+    are different runs of the SAME test bench; a compare must be allowed to pair them and name
+    the difference. ``pack_fingerprint`` stays strict for resume, where a parameter change
+    mid-bundle would mix cells.
+    """
+    import hashlib
+
+    payload = {
+        "tools": pack.tools,
+        "system_prompt": pack.system_prompt,
+        "context_intro": pack.context_intro,
+        "context_ack": pack.context_ack,
+        "max_tokens": pack.max_tokens,
+        "max_turns": pack.max_turns,
+        "items": [it.model_dump(mode="json") for it in pack.items],
+    }
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=True).encode()
+    return hashlib.sha256(blob).hexdigest()
+
+
 def needs_node(pack: ToolsPack) -> bool:
     return any(c.type in ("write_js_syntax", "write_node") for it in pack.items for c in it.checks)
 

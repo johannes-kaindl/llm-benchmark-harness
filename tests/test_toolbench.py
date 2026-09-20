@@ -940,7 +940,43 @@ def test_tools_compare_refuses_different_pack_hash(tmp_path: Path) -> None:
         (d / "responses.jsonl").write_text(json.dumps(tb.asdict(r)) + "\n", encoding="utf-8")
         (d / "bundle.json").write_text(json.dumps({"pack_sha256": sha}), encoding="utf-8")
     res = CliRunner().invoke(app, ["tools-compare", str(tmp_path / "a"), str(tmp_path / "b")])
-    assert res.exit_code == 1 and "Pack-Hash" in res.output
+    assert res.exit_code == 1 and "Checks-Hash" in res.output
+
+
+def test_tools_compare_erlaubt_gleiche_checks_mit_anderem_sampling(tmp_path: Path) -> None:
+    """Zwei Effort-Stufen, jede mit ihrem empfohlenen Sampling: derselbe Prüfstand. Der Vergleich
+    läuft und benennt den Unterschied, statt ihn zu verweigern (Gegenstück zum Test darüber)."""
+    from typer.testing import CliRunner
+
+    from touchstone.cli import app
+
+    pk = tb.load_tools_pack(PACK)
+    item = next(i for i in pk.items if i.id == "S6")
+    checks_sha = tb.checks_fingerprint(pk)
+    for name, temp in (("a", 0.7), ("b", 1.0)):
+        d = tmp_path / name
+        d.mkdir()
+        t = turn(content="x", finish="stop")
+        r = tb.make_response(pk, item, name, name, 0, t, tb.run_checks(item, t, {}), 0.0)
+        (d / "responses.jsonl").write_text(json.dumps(tb.asdict(r)) + "\n", encoding="utf-8")
+        (d / "bundle.json").write_text(
+            json.dumps(
+                {
+                    "pack_sha256": name
+                    * 64,  # ganzer Pack unterscheidet sich (Sampling steht drin)
+                    "checks_sha256": checks_sha,
+                    "sampling": {"temperature": temp, "seed": 42},
+                }
+            ),
+            encoding="utf-8",
+        )
+    out = tmp_path / "cmp.md"
+    res = CliRunner().invoke(
+        app, ["tools-compare", str(tmp_path / "a"), str(tmp_path / "b"), "--out", str(out)]
+    )
+    assert res.exit_code == 0, res.output
+    md = out.read_text(encoding="utf-8")
+    assert "verschiedenes Sampling" in md and "0.7" in md and "1.0" in md
 
 
 # --------------------------------------------------------------------------- effort stages

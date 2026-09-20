@@ -356,3 +356,43 @@ def test_jede_im_prompt_genannte_datei_ist_lesbar(pack: tb.ToolsPack) -> None:
         known = set(item.fixtures) | set(item.context_fixtures) | targets
         fehlend += [(item.id, p) for p in sorted(named) if p not in known]
     assert fehlend == [], f"im Prompt genannt, aber nicht lesbar und kein Schreibziel: {fehlend}"
+
+
+# ------------------------------------------------------- Checks-Hash vs. Lauf-Parameter
+
+
+def test_checks_fingerprint_ignoriert_sampling_aber_nicht_die_checks(
+    pack: tb.ToolsPack, tmp_path: Path
+) -> None:
+    """Zwei Stufen mit ihrem je empfohlenen Sampling (Thinking vs. Instruct) sind verschiedene
+    Läufe DESSELBEN Prüfstands. Der Hash, der „identische Checks" belegen soll, darf daran nicht
+    scheitern — sonst ist ein Vergleich unter Hersteller-Sampling unmöglich (gemessen
+    2026-09-20: tools-compare verweigerte genau das). Ändert sich ein Check, muss er abweichen."""
+    base = tb.checks_fingerprint(pack)
+    anders_sampling = pack.model_copy(
+        update={"sampling": tb.ToolsSampling(temperature=1.0, seed=7)}
+    )
+    assert tb.checks_fingerprint(anders_sampling) == base
+
+    items = [i.model_copy() for i in pack.items]
+    items[0] = items[0].model_copy(update={"checks": items[0].checks[:-1]})
+    assert tb.checks_fingerprint(pack.model_copy(update={"items": items})) != base
+
+    # Das Zugbudget ist eine Messbedingung, keine Laufoption → es gehört in den Hash
+    assert tb.checks_fingerprint(pack.model_copy(update={"max_turns": 9})) != base
+
+
+def test_pack_fingerprint_bleibt_streng_fuer_resume(pack: tb.ToolsPack, tmp_path: Path) -> None:
+    """Der Resume-Wächter bleibt am ganzen Pack: ein Sampling-Wechsel MITTEN in einem Bundle
+    würde Zellen mit verschiedenen Parametern mischen."""
+    import yaml
+
+    raw = yaml.safe_load(PACK.read_text(encoding="utf-8"))
+    raw["context_dir"] = str(PACK.parent / "opencode-tools-context")  # Kopie liegt woanders
+    a = tmp_path / "a.yaml"
+    a.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+    raw["sampling"] = {"temperature": 1.0, "seed": 42}
+    b = tmp_path / "b.yaml"
+    b.write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+    pa, pb = tb.load_tools_pack(a), tb.load_tools_pack(b)
+    assert tb.pack_fingerprint(a, pa) != tb.pack_fingerprint(b, pb)

@@ -1093,6 +1093,7 @@ def tools_cmd(
             "pack_version": pk.version,
             "pack_path": str(Path(pack).resolve()),
             "pack_sha256": fingerprint,
+            "checks_sha256": tb.checks_fingerprint(pk),
             "items": wanted or None,
             "models": [
                 {
@@ -1184,13 +1185,24 @@ def tools_compare_cmd(
     for bdir in (bundle_a, bundle_b):
         mf = bdir / "bundle.json"
         mans.append(json.loads(mf.read_text(encoding="utf-8")) if mf.exists() else {})
-    shas = [m.get("pack_sha256") for m in mans]
+    # Der Checks-Hash entscheidet: er deckt Items, Checks, Fixtures, Tool-Schemas, Token- und
+    # Zugbudget ab — nicht das Sampling. Zwei Effort-Stufen mit ihrem je empfohlenen Sampling
+    # sind derselbe Prüfstand; der Unterschied wird unten benannt, nicht verweigert. Alte
+    # Bundles ohne das Feld fallen auf den strengen pack_sha256 zurück.
+    shas = [m.get("checks_sha256") or m.get("pack_sha256") for m in mans]
     if None in shas or shas[0] != shas[1]:
         # pack_version alone is not enough: check semantics can change without a version bump.
-        console.print(f"[red]Pack-Hash fehlt oder weicht ab (A={shas[0]}, B={shas[1]}) — "
+        console.print(f"[red]Checks-Hash fehlt oder weicht ab (A={shas[0]}, B={shas[1]}) — "
                       "die Läufe sind nicht mit identischen Checks gemessen.[/]")  # fmt: skip
         raise typer.Exit(1)
     notes = []
+    samp = [m.get("sampling") for m in mans]
+    if samp[0] != samp[1]:
+        notes.append(
+            f"- ⚠ verschiedenes Sampling: A={samp[0]} · B={samp[1]} — gewollt, wenn jede Stufe "
+            "mit ihrem empfohlenen Profil lief; ein Teil des Unterschieds ist dann Sampling, "
+            "nicht Denkstufe."
+        )
     for label, man in (("A", mans[0]), ("B", mans[1])):
         ctx = [m.get("loaded_context_length") for m in man.get("loaded_at_end") or []]
         notes.append(f"- {label}: geladen laut Server {man.get('loaded_at_end') or 'n. v.'}")
