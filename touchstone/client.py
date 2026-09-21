@@ -87,12 +87,15 @@ class OpenAIStreamClient:
     def probe_build_metadata(self) -> BuildMetadata:
         """Best-effort build/quant probe. LM Studio exposes /api/v0/models; others don't.
 
-        Never raises into the eval loop — any failure yields empty metadata."""
-        import httpx
-
+        Never raises into the eval loop — any failure yields empty metadata. The import belongs
+        inside the guard: httpx used to arrive with openai, but openai >= 3 depends on httpx2,
+        so on a fresh install the import itself is what raises — after the run, taking the
+        report and the manifest with it (measured 2026-09-21)."""
         base = self.base_url.rstrip("/")
         host = base[:-3] if base.endswith("/v1") else base  # strip OpenAI suffix
         try:
+            import httpx
+
             r = httpx.get(f"{host}/api/v0/models", timeout=3.0)
             if r.status_code == 200:
                 return parse_lmstudio_models(r.json())
