@@ -38,6 +38,9 @@ class StreamEvent:
     reasoning_text: str = ""
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    # usage.prompt_tokens_details.cached_tokens — None when the engine doesn't report it
+    # (absent is not zero: "0 cached" and "unknown" must stay distinguishable).
+    cached_tokens: int | None = None
 
 
 class StreamClient(Protocol):
@@ -77,6 +80,7 @@ class RequestOutcome:
     reasoning_completion_tokens: int = 0  # heuristic reasoning-token count
     reasoning_tps: float = math.nan  # reasoning tokens / reasoning_duration_s; nan-safe
     t_reasoning_start: float = math.nan  # first reasoning token (s since t0); nan if none
+    cached_tokens: int | None = None  # prefix-cache hit reported by the engine; None = unknown
     ok: bool = True
     error: str = ""
 
@@ -117,6 +121,7 @@ def stream_once(
     t_reasoning_last: float | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    cached_tokens: int | None = None
     error = ""
     ok = True
 
@@ -143,6 +148,8 @@ def stream_once(
                 prompt_tokens = ev.prompt_tokens
             if ev.completion_tokens is not None:
                 completion_tokens = ev.completion_tokens
+            if ev.cached_tokens is not None:
+                cached_tokens = ev.cached_tokens
     except Exception as exc:
         ok = False
         error = f"{type(exc).__name__}: {exc}"
@@ -186,6 +193,7 @@ def stream_once(
         reasoning_completion_tokens=reasoning_completion_tokens,
         reasoning_tps=reasoning_tps,
         t_reasoning_start=(t_reasoning_start if t_reasoning_start is not None else math.nan),
+        cached_tokens=cached_tokens,
         ok=ok,
         error=error,
     )
@@ -295,6 +303,7 @@ def _make_record(
         seed=config.seed,
         power_source=power_source,
         actual_prompt_tokens=outcome.prompt_tokens,
+        cached_tokens=outcome.cached_tokens,
         completion_tokens=outcome.completion_tokens,
         ttft_s=outcome.ttft_s,
         decode_tps=decode,

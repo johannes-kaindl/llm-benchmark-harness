@@ -47,6 +47,17 @@ class CellAggregate:
     n_excluded_battery: int
     n_total: int
     low_n: bool  # n_valid below the statistical floor → numbers are under-powered
+    # The FIRST request of the cell — the cache-cold one. On a prefix-caching engine the warm
+    # aggregates above measure the cache, and this is the honest latency (nan if it failed).
+    ttft_cold: float = math.nan
+    prefill_cold: float = math.nan
+    # Share of the prompt the engine reported as cached (usage.prompt_tokens_details), in %.
+    # None = the engine doesn't report it — unknown, which is not the same as 0 %.
+    cached_pct_warm: float | None = None
+    cached_pct_cold: float | None = None
+    # The cold request is the run's very first one → it also carries model loading, so its value
+    # is not comparable with the other cells' cold values (it is kept, but marked).
+    cold_includes_load: bool = False
 
 
 # --- raw.csv -----------------------------------------------------------------
@@ -87,15 +98,19 @@ def load_raw_csv(path: str | Path) -> list[RunRecord]:
                 if col not in row:
                     continue
                 raw = row[col]
-                t = field_types.get(col, str)
-                if t in (int, "int"):
+                # Annotations are strings (``from __future__ import annotations``), so match on
+                # the declared type text. Optional numbers ("float | None", "int | None") are
+                # recognised by type, not by a hand-kept name list: that list once missed
+                # ``sys_used_delta_mb``, which then came back as the string '5000.0'.
+                t = str(field_types.get(col, "str")).replace(" ", "")
+                if t == "int":
                     kwargs[col] = _coerce(raw, int) if raw not in ("", "None") else 0
-                elif t in (float, "float"):
+                elif t == "int|None":
+                    kwargs[col] = _coerce(raw, int)
+                elif t in ("float", "float|None"):
                     kwargs[col] = _coerce(raw, float)
-                elif t in (bool, "bool"):
+                elif t == "bool":
                     kwargs[col] = _coerce(raw, bool)
-                elif col in {"peak_rss_mb", "sys_used_mb", "swap_delta_mb"}:
-                    kwargs[col] = _coerce(raw, float)
                 else:
                     kwargs[col] = raw
             # t_start/t_end are internal timing fields, intentionally not in the CSV.
@@ -120,7 +135,33 @@ def is_valid_for_aggregate(r: RunRecord) -> bool:
     return not (r.throttled or r.power_source == "battery")
 
 
+def _first_requests(records: list[RunRecord]) -> dict[CellKey, RunRecord]:
+    """The cache-cold request of each cell.
+
+    The runner sends a cell's prompt first as the global cold-start (cell 0 only) or as the
+    discarded warmup (every other cell); every later run repeats the SAME prompt and can hit the
+    engine's prefix cache. For cell 0 the warmup follows the cold-start and is already warm, so
+    the cold-start wins where there is one. Derived from the existing flags on purpose — a
+    separate "first in cell" field would store the same truth twice.
+    """
+    firsts: dict[CellKey, RunRecord] = {}
+    for r in records:
+        if r.is_cold_start:
+            firsts[_cell_key(r)] = r
+    for r in records:
+        if r.warmup:
+            firsts.setdefault(_cell_key(r), r)
+    return firsts
+
+
+def _cached_pct(r: RunRecord) -> float | None:
+    if r.cached_tokens is None or r.actual_prompt_tokens <= 0:
+        return None
+    return r.cached_tokens / r.actual_prompt_tokens * 100
+
+
 def aggregate_cells(records: list[RunRecord]) -> list[CellAggregate]:
+    firsts = _first_requests(records)
     groups: dict[CellKey, list[RunRecord]] = {}
     for r in records:
         if r.is_cold_start:
@@ -166,7 +207,21 @@ def aggregate_cells(records: list[RunRecord]) -> list[CellAggregate]:
                 low_n=len(valid) < MIN_VALID_RUNS,
             )
         )
+        _set_cold_fields(cells[-1], firsts.get(key), valid)
     return cells
+
+
+def _set_cold_fields(cell: CellAggregate, first: RunRecord | None, valid: list[RunRecord]) -> None:
+    warm_pcts = [p for p in (_cached_pct(r) for r in valid) if p is not None]
+    cell.cached_pct_warm = stats.median(warm_pcts) if warm_pcts else None
+    # The cold request obeys the same exclusions as the warm runs (failed/throttled/battery);
+    # only its warmup/cold-start flag is — by definition — expected.
+    if first is None or not first.ok or first.throttled or first.power_source == "battery":
+        return
+    cell.ttft_cold = first.ttft_s
+    cell.prefill_cold = first.prefill_tps
+    cell.cached_pct_cold = _cached_pct(first)
+    cell.cold_includes_load = first.is_cold_start
 
 
 # --- rendering ---------------------------------------------------------------
@@ -182,6 +237,24 @@ def _gb(x: float | None) -> str:
     if x is None:
         return "—"
     return f"{x / 1024:.1f} GB"
+
+
+LOAD_MARK = "⁽ᴸ⁾"
+
+
+def _cold_cell(c: CellAggregate) -> str:
+    value = _fnum(c.ttft_cold)
+    return f"{value} {LOAD_MARK}" if c.cold_includes_load and value != "—" else value
+
+
+def _cache_cell(c: CellAggregate) -> str:
+    if c.cached_pct_warm is None and c.cached_pct_cold is None:
+        return "—"
+
+    def side(p: float | None) -> str:
+        return "—" if p is None else f"{p:.0f} %"
+
+    return f"{side(c.cached_pct_warm)} / {side(c.cached_pct_cold)}"
 
 
 def _engine_line(records: list[RunRecord]) -> str:
@@ -226,11 +299,11 @@ def render_report_md(
     lines.append("## 📊 Ergebnis-Tabelle")
     lines.append("")
     lines.append(
-        "| Datum | Maschine | Modell | Quant | Kontext (ist) | TTFT P50/P95 (s) | "
-        "Decode (tok/s) | Prefill (tok/s) | Peak-RAM / Druck / Swap | Qual. | Flow | "
-        "Konsist. (CV%) | Throttle/Akku |"
+        "| Datum | Maschine | Modell | Quant | Kontext (ist) | TTFT P50/P95 (s) | TTFT kalt (s) | "
+        "Decode (tok/s) | Prefill (tok/s) | Cache warm/kalt | Peak-RAM / Druck / Swap | Qual. | "
+        "Flow | Konsist. (CV%) | Throttle/Akku |"
     )
-    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for c in cells:
         ttft = f"{_fnum(c.ttft_p50)} / {_fnum(c.ttft_p95)}"
         # System memory is the RAM truth (engine-agnostic); server RSS is a hint that
@@ -254,8 +327,9 @@ def render_report_md(
         )
         lines.append(
             f"| {date_str} | {c.machine} | {c.model} | {c.quant} | "
-            f"{ctx} | {ttft} | {_fnum(c.decode_median, 1)} | "
-            f"{_fnum(c.prefill_median, 1)} | {ram} | | | {_fnum(c.cv_pct, 1)} | {excl} |"
+            f"{ctx} | {ttft} | {_cold_cell(c)} | {_fnum(c.decode_median, 1)} | "
+            f"{_fnum(c.prefill_median, 1)} | {_cache_cell(c)} | {ram} | | | "
+            f"{_fnum(c.cv_pct, 1)} | {excl} |"
         )
     lines.append("")
     lines.append(
@@ -264,6 +338,16 @@ def render_report_md(
         "`prompt_tokens` aus `usage`. **Peak-RAM** = Spitzen-System-Memory (engine-agnostisches "
         "RAM-Signal, maßgeblich für OOM/Druck); `RSS` = Server-PID-RSS, das auf Apple Silicon "
         "die mmap'ten Modellgewichte unterzählt — daher nur als Hinweis in Klammern. "
+        "**TTFT kalt** = der erste Request je Zelle (Cold-Start bzw. Warmup) — auf einer Engine "
+        "mit Prefix-Cache die ehrliche Latenz, denn die gewerteten Läufe wiederholen denselben "
+        "Prompt und messen dort den Cache. **Cache warm/kalt** = Anteil des Prompts, den die "
+        "Engine als gecacht meldet (`usage.prompt_tokens_details.cached_tokens`); `—` = die "
+        "Engine meldet es nicht (unbekannt, nicht 0 %). Ein hoher Kalt-Anteil heißt: Die Zelle "
+        "teilt ihren Anfang mit einer vorigen. "
+        f"{LOAD_MARK} = dieser Wert ist der allererste Request des Laufs und enthält ggf. das "
+        "Laden des Modells — nicht mit den Kalt-Werten der übrigen Zellen vergleichbar "
+        "(gemessen an mlx_lm.server: kalt 6,42 s gegen 0,32 s warm in dieser Zelle, 3,85 gegen "
+        "4,17 s in der nächsten). "
         "Aggregate schließen Warmup-, Cold-, throttled- und "
         f"Akku-Läufe aus (roh in `raw.csv` erhalten). ⚠️ n=<k> markiert Zellen mit weniger "
         f"als {MIN_VALID_RUNS} gewerteten Läufen — die Zahlen sind dort unterbesetzt._"

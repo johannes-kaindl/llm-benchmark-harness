@@ -87,6 +87,9 @@ class RunRecord:
     ok: bool = True
     error: str = ""
 
+    # prefix-cache hit from usage.prompt_tokens_details; None = engine didn't report it
+    cached_tokens: int | None = None
+
     # --- resource fields (filled by merge from the sampler log) ---
     peak_rss_mb: float | None = None
     sys_used_mb: float | None = None
@@ -110,6 +113,7 @@ RAW_CSV_COLUMNS: list[str] = [
     "scenario",
     "target_ctx",
     "actual_prompt_tokens",
+    "cached_tokens",
     "completion_tokens",
     "ttft_s",
     "decode_tps",

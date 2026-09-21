@@ -150,9 +150,14 @@ class OpenAIStreamClient:
                     yield StreamEvent(reasoning_text=reasoning)
             usage = getattr(chunk, "usage", None)
             if usage is not None:
+                # Prefix-cache hits (vLLM, Splash, LM Studio …) — lets a bundle prove which
+                # request was served from cache instead of leaving it to inference.
+                details = getattr(usage, "prompt_tokens_details", None)
+                cached = getattr(details, "cached_tokens", None) if details is not None else None
                 yield StreamEvent(
                     prompt_tokens=getattr(usage, "prompt_tokens", None),
                     completion_tokens=getattr(usage, "completion_tokens", None),
+                    cached_tokens=cached if isinstance(cached, int) else None,
                 )
 
     def stream_tools(
