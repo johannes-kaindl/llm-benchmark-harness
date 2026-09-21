@@ -1025,11 +1025,17 @@ def follow_up_messages(item: ToolItem, turn: ToolTurn) -> list[dict[str, Any]]:
     ]
     assistant: dict[str, Any] = {"role": "assistant", "content": turn.content, "tool_calls": calls}
     if turn.reasoning:
-        # opencode reaches the previous turn's thinking back as `reasoning_content` — whichever
-        # field the server emitted it in — and the server reads it (measured by the opencode
-        # session 2026-09-20 against Hetzner: 668 vs 343 prompt tokens, and the model knew a
-        # codeword that existed only in the reasoning). Dropping it would make the model think
-        # without memory of its own previous step, which is not what the agent under test does.
+        # The previous turn's thinking has to come back, or the model plans without memory of
+        # its own last step — not what the agent under test does. Two field names are in the
+        # wild and servers are picky about which one they read, so send both:
+        #   `reasoning_content` — read by Hetzner (measured 2026-09-20: 668 vs 343 prompt
+        #     tokens, and the model knew a codeword that existed only in the reasoning).
+        #   `reasoning` — what opencode 1.18.31 actually sends (measured 2026-09-21 on the wire)
+        #     and the only field the LGS-KI chain (all-llama-proxy) reads. With only
+        #     `reasoning_content` every chain there dies silently after two turns — HTTP 200,
+        #     finish_reason stop, empty content — and scores as model failure. Depth pack:
+        #     1/4 items before, 4/4 after.
+        assistant["reasoning"] = turn.reasoning
         assistant["reasoning_content"] = turn.reasoning
     out: list[dict[str, Any]] = [assistant]
     for c in turn.tool_calls:
