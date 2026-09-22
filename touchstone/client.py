@@ -170,25 +170,32 @@ class OpenAIStreamClient:
         model: str,
         tools: list[dict[str, object]],
         max_tokens: int | None,
-        temperature: float,
-        seed: int,
+        temperature: float | None,
+        seed: int | None,
         extra_body: dict[str, object] | None = None,
     ) -> Iterator[ToolStreamEvent]:
         """Stream a tool-enabled turn as raw fragments (``toolbench.collect_turn`` assembles).
 
         Streams like opencode does, so a server that ships a truncated call with empty
-        ``arguments`` at the budget edge shows up here exactly as it does there."""
+        ``arguments`` at the budget edge shows up here exactly as it does there.
+
+        ``temperature``/``seed`` of ``None`` are omitted from the request entirely rather than
+        sent as 0.0/some int — needed to replicate a client that never sets them (e.g. opencode
+        without `temperature: true` on the model entry), so the server's own default sampling
+        applies instead of our forced values."""
         extra: dict[str, object] = {}
         if max_tokens is not None:
             extra["max_tokens"] = max_tokens
+        if temperature is not None:
+            extra["temperature"] = temperature
+        if seed is not None:
+            extra["seed"] = seed
         if extra_body:
             extra["extra_body"] = extra_body
         stream = self._client.chat.completions.create(  # type: ignore[call-overload]
             model=model,
             messages=messages,
             tools=tools,
-            temperature=temperature,
-            seed=seed,
             stream=True,
             stream_options={"include_usage": True},
             **extra,

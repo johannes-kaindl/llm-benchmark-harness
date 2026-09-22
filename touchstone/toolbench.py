@@ -128,8 +128,11 @@ class ToolItem(BaseModel):
 
 
 class ToolsSampling(BaseModel):
-    temperature: float = 0.0
-    seed: int = 42
+    # None omits the field from the request instead of sending it — needed to replicate a
+    # client (e.g. opencode without `temperature: true` on the model entry) that sends neither,
+    # so the server falls back to its own default sampling instead of our forced 0.0/42.
+    temperature: float | None = 0.0
+    seed: int | None = 42
 
 
 class ToolsPack(BaseModel):

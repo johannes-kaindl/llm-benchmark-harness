@@ -685,6 +685,47 @@ def test_client_stream_tools_over_real_sdk_sse() -> None:
     assert t.finish_reason == "length" and t.completion_tokens == 7 and t.reasoning == "hmm"
 
 
+def test_stream_tools_omits_temperature_and_seed_when_none() -> None:
+    """None must not become 0.0/some int on the wire — a client that never sets temperature/seed
+    (e.g. opencode without `temperature: true` on the model entry) has to be replicable exactly,
+    or a sampling-cell comparison silently measures the same request twice."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from touchstone.client import OpenAIStreamClient
+
+    got: dict[str, Any] = {}
+
+    class H(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            got["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            self.wfile.write(b"data: [DONE]\n\n")
+
+        def log_message(self, *a: Any) -> None:
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        client = OpenAIStreamClient(f"http://127.0.0.1:{srv.server_port}/v1", max_retries=0)
+        list(
+            client.stream_tools(
+                messages=[{"role": "user", "content": "hi"}],
+                model="m",
+                tools=[],
+                max_tokens=None,
+                temperature=None,
+                seed=None,
+            )
+        )
+    finally:
+        srv.shutdown()
+    assert "temperature" not in got["body"] and "seed" not in got["body"]
+
+
 # --------------------------------------------------------------------------- review fixes
 # Each test below reproduces a defect found in the adversarial review of feat/tools-pack.
 
