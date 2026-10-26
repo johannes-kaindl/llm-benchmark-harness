@@ -52,7 +52,7 @@ nur die Config wird getauscht.
 - **Python 3.12+** über [`uv`](https://docs.astral.sh/uv/) (`brew install uv`).
 - **Ein lokaler OpenAI-kompatibler Endpoint** — LM Studio, `mlx_lm.server`, `mlx-openai-server`,
   Ollama oder llama.cpp. Noch keiner da? Siehe
-  [uplink.jkaindl.de/llm-setup](https://uplink.jkaindl.de/llm-setup).
+  [jkaindl.de/uplink/llm-setup](https://jkaindl.de/uplink/llm-setup/).
 - **Optional — passwortloses sudo für `powermetrics`.** Ohne bleibt der Throttle-Flag aus und
   throttled Läufe werden *nicht* ausgeschlossen (siehe
   [How-to: neue Maschine einrichten](docs/how-to/neue-maschine-einrichten.md)).

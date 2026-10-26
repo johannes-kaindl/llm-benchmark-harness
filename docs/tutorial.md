@@ -26,7 +26,7 @@ Beide sind so formatiert, dass ihre Spalten direkt in eine Vergleichstabelle pas
 - **[uv](https://docs.astral.sh/uv/)** installiert (`brew install uv`).
 - **Ein laufender lokaler LLM-Server** mit OpenAI-kompatibler API — LM Studio, `mlx_lm.server`,
   Ollama oder llama.cpp. Wenn du noch keinen hast: siehe
-  [uplink.jkaindl.de/llm-setup](https://uplink.jkaindl.de/llm-setup).
+  [jkaindl.de/uplink/llm-setup](https://jkaindl.de/uplink/llm-setup/).
 - **Netzteil angeschlossen.** Auf Akku drosselt Apple Silicon die GPU um 30–50 %; touchstone
   flaggt solche Läufe und schließt sie aus den Aggregaten aus — du bekommst dann eine leere
   Tabelle. Das ist Absicht, aber als erster Lauf frustrierend.
