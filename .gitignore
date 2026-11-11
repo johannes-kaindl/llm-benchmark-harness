@@ -12,7 +12,8 @@ dist/
 # Hinweis: uv.lock WIRD committet (PROF-PY-01) — nicht ignorieren.
 
 # Agent-/Session-State (CORE-AGENT-03/05)
-.claude/
+.claude/*
+!.claude/rules/
 .remember/
 .superpowers/
 
